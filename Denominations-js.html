@@ -170,6 +170,9 @@ async function saveDenomination() {
         toast('Denomination record saved successfully', 'success');
         clearDenomForm();
         // Removed history loading
+        
+        // Refresh Dashboard Data immediately to show update in closing cash
+        loadDayData();
       } else {
         toast(res.message || 'Failed to save', 'error'); 
       }

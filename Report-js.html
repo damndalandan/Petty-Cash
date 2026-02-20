@@ -36,6 +36,8 @@ function populateReportSelectors() {
 }
 
 async function loadReportsList() {
+    resetReportDetailView(); // Reset detail view on refresh/load
+
     const m = parseInt(document.getElementById('reportMonth').value);
     const y = parseInt(document.getElementById('reportYear').value);
     
@@ -102,7 +104,7 @@ function renderReportsList(year, month) {
         const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
         
         const totalExp = summary ? summary.expenses : entryTotal;
-        const variance = summary ? (summary.closing - (summary.opening + (summary.cashAdvance||0) - totalExp)) : 0; 
+        const variance = summary ? (summary.variance || 0) : 0; 
         
         let statusDot = 'bg-gray-300';
         let statusText = 'No Data';
@@ -179,7 +181,15 @@ function showReportDetail(dateStr) {
         document.getElementById('d-expenses').textContent = fmt(summary.expenses);
         document.getElementById('d-closing').textContent = fmt(summary.closing);
         
-        document.getElementById('d-variance').textContent = '---'; 
+        const v = summary.variance || 0;
+        const elV = document.getElementById('d-variance');
+        elV.textContent = fmt(v);
+        
+        // Color code variance
+        if(v < -0.01) elV.className = "text-xl font-mono font-bold text-red-600";
+        else if(v > 0.01) elV.className = "text-xl font-mono font-bold text-blue-600";
+        else elV.className = "text-xl font-mono font-bold text-gray-400";
+
     } else {
         document.getElementById('d-opening').textContent = '---';
         document.getElementById('d-expenses').textContent = '---';
@@ -201,6 +211,12 @@ function setDetailFilter(filter) {
         }
     });
     renderDetailList();
+}
+
+function resetReportDetailView() {
+    selectedReportDate = null;
+    document.getElementById('reportDetailContent').classList.add('hidden');
+    document.getElementById('reportDetailEmpty').classList.remove('hidden');
 }
 
 function renderDetailList() {

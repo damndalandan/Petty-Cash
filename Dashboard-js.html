@@ -179,6 +179,32 @@ function updateDashStats() {
   const so = document.getElementById('stat-opening'); if(so) so.textContent = fmt(opening);
   const se = document.getElementById('stat-expenses'); if(se) se.textContent = fmt(totalExp);
   const sc = document.getElementById('stat-closing'); if(sc) sc.textContent = fmt(closing);
+  
+  // Calculate Expected: Opening - Total Outflows (Expenses + CashAdvance)
+  // Check if CashAdvance is available in summary
+  const cashAdv = summary.cashAdvance || 0;
+  // If cash advance is handled as an entry with type 'CASH_ADVANCE', we might need to sum it from entries if summary isn't up to date or we want live entry data
+  // But recalculateDailySummary updates summary.cashAdvance. 
+  // Wait, totalExp in summary DOES NOT include cashAdvance based on Code.js logic:
+  // if (type === 'CASH_ADVANCE') cashAdvance += amt; else totalExp += amt;
+  // So Total Outflows = totalExp + cashAdv.
+  
+  // Note: we are calculating totalExp live from state.entries above (withReceipt + noReceipt).
+  // We should also calculate cashAdv live from state.entries to be consistent.
+  const liveCashAdv = state.entries.filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  
+  // Actually, let's use the live calculation for everything if possible to feel responsive
+  const totalOutflows = totalExp + liveCashAdv;
+  const expectedInfo = opening - totalOutflows;
+  
+  const sexp = document.getElementById('stat-expected'); 
+  if(sexp) {
+      sexp.textContent = fmt(expectedInfo);
+      // Optional: Add color if negative?
+      if(expectedInfo < 0) sexp.classList.add('text-red-500');
+      else sexp.classList.remove('text-red-500');
+  }
+
   const sr = document.getElementById('stat-receipt'); if(sr) sr.textContent = fmt(withReceipt);
   const sn = document.getElementById('stat-noreceipt'); if(sn) sn.textContent = fmt(noReceipt);
 
