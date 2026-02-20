@@ -1,0 +1,80 @@
+    <!-- REPORT PAGE -->
+    <div id="page-report" class="page-view hidden h-[calc(100vh-3rem)] flex flex-col md:flex-row gap-6 p-4 md:p-6 overflow-hidden">
+      
+      <!-- Left Pane: Daily Summaries List -->
+      <div class="w-full md:w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full shrink-0">
+         <div class="p-4 border-b border-gray-200 bg-gray-50 flex flex-col gap-3">
+           <div class="flex justify-between items-center">
+             <h2 class="font-bold text-gray-700 font-display">Daily Reports</h2>
+             <button onclick="loadReportsList()" class="text-blue-600 hover:bg-blue-100 p-1.5 rounded transition" title="Refresh">↻</button>
+           </div>
+           
+           <div class="flex gap-2">
+              <select id="reportMonth" onchange="loadReportsList()" class="flex-1 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+              <select id="reportYear" onchange="loadReportsList()" class="w-24 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+           </div>
+         </div>
+
+         <div id="reportsList" class="flex-1 overflow-y-auto p-2 space-y-1 bg-gray-50/50">
+            <!-- Dynamic Items -->
+            <div class="text-center py-10 text-gray-400 text-sm">Select dates...</div>
+         </div>
+      </div>
+
+      <!-- Right Pane: Details -->
+      <div class="w-full md:w-2/3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-full relative overflow-hidden">
+         
+         <div id="reportDetailEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-white z-10">
+           <span class="text-5xl mb-4 grayscale opacity-50">📊</span>
+           <p class="text-lg font-medium">Select a day to view details</p>
+         </div>
+
+         <div id="reportDetailContent" class="flex flex-col h-full hidden">
+            <!-- Header -->
+            <div class="p-6 border-b border-gray-200 bg-white flex justify-between items-start">
+               <div>
+                  <h2 class="text-2xl font-bold text-gray-800 font-display" id="detailDate">October 24, 2023</h2>
+                  <div class="flex gap-4 mt-2 text-sm">
+                     <div><span class="text-gray-500 block text-[10px] uppercase">Opening</span><span class="font-mono font-bold" id="d-opening">₱0.00</span></div>
+                     <div><span class="text-gray-500 block text-[10px] uppercase">Expenses</span><span class="font-mono font-bold text-red-600" id="d-expenses">₱0.00</span></div>
+                     <div><span class="text-gray-500 block text-[10px] uppercase">Closing</span><span class="font-mono font-bold text-green-600" id="d-closing">₱0.00</span></div>
+                  </div>
+               </div>
+               <div class="text-right">
+                  <div class="text-[10px] text-gray-500 uppercase tracking-widest">Variance</div>
+                  <div class="text-xl font-mono font-bold" id="d-variance">₱0.00</div>
+               </div>
+            </div>
+
+            <!-- Tabs -->
+            <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-2 gap-1" id="detailTabs">
+               <button onclick="setDetailFilter('all')" id="tab-all" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">All</button>
+               <button onclick="setDetailFilter('receipt')" id="tab-receipt" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">With Receipt</button>
+               <button onclick="setDetailFilter('noreceipt')" id="tab-noreceipt" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">No Receipt</button>
+               <button onclick="setDetailFilter('advance')" id="tab-advance" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">Cash Advance</button>
+            </div>
+
+            <!-- List -->
+            <div class="flex-1 overflow-y-auto p-0">
+               <table class="w-full text-left text-sm">
+                  <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200 sticky top-0">
+                    <tr>
+                      <th class="px-6 py-3">Category / Desc</th>
+                      <th class="px-6 py-3 text-right">Amount</th>
+                      <th class="px-6 py-3 text-center">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody id="detailListBody" class="divide-y divide-gray-100">
+                     <!-- Items -->
+                  </tbody>
+               </table>
+            </div>
+
+            <!-- Footer Footer (Totals) -->
+            <div class="p-4 border-t border-gray-200 bg-gray-50 text-right">
+               <span class="text-xs text-gray-500 mr-2 uppercase">Displayed Total</span>
+               <span class="font-bold font-mono text-lg text-gray-800" id="detailDisplayedTotal">₱0.00</span>
+            </div>
+         </div>
+      </div>
+    </div>

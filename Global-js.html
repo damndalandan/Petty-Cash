@@ -1,0 +1,112 @@
+<script>
+// =============================================
+// STATE & UTILS
+// =============================================
+const state = {
+  currentDate: '',
+  currentPage: 'dashboard',
+  entries: [],
+  denominations: [],
+  summary: null,
+  entryTab: 'all',
+  denomTab: 'START',
+  hasReceipt: true,
+  editHasReceipt: true,
+  loading: false
+};
+
+const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1];
+
+function fmt(n) {
+  const num = parseFloat(n) || 0;
+  return '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div');
+  const bg = type === 'success' ? 'bg-green-600' : (type === 'error' ? 'bg-red-600' : 'bg-yellow-500');
+  el.className = `toast-anim flex items-center gap-3 px-4 py-3 text-white rounded shadow-lg ${bg} max-w-sm`;
+  el.innerHTML = `<span>${type == 'success' ? '✓' : '⚠️'}</span><span class="text-sm font-medium">${msg}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-10px)';
+    setTimeout(() => el.remove(), 300);
+  }, 3500);
+}
+
+// =============================================
+// INIT
+// =============================================
+document.addEventListener('DOMContentLoaded', () => {
+  const today = new Date();
+  const formatted = today.toISOString().split('T')[0];
+  state.currentDate = formatted;
+  
+  const dateInput = document.getElementById('globalDate');
+  if(dateInput) dateInput.value = formatted;
+  
+  const rFrom = document.getElementById('reportFrom');
+  if(rFrom) rFrom.value = formatted;
+  
+  const rTo = document.getElementById('reportTo');
+  if(rTo) rTo.value = formatted;
+
+  updateDateLabel();
+  buildDenomGrid();
+  loadDayData();
+  
+  // Set initial tab styling
+  navigate('dashboard');
+  setReceipt(true);
+});
+
+function updateDateLabel() {
+  const d = new Date(state.currentDate + 'T00:00:00');
+  const label = d.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const el = document.getElementById('dash-date-label');
+  if (el) el.textContent = label;
+  
+  const el2 = document.getElementById('entries-date-label');
+  if (el2) el2.textContent = label;
+}
+
+// =============================================
+// NAVIGATION
+// =============================================
+function navigate(page) {
+  state.currentPage = page;
+  
+  // Toggle Page Views
+  document.querySelectorAll('.page-view').forEach(v => v.classList.add('hidden'));
+  document.getElementById('page-' + page).classList.remove('hidden');
+
+  // Sidebar highlight
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.dataset.page === page) {
+      n.classList.add('bg-green-50', 'text-green-600');
+      n.classList.remove('text-gray-600', 'hover:bg-gray-50');
+    } else {
+      n.classList.remove('bg-green-50', 'text-green-600');
+      n.classList.add('text-gray-600', 'hover:bg-gray-50');
+    }
+  });
+
+  // Load data
+  if (page === 'entries') loadEntries();
+  if (page === 'denominations') loadDenominations();
+  if (page === 'report') initReportPage();
+  if (page === 'dashboard') loadDayData();
+
+  // Mobile Menu
+  document.getElementById('sidebar').classList.add('-translate-x-full');
+  document.getElementById('sidebarOverlay').classList.add('hidden');
+}
+
+function onDateChange() {
+  state.currentDate = document.getElementById('globalDate').value;
+  updateDateLabel();
+  loadDayData();
+  if (state.currentPage !== 'dashboard') navigate(state.currentPage);
+}
+</script>

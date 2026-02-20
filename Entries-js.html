@@ -1,0 +1,206 @@
+<script>
+// =============================================
+// ENTRIES
+// =============================================
+function setReceipt(val) {
+  state.hasReceipt = val;
+  const yesBtn = document.getElementById('rcpt-yes');
+  const noBtn = document.getElementById('rcpt-no');
+  if (val) {
+    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md hover:bg-green-700 focus:z-10 focus:ring-2 focus:ring-green-500";
+    noBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 focus:z-10 focus:ring-2 focus:ring-blue-500";
+  } else {
+    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 focus:z-10 focus:ring-2 focus:ring-green-500";
+    noBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md hover:bg-yellow-600 focus:z-10 focus:ring-2 focus:ring-yellow-400";
+  }
+}
+
+function clearEntryForm() {
+  document.getElementById('entryDesc').value = '';
+  document.getElementById('entryAmount').value = '';
+  document.getElementById('entryRef').value = '';
+  document.getElementById('entryRequested').value = '';
+  document.getElementById('entryCategory').selectedIndex = 0;
+  setReceipt(true);
+}
+
+function switchEntryTab(tab) {
+  state.entryTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+     if(b.dataset.tab === tab) {
+        b.classList.remove('bg-white', 'text-gray-800', 'text-gray-500', 'hover:bg-gray-200');
+        b.classList.add('bg-white', 'text-gray-800', 'shadow-sm', 'font-bold');
+     } else {
+        b.classList.remove('bg-white', 'text-gray-800', 'shadow-sm', 'font-bold');
+        b.classList.add('text-gray-500', 'hover:bg-gray-200');
+     }
+  });
+  renderEntries();
+}
+
+async function loadEntries() {
+  const btn = event?.currentTarget;
+  // Only spin if it's the refresh button (usually an icon), not the sidebar link
+  const isRefresh = btn && btn.classList.contains('text-gray-400'); 
+  
+  if(isRefresh) btn.classList.add('animate-spin');
+  const res = await callServer('getExpenseEntries', state.currentDate);
+  if(isRefresh) btn.classList.remove('animate-spin');
+
+  if (res.success) {
+    state.entries = res.data || [];
+    renderEntries();
+    updateDashStats();
+  }
+}
+
+function renderEntries() {
+  let filtered = state.entries;
+  if (state.entryTab === 'withReceipt') filtered = filtered.filter(e => e.hasReceipt);
+  if (state.entryTab === 'noReceipt') filtered = filtered.filter(e => !e.hasReceipt);
+
+  const total = filtered.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  document.getElementById('entries-total').textContent = fmt(total);
+
+  const tbody = document.getElementById('entriesBody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm italic">No entries found</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(e => `
+    <tr class="hover:bg-gray-50 transition group">
+      <td class="px-4 py-3">
+        <div class="font-medium text-gray-900">${e.description}</div>
+        <div class="text-xs text-gray-500">
+           ${e.category} 
+           ${e.referenceNo ? '• Ref: ' + e.referenceNo : ''}
+           ${e.requestedBy ? '• By: ' + e.requestedBy : ''}
+        </div>
+      </td>
+      <td class="px-4 py-3 text-right font-mono text-gray-700">${fmt(e.amount)}</td>
+      <td class="px-4 py-3 text-center">
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${e.hasReceipt ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+          ${e.hasReceipt ? 'YES' : 'NO'}
+        </span>
+      </td>
+      <td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">
+        <button onclick="openEditModal('${e.id}')" class="text-blue-600 hover:text-blue-900 mx-1">✏️</button>
+        <button onclick="deleteEntry('${e.id}')" class="text-red-500 hover:text-red-700 mx-1">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function saveEntry() {
+  const desc = document.getElementById('entryDesc').value;
+  const amt = parseFloat(document.getElementById('entryAmount').value);
+  if(!desc || !amt) { toast('Please check fields', 'warning'); return; }
+
+  const data = {
+    date: state.currentDate,
+    type: document.getElementById('entryType').value,
+    category: document.getElementById('entryCategory').value,
+    description: desc,
+    amount: amt,
+    hasReceipt: state.hasReceipt,
+    referenceNo: document.getElementById('entryRef').value,
+    requestedBy: document.getElementById('entryRequested').value,
+    approvedBy: ''
+  };
+
+  const btn = document.getElementById('saveEntryBtn');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  
+  const res = await callServer('saveExpenseEntry', data);
+  
+  btn.disabled = false;
+  btn.textContent = '💾 Save';
+  
+  if(res.success) {
+    toast('Entry added!');
+    clearEntryForm();
+    loadEntries();
+    updateDashStats();
+    loadDayData(); // Refresh overview
+  } else {
+    toast(res.message, 'error');
+  }
+}
+
+async function deleteEntry(id) {
+  if(!confirm('Delete this entry?')) return;
+  const res = await callServer('deleteExpenseEntry', id);
+  if(res.success) {
+    toast('Entry deleted.');
+    loadEntries();
+    loadDayData();
+  } else {
+    toast('Error deleting.', 'error');
+  }
+}
+
+// =============================================
+// EDIT MODAL
+// =============================================
+function openEditModal(id) {
+  const entry = state.entries.find(e => e.id === id);
+  if (!entry) return;
+
+  document.getElementById('editEntryId').value = entry.id;
+  document.getElementById('editType').value = entry.type;
+  document.getElementById('editCategory').value = entry.category;
+  document.getElementById('editDesc').value = entry.description;
+  document.getElementById('editAmount').value = entry.amount;
+  document.getElementById('editRef').value = entry.referenceNo || '';
+  
+  setEditReceipt(entry.hasReceipt);
+  
+  document.getElementById('editModal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.add('hidden');
+}
+
+function setEditReceipt(val) {
+  state.editHasReceipt = val;
+  const yesInfo = document.getElementById('edit-rcpt-yes');
+  const noInfo = document.getElementById('edit-rcpt-no');
+  
+  if (val) {
+    yesInfo.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md";
+    noInfo.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md";
+  } else {
+    yesInfo.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md";
+    noInfo.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md";
+  }
+}
+
+async function updateEntry() {
+  const id = document.getElementById('editEntryId').value;
+  const data = {
+    id: id,
+    date: state.currentDate,
+    type: document.getElementById('editType').value,
+    category: document.getElementById('editCategory').value,
+    description: document.getElementById('editDesc').value,
+    amount: parseFloat(document.getElementById('editAmount').value),
+    hasReceipt: state.editHasReceipt,
+    referenceNo: document.getElementById('editRef').value,
+    requestedBy: '', // preserve?
+    approvedBy: ''
+  };
+
+  const res = await callServer('saveExpenseEntry', data);
+  if(res.success) {
+    toast('Entry updated');
+    closeEditModal();
+    loadEntries();
+    loadDayData();
+  } else {
+    toast(res.message, 'error');
+  }
+}
+</script>

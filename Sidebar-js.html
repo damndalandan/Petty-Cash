@@ -1,0 +1,21 @@
+<script>
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (sb.classList.contains('-translate-x-full')) {
+    sb.classList.remove('-translate-x-full');
+    ov.classList.remove('hidden');
+  } else {
+    sb.classList.add('-translate-x-full');
+    ov.classList.add('hidden');
+  }
+}
+
+// Fetch user email on load
+document.addEventListener('DOMContentLoaded', function() {
+  google.script.run.withSuccessHandler(function(email) {
+    const el = document.getElementById('user-email');
+    if (el) el.textContent = email;
+  }).getUserEmail();
+});
+</script>

@@ -1,0 +1,72 @@
+    <!-- DASHBOARD PAGE -->
+    <div id="page-dashboard" class="page-view space-y-6">
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+        <div>
+          <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Dashboard</h1>
+          <p class="text-sm text-gray-500 mt-1" id="dash-date-label">—</p>
+        </div>
+      </div>
+
+      <!-- Stats Grid -->
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-blue-500">
+          <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Opening Cash</h3>
+          <p class="text-lg md:text-2xl font-bold text-gray-800 font-mono" id="stat-opening">₱0.00</p>
+        </div>
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-red-500">
+          <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Total Expenses</h3>
+          <p class="text-lg md:text-2xl font-bold text-red-600 font-mono" id="stat-expenses">₱0.00</p>
+        </div>
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-yellow-500">
+          <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Closing Cash</h3>
+          <p class="text-lg md:text-2xl font-bold text-yellow-600 font-mono" id="stat-closing">₱0.00</p>
+        </div>
+        
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+           <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-1">With Receipt</h3>
+           <p class="text-lg font-mono font-medium text-gray-700" id="stat-receipt">₱0.00</p>
+        </div>
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+           <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-1">No Receipt</h3>
+           <p class="text-lg font-mono font-medium text-gray-700" id="stat-noreceipt">₱0.00</p>
+        </div>
+      </div>
+
+      <!-- Discrepancy Overview -->
+      <div id="discrepancyWidget" class="hidden bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        
+        <!-- Header / Carousel -->
+        <div class="bg-gradient-to-r from-red-50 to-white p-6 border-b border-gray-100 relative">
+           
+           <div id="discCarousel" class="flex flex-col items-center justify-center text-center space-y-2 min-h-[120px]">
+              <div class="loader"></div>
+           </div>
+
+           <!-- Navigation Arrows -->
+           <button onclick="prevDiscMonth()" class="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+             ❮
+           </button>
+           <button onclick="nextDiscMonth()" class="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
+             ❯
+           </button>
+        </div>
+
+        <!-- Detail List -->
+        <div id="discDetailList" class="hidden">
+           <div class="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider flex justify-between">
+              <span>Date</span>
+              <span>Variance</span>
+           </div>
+           <div id="discRows" class="max-h-60 overflow-y-auto divide-y divide-gray-100 cursor-pointer">
+              <!-- Rows injected here -->
+           </div>
+        </div>
+
+      </div>
+
+      <div id="noDiscrepancyState" class="hidden bg-white rounded-lg shadow-sm border border-gray-200 p-10 text-center">
+         <div class="text-5xl mb-4">✨</div>
+         <h2 class="text-xl font-bold text-gray-800">All Balanced!</h2>
+         <p class="text-gray-500 mt-2">No discrepancies found in the records.</p>
+      </div>
+    </div>

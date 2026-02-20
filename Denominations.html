@@ -1,0 +1,65 @@
+<!-- DENOMINATIONS: MODERN CARD LAYOUT -->
+<div id="page-denominations" class="page-view hidden space-y-6">
+  
+  <!-- Header & Tabs -->
+  <div class="flex flex-col md:flex-row justify-between items-center gap-4 pb-2">
+    <div class="text-center md:text-left">
+       <h1 class="text-3xl font-bold text-gray-800 font-display tracking-tight">Cash Breakdown</h1>
+       <p class="text-sm text-gray-500">Count and verify physical cash</p>
+    </div>
+    
+    <!-- Modern Segmented Control -->
+    <div class="bg-gray-100 p-1.5 rounded-xl flex gap-1 shadow-inner">
+       <button id="btn-tab-start" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all shadow-sm bg-blue-600 text-white flex items-center gap-2" onclick="switchDenomTab('START')">
+         <span>☀️</span> Opening
+       </button>
+       <button id="btn-tab-end" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all text-gray-500 hover:text-gray-700 flex items-center gap-2" onclick="switchDenomTab('END')">
+         <span>🌙</span> Closing
+       </button>
+    </div>
+  </div>
+
+  <!-- Main Content Area -->
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-colors duration-500 border-t-4 border-blue-500" id="denomCardContainer">
+     
+     <!-- Status Bar / Total Display -->
+     <div class="p-6 md:p-8 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+           <div class="text-center md:text-left">
+             <div class="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1" id="denomLabel">Current Total</div>
+             <div class="font-black tracking-tight flex items-baseline justify-center md:justify-start gap-1 text-gray-800">
+               <span class="text-3xl opacity-40">₱</span>
+               <span id="denomTotalDisplay" class="text-5xl md:text-6xl">0.00</span>
+             </div>
+           </div>
+           
+           <div class="flex gap-3">
+              <button onclick="clearDenomForm()" class="px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm shadow-sm">
+                ↺ Clear
+              </button>
+              <button onclick="saveDenomination()" class="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg shadow-lg hover:bg-gray-800 transform active:scale-95 transition-all text-sm flex items-center gap-2">
+                <span>💾</span> Save Count
+              </button>
+           </div>
+        </div>
+     </div>
+
+     <!-- Card Grid -->
+     <div class="p-6 bg-gray-50/30">
+        <input type="hidden" id="denomType" value="START">
+        <!-- Changed to flex layout for desktop single-line support -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:flex xl:flex-nowrap xl:overflow-x-auto gap-3 pb-2" id="denomGrid">
+           <!-- JS Injected Cards -->
+        </div>
+     </div>
+
+     <!-- Footer Notes -->
+     <div class="p-6 border-t border-gray-100 bg-white">
+        <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes & Remarks</label>
+        <div class="relative">
+          <textarea id="denomNotes" class="w-full p-4 pl-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="2" placeholder="Start typing..."></textarea>
+          <div class="absolute top-4 left-3 text-gray-400">📝</div>
+        </div>
+     </div>
+  </div>
+</div>

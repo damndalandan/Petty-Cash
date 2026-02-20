@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Petty Cash System</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  .font-display { font-family: 'Syne', sans-serif; }
+  .font-body { font-family: 'DM Sans', sans-serif; }
+  .font-mono { font-family: 'DM Mono', monospace; }
+
+  /* Loader */
+  .loader {
+    width: 1rem; height: 1rem;
+    border: 2px solid #e5e7eb;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Toast Animation */
+  @keyframes slideIn {
+    from { transform: translateX(20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  .toast-anim { animation: slideIn 0.3s ease-out; }
+
+  /* Toggle Switch */
+  .toggle-checkbox:checked {
+    right: 0;
+    border-color: #68D391;
+  }
+  .toggle-checkbox:checked + .toggle-label {
+    background-color: #68D391;
+  }
+  
+  /* Sidebar transition */
+  .sidebar-transition { transition: transform 0.3s ease-in-out; }
+</style>
+</head>
+<body class="bg-gray-100 font-body text-gray-800 flex h-screen overflow-hidden">
+
+<!-- TOAST CONTAINER -->
+<div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2"></div>
+
+<!-- SIDEBAR -->
+<?!= include('Sidebar'); ?>
+
+<!-- MOBILE OVERLAY -->
+<div id="sidebarOverlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black bg-opacity-50 z-20 hidden md:hidden"></div>
+
+<!-- MAIN CONTENT -->
+<div class="flex-1 flex flex-col h-full overflow-hidden relative">
+  <!-- Mobile Header -->
+  <header class="bg-white shadow-sm z-10 md:hidden flex items-center justify-between p-4 border-b border-gray-200">
+    <div class="flex items-center gap-2">
+      <span class="text-xl">💵</span>
+      <span class="font-bold text-gray-800 font-display">Petty Cash</span>
+    </div>
+    <button onclick="toggleSidebar()" class="text-gray-600 focus:outline-none p-2 rounded hover:bg-gray-100">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+    </button>
+  </header>
+
+  <main class="flex-1 overflow-x-hidden overflow-y-auto bg-gray-100 p-4 md:p-8">
+    <?!= include('Dashboard'); ?>
+    <?!= include('Entries'); ?>
+    <?!= include('Denominations'); ?>
+    <?!= include('Report'); ?>
+  </main>
+</div>
+
+<!-- EDIT MODAL -->
+<?!= include('EditModal'); ?>
+
+<!-- SCRIPTS -->
+<?!= include('Global-js'); ?>
+<?!= include('Sidebar-js'); ?>
+<?!= include('Dashboard-js'); ?>
+<?!= include('Entries-js'); ?>
+<?!= include('Denominations-js'); ?>
+<?!= include('Report-js'); ?>
+
+</body>
+</html>

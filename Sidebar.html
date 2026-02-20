@@ -1,0 +1,53 @@
+<!-- SIDEBAR -->
+<aside id="sidebar" class="w-64 bg-white shadow-md flex-col z-30 transition-transform duration-300 absolute md:relative h-full transform -translate-x-full md:translate-x-0 border-r border-gray-200 flex">
+  <!-- Logo -->
+  <div class="p-6 border-b border-gray-200">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-green-300 rounded-lg flex items-center justify-center text-white text-xl shadow-sm">💵</div>
+      <div>
+        <div class="text-lg font-bold text-gray-800 font-display leading-tight">Petty Cash</div>
+        <div class="text-[10px] text-gray-500 font-mono tracking-wider uppercase">Management System</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nav -->
+  <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+    <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono">Main</div>
+    
+    <button onclick="navigate('dashboard')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium rounded-md group text-green-600 bg-green-50" data-page="dashboard">
+      <span class="mr-3 text-lg">📊</span>
+      <span>Dashboard</span>
+    </button>
+    
+    <button onclick="navigate('entries')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="entries">
+      <span class="mr-3 text-lg">📝</span>
+      <span>Entries</span>
+    </button>
+    
+    <button onclick="navigate('denominations')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="denominations">
+      <span class="mr-3 text-lg">💰</span>
+      <span>Denominations</span>
+    </button>
+
+    <div class="px-3 py-2 mt-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono">Reports</div>
+    
+    <button onclick="navigate('report')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="report">
+      <span class="mr-3 text-lg">📋</span>
+      <span>Daily Report</span>
+    </button>
+  </nav>
+
+  <!-- Sidebar Footer -->
+  <div class="p-4 border-t border-gray-200 bg-gray-50">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold border border-blue-200">
+        👤
+      </div>
+      <div class="overflow-hidden">
+        <div class="text-[10px] text-gray-500 uppercase tracking-wider">Signed in as</div>
+        <div class="text-xs font-medium text-gray-800 truncate" id="user-email">Loading...</div>
+      </div>
+    </div>
+  </div>
+</aside>
