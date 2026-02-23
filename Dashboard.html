@@ -1,5 +1,24 @@
     <!-- DASHBOARD PAGE -->
     <div id="page-dashboard" class="page-view space-y-6">
+      
+      <!-- Previous Day Warning -->
+      <div id="prevDayWarning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-4 rounded shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+         <div class="flex items-start gap-3">
+            <span class="text-2xl">⚠️</span>
+            <div>
+               <h3 class="font-bold text-amber-800">Previous Day Still Open</h3>
+               <p class="text-sm text-amber-700 mt-1">The petty cash for <span id="prevDayDate" class="font-mono font-bold"></span> hasn't been closed.</p>
+               <p class="text-xs text-amber-600 mt-1">You must calculate closing cash before proceeding.</p>
+            </div>
+         </div>
+         <div class="flex items-center gap-2 w-full md:w-auto">
+             <input type="date" id="auditDateParams" class="text-xs border border-amber-300 rounded px-2 py-2 bg-white text-gray-700 outline-none focus:ring-2 focus:ring-amber-500">
+             <button onclick="auditPreviousDay()" class="whitespace-nowrap px-4 py-2 bg-amber-600 text-white text-sm font-bold rounded shadow hover:bg-amber-700 transition">
+                Audit/Close
+             </button>
+         </div>
+      </div>
+
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
         <div>
           <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Dashboard</h1>
@@ -37,40 +56,49 @@
       </div>
 
       <!-- Discrepancy Overview -->
-      <div id="discrepancyWidget" class="hidden bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
         
-        <!-- Header / Carousel -->
-        <div class="bg-gradient-to-r from-red-50 to-white p-6 border-b border-gray-100 relative">
-           
-           <div id="discCarousel" class="flex flex-col items-center justify-center text-center space-y-2 min-h-[120px]">
-              <div class="loader"></div>
-           </div>
-
-           <!-- Navigation Arrows -->
-           <button onclick="prevDiscMonth()" class="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
-             ❮
-           </button>
-           <button onclick="nextDiscMonth()" class="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition">
-             ❯
-           </button>
-        </div>
-
-        <!-- Detail List -->
-        <div id="discDetailList" class="hidden">
-           <div class="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider flex justify-between">
-              <span>Date</span>
-              <span>Variance</span>
-           </div>
-           <div id="discRows" class="max-h-60 overflow-y-auto divide-y divide-gray-100 cursor-pointer">
-              <!-- Rows injected here -->
+        <div class="p-4 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-center bg-gray-50 gap-3">
+           <h3 class="text-xs font-bold text-gray-500 uppercase tracking-wider">Variance Report</h3>
+           <div class="flex gap-2">
+              <select id="discMonth" onchange="filterDiscrepancies()" class="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white">
+                 <option value="ALL">All Months</option>
+                 <option value="0">January</option>
+                 <option value="1">February</option>
+                 <option value="2">March</option>
+                 <option value="3">April</option>
+                 <option value="4">May</option>
+                 <option value="5">June</option>
+                 <option value="6">July</option>
+                 <option value="7">August</option>
+                 <option value="8">September</option>
+                 <option value="9">October</option>
+                 <option value="10">November</option>
+                 <option value="11">December</option>
+              </select>
+              <select id="discYear" onchange="loadDiscrepancyWidget()" class="text-xs border border-gray-300 rounded px-2 py-1 outline-none focus:border-blue-500 bg-white">
+                 <!-- Populated by JS -->
+              </select>
            </div>
         </div>
 
-      </div>
+        <div id="discrepancyWidget" class="hidden">
+           <div id="discDetailList">
+              <div class="p-3 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider flex justify-between">
+                 <span>Date</span>
+                 <span>Variance</span>
+              </div>
+              <div id="discRows" class="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                 <!-- Rows injected here -->
+              </div>
+           </div>
+        </div>
 
-      <div id="noDiscrepancyState" class="hidden bg-white rounded-lg shadow-sm border border-gray-200 p-10 text-center">
-         <div class="text-5xl mb-4">✨</div>
-         <h2 class="text-xl font-bold text-gray-800">All Balanced!</h2>
-         <p class="text-gray-500 mt-2">No discrepancies found in the records.</p>
+        <div id="noDiscrepancyState" class="hidden p-10 text-center">
+             <div class="text-5xl mb-4">✨</div>
+             <h2 class="text-xl font-bold text-gray-800">All Balanced!</h2>
+             <p class="text-gray-500 mt-2">No discrepancies found in the records.</p>
+        </div>
+
       </div>
     </div>

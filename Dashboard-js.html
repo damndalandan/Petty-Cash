@@ -14,8 +14,35 @@ function callServer(fn, data) {
 
 
 let discrepancyData = [];
-let currentDiscIndex = 0;
-let discInterval = null;
+let rawDiscrepancies = [];
+
+document.addEventListener('DOMContentLoaded', () => {
+    initDiscrepancyFilters();
+});
+
+function initDiscrepancyFilters() {
+    const yElem = document.getElementById('discYear');
+    const mElem = document.getElementById('discMonth');
+    if(!yElem || !mElem) return;
+
+    // Clear existing options to prevent duplication if init runs multiple times
+    yElem.innerHTML = '';
+
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth();
+
+    // Populate Year (current - 2 to current + 1)
+    for(let i = currentYear - 2; i <= currentYear + 1; i++) {
+        const opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = i;
+        if(i === currentYear) opt.selected = true;
+        yElem.appendChild(opt);
+    }
+    
+    // Select Current Month
+    mElem.value = currentMonth; 
+}
 
 async function loadDayData() {
   if (!state.currentDate) return;
@@ -30,20 +57,9 @@ async function loadDayData() {
   const [entriesRes, summaryRes, yearDataRes] = await Promise.all([
     callServer('getExpenseEntries', state.currentDate),
     callServer('getDailySummary', state.currentDate),
-    callServer('getDateRange', { from: yearStart, to: yearEnd }) // Assuming Code.js modified to handle obj or args
-    // Actually existing getDateRange takes (start, end). Let's fix that wrapper or use existing carefully
-    // Checking Code.js: getDateRange(startDate, endDate)
+    callServer('getDateRange', { from: yearStart, to: yearEnd }) 
   ]);
   
-  // Re-call correctly if previous attempt was wrong signature
-  // We can just call getDateRange directly via run.google.script if we wrap it properly or use callServer with array spread? 
-  // callServer implementation: const args = data !== undefined ? [data] : []; -> single arg.
-  // We need to modify callServer or pass an object if the server function expects distinct args.
-  // Code.js: function getDateRange(startDate, endDate) 
-  // We need a wrapper in Code.js OR modify callServer.
-  // Simplest: use a temp wrapper here or assume I can fix Code.js wrapper.
-  // Actually, I'll allow loadDiscrepancyWidget to fetch separately correctly.
-
   if (statOpening) statOpening.classList.remove('opacity-50');
 
   if (entriesRes.success) {
@@ -57,110 +73,128 @@ async function loadDayData() {
   }
 
   updateDashStats();
+  
+  // We wait for initial load Day Data to load the widget.
+  // Ideally this should be independent to avoid refetching if day changes but year is same.
+  // But for now it's fine.
   loadDiscrepancyWidget();
 }
 
 async function loadDiscrepancyWidget() {
-    // We need a way to pass two args to getDateRange via callServer which handles 1 arg.
-    // Hack: use 'generateReportData' which takes {from, to} and returns summaries.
-    // Or better: Use generateReportData since it already returns summaries array!
+    const yElem = document.getElementById('discYear');
+    const year = yElem ? yElem.value : new Date().getFullYear();
     
-    const y = new Date().getFullYear();
-    const from = `${y}-01-01`;
-    const to = `${y}-12-31`;
+    const from = `${year}-01-01`;
+    const to = `${year}-12-31`;
     
     const res = await callServer('generateReportData', { from, to });
     
     if(!res.success || !res.data.summaries) return;
     
-    // Filter for discrepancies (variance != 0)
-    const allSums = res.data.summaries;
-    const discrepancies = allSums.filter(s => Math.abs(s.variance || 0) > 0.01);
+    rawDiscrepancies = res.data.summaries;
+    filterDiscrepancies();
+}
+
+function filterDiscrepancies() {
+    const mElem = document.getElementById('discMonth');
+    const selMonth = mElem ? mElem.value : 'ALL';
     
-    // Group by Month
-    const grouped = {};
-    discrepancies.forEach(d => {
-        const date = new Date(d.date);
-        const k = date.toLocaleString('default', { month: 'long', year: 'numeric' });
-        if(!grouped[k]) grouped[k] = { name: k, totalVar: 0, days: [] };
-        grouped[k].totalVar += (d.variance || 0);
-        grouped[k].days.push(d);
-    });
+    let filtered = rawDiscrepancies.filter(s => Math.abs(s.variance || 0) > 0.01);
     
-    discrepancyData = Object.values(grouped);
+    if (selMonth !== 'ALL') {
+        const mInt = parseInt(selMonth);
+        filtered = filtered.filter(d => {
+            const date = new Date(d.date);
+            return date.getMonth() === mInt;
+        });
+    }
+
+    discrepancyData = filtered.sort((a,b) => new Date(b.date) - new Date(a.date));
     
     if(discrepancyData.length === 0) {
         document.getElementById('discrepancyWidget').classList.add('hidden');
         document.getElementById('noDiscrepancyState').classList.remove('hidden');
+        if(rawDiscrepancies.some(s => Math.abs(s.variance || 0) > 0.01) && selMonth !== 'ALL') {
+             // If there are discrepancies in other months but not this one
+             document.querySelector('#noDiscrepancyState h2').textContent = "Balanced Month!";
+             document.querySelector('#noDiscrepancyState p').textContent = "No discrepancies for selected month.";
+        } else {
+             document.querySelector('#noDiscrepancyState h2').textContent = "All Balanced!";
+             document.querySelector('#noDiscrepancyState p').textContent = "No discrepancies found in records.";
+        }
     } else {
         document.getElementById('discrepancyWidget').classList.remove('hidden');
         document.getElementById('noDiscrepancyState').classList.add('hidden');
-        currentDiscIndex = 0;
-        renderDiscCard();
-        startDiscAutoSwipe();
+        renderDiscDetails();
     }
 }
 
-function renderDiscCard() {
-    const item = discrepancyData[currentDiscIndex];
-    if(!item) return;
-    
-    const el = document.getElementById('discCarousel');
-    const isNeg = item.totalVar < 0;
-    const color = isNeg ? 'text-red-600' : 'text-blue-600'; // Variance is usually bad either way? Or just difference.
-    
-    el.innerHTML = `
-      <div onclick="toggleDiscDetail()" class="cursor-pointer hover:scale-105 transition transform">
-          <h3 class="text-sm font-bold text-gray-500 uppercase tracking-widest mb-1">${item.name}</h3>
-          <div class="text-4xl font-mono font-bold ${color}">${fmt(item.totalVar)}</div>
-          <p class="text-xs text-gray-400 mt-2">Total Variance • ${item.days.length} Records</p>
-      </div>
-    `;
-    
-    renderDiscDetails(item);
-}
-
-function renderDiscDetails(item) {
+function renderDiscDetails() {
     const list = document.getElementById('discRows');
-    list.innerHTML = item.days.map(d => `
+    list.innerHTML = discrepancyData.map(d => `
        <div class="p-3 hover:bg-white flex justify-between items-center transition">
            <div class="flex flex-col">
-              <span class="text-sm font-bold text-gray-700">${new Date(d.date).getDate()}</span>
-              <span class="text-[10px] text-gray-400 uppercase">${new Date(d.date).toLocaleDateString(undefined,{weekday:'short'})}</span>
+              <span class="text-sm font-bold text-gray-700">${new Date(d.date).toLocaleDateString(undefined,{month:'short', day:'numeric', year: 'numeric'})}</span>
+              <span class="text-[10px] text-gray-400 uppercase">${new Date(d.date).toLocaleDateString(undefined,{weekday:'long'})}</span>
            </div>
            <span class="font-mono font-bold ${d.variance < 0 ? 'text-red-500' : 'text-blue-500'}">${fmt(d.variance)}</span>
        </div>
     `).join('');
+}
+
+async function checkPreviousDayStatus(currentDateStr) {
+    // Check for any unclosed dates strictly before current date
+    const res = await callServer('findUnclosedPastDate', currentDateStr);
     
-    // Hide details by default when switching
-    document.getElementById('discDetailList').classList.add('hidden');
+    const warningEl = document.getElementById('prevDayWarning');
+    const prevDateLabel = document.getElementById('prevDayDate');
+    const auditParams = document.getElementById('auditDateParams');
+    const warningTitle = warningEl ? warningEl.querySelector('h3') : null;
+    const warningText = warningEl ? warningEl.querySelector('p:nth-of-type(1)') : null; // First p tag
+
+    if(!warningEl) return;
+
+    if (res.success && res.date) {
+        const targetDate = res.date;
+        
+        warningEl.classList.remove('hidden');
+        warningEl.dataset.targetDate = targetDate;
+        
+        if(auditParams) {
+             auditParams.value = targetDate;
+             auditParams.dataset.touched = "true";
+        }
+        
+        if(prevDateLabel) prevDateLabel.textContent = targetDate;
+        if(warningTitle) warningTitle.textContent = "Unclosed Past Audit";
+        
+        // Ensure text is correct for potentially older dates
+        // InnerHTML replacement might wipe the span
+        if(warningText) {
+             warningText.innerHTML = `The petty cash for <span id="prevDayDate" class="font-mono font-bold">${targetDate}</span> hasn't been closed.`;
+        }
+
+    } else {
+        warningEl.classList.add('hidden');
+    }
 }
 
-function toggleDiscDetail() {
-    const el = document.getElementById('discDetailList');
-    el.classList.toggle('hidden');
-    // Pause auto swipe if interacting
-    clearInterval(discInterval);
-}
-
-function nextDiscMonth() {
-    currentDiscIndex = (currentDiscIndex + 1) % discrepancyData.length;
-    renderDiscCard();
-    clearInterval(discInterval);
-}
-
-function prevDiscMonth() {
-    currentDiscIndex = (currentDiscIndex - 1 + discrepancyData.length) % discrepancyData.length;
-    renderDiscCard();
-    clearInterval(discInterval);
-}
-
-function startDiscAutoSwipe() {
-    clearInterval(discInterval);
-    discInterval = setInterval(() => {
-        currentDiscIndex = (currentDiscIndex + 1) % discrepancyData.length;
-        renderDiscCard();
-    }, 5000); 
+function auditPreviousDay() {
+    const picker = document.getElementById('auditDateParams');
+    const warningEl = document.getElementById('prevDayWarning');
+    const target = (picker && picker.value) ? picker.value : (warningEl ? warningEl.dataset.targetDate : null);
+    
+    if(!target) return;
+    
+    const globalDate = document.getElementById('globalDate');
+    if(globalDate) {
+        globalDate.value = target;
+        // Trigger change
+        if(typeof onDateChange === 'function') onDateChange();
+    }
+    
+    navigate('denominations');
+    if(typeof switchDenomTab === 'function') switchDenomTab('END');
 }
 
 function updateDashStats() {
@@ -171,6 +205,9 @@ function updateDashStats() {
   const summary = state.summary || {};
   const opening = summary.openingCash || 0;
   const closing = summary.closingCash || 0;
+  
+  // Call helper to check previous day
+  if(state.currentDate) checkPreviousDayStatus(state.currentDate);
 
   const withReceipt = state.entries.filter(e => e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   const noReceipt = state.entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);

@@ -175,6 +175,29 @@ function recalculateDailySummary(date) {
         }
     }
     
+    // Determine Status
+    // If Closing Cash > 0, we can assume it's CLOSED? 
+    // Or do we need explicit closing action? 
+    // The user flow is: Count Money -> Save Closing.
+    // So if Closing Cash is present (and > 0 or even 0 if they really have 0), it should be CLOSED.
+    // However, they might save a partial count? 
+    // Typically, if 'DEN-CC' (Closing Count) exists, it is closed.
+    
+    // Check if we found a closing record in Step 2
+    let newStatus = 'OPEN';
+    
+    // Scan denomData again to see if we have an END record
+    for (let i = 1; i < denomData.length; i++) {
+        let rDate = denomData[i][1];
+        if (rDate instanceof Date) {
+             rDate = new Date(rDate.getTime() - (rDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+        if (rDate === date && denomData[i][2] === 'END') {
+            newStatus = 'CLOSED';
+            break;
+        }
+    }
+
     if (targetRow === -1) {
         // Create new
         const summaryId = generateId('SUM');
@@ -185,17 +208,15 @@ function recalculateDailySummary(date) {
             cashAdvance,
             totalReceipt,
             totalNoReceipt,
-            totalExp, // Typically we list purely expense total or sum of outflows? 
-                      // Column header is "Total Expenses", usually implies just expenses.
+            totalExp, 
             closingCash,
             variance,
-            'OPEN', // Status
+            newStatus, // Status
             '',
             new Date().toISOString()
         ]);
     } else {
         // Update existing (Col indexes 1-based)
-        // 3=Opening, 4=CashAdv, 5=Rcpt, 6=NoRcpt, 7=TotExp, 8=Closing, 9=Var
         sumSheet.getRange(targetRow, 3).setValue(openingCash);
         sumSheet.getRange(targetRow, 4).setValue(cashAdvance);
         sumSheet.getRange(targetRow, 5).setValue(totalReceipt);
@@ -203,6 +224,7 @@ function recalculateDailySummary(date) {
         sumSheet.getRange(targetRow, 7).setValue(totalExp);
         sumSheet.getRange(targetRow, 8).setValue(closingCash);
         sumSheet.getRange(targetRow, 9).setValue(variance);
+        sumSheet.getRange(targetRow, 10).setValue(newStatus); // Update Status
         sumSheet.getRange(targetRow, 12).setValue(new Date().toISOString());
     }
     
@@ -725,5 +747,45 @@ function generateReportData(data) {
     
   } catch (e) {
     return { success: false, message: 'Error: ' + e.toString() };
+  }
+}
+
+// Find the first unclosed date in the past
+function findUnclosedPastDate(beforeDate) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.SUMMARY);
+    const data = sheet.getDataRange().getValues();
+    
+    let unclosed = [];
+    
+    // Skip header
+    for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        if (row.length < 10) continue;
+        
+        var rDate = row[1];
+        if (rDate instanceof Date) {
+            rDate = new Date(rDate.getTime() - (rDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+        
+        if (rDate < beforeDate) {
+             // Check Status (Col 9 index) or Closing Cash
+             // Col indices: 0=ID, 1=Date, ..., 9=Status (OPEN/CLOSED)
+             // If Status is 'OPEN', it is unclosed.
+             if (row[9] === 'OPEN') {
+                 unclosed.push(rDate);
+             }
+        }
+    }
+    
+    if (unclosed.length === 0) return { success: true, date: null };
+    
+    // Sort Ascending (Oldest first) to fix the chain from the start
+    unclosed.sort();
+    return { success: true, date: unclosed[0] }; 
+    
+  } catch(e) {
+     return { success: false, message: e.toString() };
   }
 }

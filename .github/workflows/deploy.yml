@@ -1,0 +1,51 @@
+name: Deploy to Apps Script
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Create clasp credentials
+        run: |
+          echo '${{ secrets.CLASP_CREDENTIALS }}' > ~/.clasprc.json
+
+      - name: Create clasp config
+        run: |
+          echo '{ "scriptId": "${{ secrets.SCRIPT_ID_MAIN }}", "rootDir": "./" }' > .clasp.json
+
+      - name: Install dependencies
+        run: npm install || true
+
+      - name: Push to Apps Script
+        run: clasp push --force
+
+      - name: Create new version
+        id: version
+        run: |
+          OUTPUT=$(clasp version "Auto deployed from ${{ github.ref_name }} by ${{ github.actor }} - $(date)")
+          echo "$OUTPUT"
+          VERSION=$(echo "$OUTPUT" | grep -oP '(?<=Created version )\d+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Deploy Web App
+        run: |
+          clasp deploy \
+            --deploymentId ${{ secrets.DEPLOYMENT_ID }} \
+            --versionNumber ${{ steps.version.outputs.version }} \
+            --description "Auto deploy from ${{ github.ref_name }} by ${{ github.actor }}"

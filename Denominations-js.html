@@ -99,6 +99,11 @@ function switchDenomTab(type) {
   const container = document.getElementById('denomCardContainer');
   const label = document.getElementById('denomLabel');
 
+  // Remove any existing blocking message if switching tabs
+  const existingMsg = document.getElementById('openingBlockedMessage');
+  if(existingMsg) existingMsg.remove();
+  if(container) container.classList.remove('hidden');
+
   // Reset basic styles
   btnStart.className = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
   btnEnd.className = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
@@ -112,6 +117,9 @@ function switchDenomTab(type) {
      container.classList.add('border-blue-500');
      label.textContent = "Opening Total";
      
+     // CHECK FOR UNCLOSED PAST DATES
+     checkOpeningEligibility();
+     
   } else {
      // Closing Styles (Orange/Yellow)
      btnStart.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
@@ -120,6 +128,54 @@ function switchDenomTab(type) {
      container.classList.add('border-amber-500');
      label.textContent = "Closing Total";
   }
+}
+
+async function checkOpeningEligibility() {
+   // Loading state?
+   // Only block if we truly find an unclosed date
+   
+   const res = await callServer('findUnclosedPastDate', state.currentDate);
+   if (res.success && res.date) {
+       // Block the view
+       const container = document.getElementById('denomCardContainer');
+       if(container) container.classList.add('hidden');
+       
+       const wrapper = container.parentElement; 
+       // Check if message already exists to avoid dupes
+       if(document.getElementById('openingBlockedMessage')) return;
+       
+       const msg = document.createElement('div');
+       msg.id = 'openingBlockedMessage';
+       msg.className = 'p-8 text-center bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm animate-pulse-once';
+       msg.innerHTML = `
+          <div class="text-4xl mb-4">🚫</div>
+          <h3 class="text-lg font-bold text-red-700 mb-2">Previous Day Unclosed</h3>
+          <p class="text-gray-600 mb-4">You cannot start a new Opening Cash entry because <span class="font-mono font-bold bg-white px-2 py-1 rounded border border-gray-200">${res.date}</span> is still open.</p>
+          <div class="flex justify-center gap-3">
+             <button onclick="goToDate('${res.date}')" class="px-5 py-2 bg-red-600 text-white font-bold rounded-lg shadow hover:bg-red-700 transition transform hover:-translate-y-1">
+                Go to ${res.date}
+             </button>
+          </div>
+       `;
+       
+       wrapper.insertBefore(msg, container);
+   }
+}
+
+function goToDate(date) {
+    const picker = document.getElementById('globalDate');
+    if(picker) {
+        picker.value = date;
+        if(typeof onDateChange === 'function') onDateChange();
+        // Switch to Closing Tab automatically for that date
+        // setTimeout so page load can happen first?
+        // Actually onDateChange is async (calls loadDayData).
+        // But switching visual tab is instant.
+        setTimeout(() => {
+             navigate('denominations');
+             switchDenomTab('END');
+        }, 500);
+    }
 }
 
 // Backend Integration
@@ -138,6 +194,8 @@ function showLoading(bool) {
     btn.classList.remove('opacity-75', 'cursor-wait');
   }
 }
+
+let pendingClosingData = null;
 
 async function saveDenomination() {
   const breakdown = {};
@@ -162,17 +220,162 @@ async function saveDenomination() {
     total: total,
     notes: document.getElementById('denomNotes').value
   };
+
+  // If calculating Closing Cash, show confirmation modal
+  if (state.denomTab === 'END') {
+      pendingClosingData = data;
+      showClosingModal(total);
+      return;
+  }
   
+  // Direct save for Opening
+  await executeSave(data);
+}
+
+function showClosingModal(actual) {
+    const modal = document.getElementById('closingModal');
+    if(!modal) return;
+
+    // Calculate Expected
+    // Expected = Opening - Expenses
+    // We rely on state.summary and state.entries being up to date.
+    // Ideally we should re-fetch or ensure consistent state.
+    // Assuming loadDayData has run.
+
+    const opening = (state.summary && state.summary.openingCash) ? parseFloat(state.summary.openingCash) : 0;
+    
+    // Calculate total expenses from current entries state
+    const expenses = state.entries
+        .filter(e => e.type === 'EXPENSE' && e.status !== 'DELETED')
+        .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+        
+    const cashAdvance = state.entries
+        .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED')
+        .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+
+    const expected = opening - (expenses + cashAdvance);
+    const variance = actual - expected;
+
+    // Update UI
+    document.getElementById('modExpected').textContent = fmt(expected);
+    document.getElementById('modActual').textContent = fmt(actual);
+    
+    const vEl = document.getElementById('modVariance');
+    vEl.textContent = (variance > 0 ? '+' : '') + fmt(variance);
+    vEl.className = 'font-mono font-black text-2xl ' + (variance === 0 ? 'text-green-600' : (variance < 0 ? 'text-red-600' : 'text-blue-600'));
+    
+    const sEl = document.getElementById('modStatus');
+    const autoAdjust = document.getElementById('autoAdjustContainer');
+    const chk = document.getElementById('chkAutoAdjust');
+    
+    if(chk) chk.checked = false;
+
+    if(Math.abs(variance) < 0.01) {
+        sEl.textContent = 'BALANCED';
+        sEl.className = 'text-[10px] text-green-500 uppercase tracking-widest mt-1 font-bold';
+        if(autoAdjust) autoAdjust.classList.add('hidden');
+    } else if (variance < 0) {
+        sEl.textContent = 'SHORTAGE';
+        sEl.className = 'text-[10px] text-red-500 uppercase tracking-widest mt-1 font-bold';
+        if(autoAdjust) {
+            autoAdjust.classList.remove('hidden');
+            autoAdjust.querySelector('p').textContent = `Create an expense entry for ${fmt(Math.abs(variance))} to balance shortage.`;
+        }
+    } else {
+        sEl.textContent = 'OVERAGE';
+        sEl.className = 'text-[10px] text-blue-500 uppercase tracking-widest mt-1 font-bold';
+        if(autoAdjust) {
+            autoAdjust.classList.remove('hidden');
+            autoAdjust.querySelector('p').textContent = `Create a negative expense entry for ${fmt(variance)} to balance overage.`;
+        }
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function closeClosingModal() {
+    document.getElementById('closingModal').classList.add('hidden');
+    pendingClosingData = null;
+}
+
+async function confirmClosingSave() {
+    // Check for pending data
+    if (!pendingClosingData) return;
+
+    // Get current state from Modal UI BEFORE closing it
+    const varianceEl = document.getElementById('modVariance');
+    const chk = document.getElementById('chkAutoAdjust');
+    
+    // Parse variance carefully. remove currency symbol, but keep minus sign
+    // Remove "₱" and "+" sign, keep "-"
+    let varianceVal = 0;
+    if(varianceEl) {
+        const txt = varianceEl.innerText.replace(/[^\d.-]/g, '');
+        varianceVal = parseFloat(txt);
+    }
+    
+    const shouldAdjust = chk && chk.checked;
+    const dataToSave = { ...pendingClosingData }; // Clone
+
+    closeClosingModal();
+    
+    // 1. Save the Closing Data
+    await executeSave(dataToSave);
+    
+    // 2. Create Adjustment if requested
+    // Logic: 
+    // Variance = Actual - Expected
+    // Expected = Opening - Expenses
+    // We want NewExpected = Actual
+    // So NewExpected = Expected + AdjustmentEffect
+    // Opening - (Expenses + AdjEntry) = Expected - AdjEntry
+    // Expected - AdjEntry = Actual
+    // AdjEntry = Expected - Actual = -Variance
+    
+    // So if Variance is -100 (Shortage), Entry Amount should be +100 (Expense increasing outflows).
+    // If Variance is +100 (Overage), Entry Amount should be -100 (Negative Expense decreasing outflows).
+    
+    if (shouldAdjust && Math.abs(varianceVal) > 0.01) {
+        // Create entry
+        const amount = -varianceVal;
+        
+        const adjData = {
+            date: dataToSave.date,
+            type: 'EXPENSE', // Standard expense type
+            category: 'Miscellaneous',
+            description: varianceVal < 0 ? 'Cash Shortage Adjustment' : 'Cash Overage Adjustment',
+            amount: amount, 
+            hasReceipt: false,
+            referenceNo: 'AUTO-ADJUST',
+            requestedBy: 'System',
+            approvedBy: 'Auto'
+        };
+        
+        toast('Creating adjustment entry...', 'info');
+        try {
+            const res = await callServer('saveExpenseEntry', adjData);
+            if(res.success) {
+                toast('Adjustment created successfully', 'success');
+                loadDayData(); // Refresh summary/dashboard
+            } else {
+                toast('Failed to balance: ' + res.message, 'error');
+            }
+        } catch(e) {
+            console.error(e);
+            toast('Error auto-balancing', 'error');
+        }
+    }
+}
+
+async function executeSave(data) {
   showLoading(true);
   try {
       const res = await callServer('saveDenominationRecord', data);
       if (res.success) {
-        toast('Denomination record saved successfully', 'success');
+        toast('Record saved successfully', 'success');
         clearDenomForm();
-        // Removed history loading
-        
-        // Refresh Dashboard Data immediately to show update in closing cash
         loadDayData();
+        // Also refresh summary if needed, but loadDayData handles it
       } else {
         toast(res.message || 'Failed to save', 'error'); 
       }
