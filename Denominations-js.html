@@ -481,9 +481,10 @@ function lockOpeningDisplay(total) {
   const label     = document.getElementById('denomLabel');
   const totalEl   = document.getElementById('denomTotalDisplay');
 
-  // Show locked total
-  if (label)   label.textContent = 'Opening Total (Locked)';
-  if (totalEl) { totalEl.textContent = fmt(total).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
+  if (state.denomTab === 'START') {
+    if (label)   label.textContent = 'Opening Total (Locked)';
+    if (totalEl) { totalEl.textContent = fmt(total).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
+  }
 
   // Hide the bill grid and notes, show lock message
   const grid  = document.getElementById('denomGrid');
@@ -499,7 +500,7 @@ function lockOpeningDisplay(total) {
   }
 
   // Add lock message if not already there
-  if (!document.getElementById('openingLockedMsg')) {
+  if (state.denomTab === 'START' && !document.getElementById('openingLockedMsg')) {
     const msg = document.createElement('div');
     msg.id = 'openingLockedMsg';
     msg.className = 'px-6 pb-6 pt-2';
