@@ -36,10 +36,6 @@ function include(filename) {
 // HELPERS
 // ─────────────────────────────────────────────
 
-/**
- * Normalize any Date object or ISO string to YYYY-MM-DD in LOCAL time.
- * All sheet reads go through this — single source of truth.
- */
 function normalizeDate(val) {
   if (!val) return '';
   if (val instanceof Date) {
@@ -49,12 +45,6 @@ function normalizeDate(val) {
   return String(val).split('T')[0];
 }
 
-/**
- * Race-safe ID: prefix + base36(timestamp) + base36(random 16-bit).
- * Collision probability ~1/65536 within the same millisecond.
- * Example: EXP-LK2A9F3-B4C
- * AUDIT FIX: replaces old sequential scan which had race conditions.
- */
 function generateId(prefix) {
   const ts  = Date.now().toString(36).toUpperCase();
   const rnd = Math.floor(Math.random() * 65536).toString(36).toUpperCase().padStart(3, '0');
@@ -64,18 +54,19 @@ function generateId(prefix) {
 /**
  * Compute Philippine VAT breakdown from a gross (VAT-inclusive) amount.
  * VAT rate: 12%
- * Net of VAT = Gross / 1.12
- * VAT Amount = Net of VAT * 0.12  (= Gross - Net of VAT)
+ * Net of VAT (Vatable Sales) = Gross / 1.12
+ * VAT Amount = Gross - (Gross / 1.12)
+ * Net of VAT removed from output per business requirement.
  */
 function computeVAT(grossAmount) {
   const gross      = parseFloat(grossAmount) || 0;
-  const netOfVat   = gross / 1.12;
-  const vatAmount  = gross - netOfVat;
+  const vatableSales = gross / 1.12;
+  const vatAmount    = gross - vatableSales;
   return {
-    grossAmount : parseFloat(gross.toFixed(2)),
-    vatableSales: parseFloat(netOfVat.toFixed(2)),
-    vatAmount   : parseFloat(vatAmount.toFixed(2)),
-    netOfVat    : parseFloat(netOfVat.toFixed(2))
+    grossAmount  : parseFloat(gross.toFixed(2)),
+    vatableSales : parseFloat(vatableSales.toFixed(2)),  // Less: VAT line
+    vatAmount    : parseFloat(vatAmount.toFixed(2))      // VAT Amount (12%)
+    // netOfVat removed
   };
 }
 
@@ -94,16 +85,10 @@ function formatHeaderRow(sheet) {
 
 // ─────────────────────────────────────────────
 // SHEET INITIALIZATION
-// Schema defined once here. Only creates sheets if missing.
-// Column comments below are 1-indexed for sheet reference.
 // ─────────────────────────────────────────────
 function initializeSheets() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  // ── PettyCash_Entries ──────────────────────
-  // 1:Entry_ID  2:Date  3:Type  4:Category  5:Description
-  // 6:Amount  7:Has_Receipt  8:Reference_No  9:Requested_By  10:Approved_By
-  // 11:Status  12:Created_At  13:Updated_At  14:Deleted_At
   if (!ss.getSheetByName(SHEETS.ENTRIES)) {
     const s = ss.insertSheet(SHEETS.ENTRIES);
     s.appendRow([
@@ -115,14 +100,9 @@ function initializeSheets() {
     formatHeaderRow(s);
     s.getRange('F2:F').setNumberFormat('₱#,##0.00');
     s.setColumnWidths(1, 14, 120);
-    s.setColumnWidth(5, 220); // Description
+    s.setColumnWidth(5, 220);
   }
 
-  // ── PettyCash_Denominations ────────────────
-  // 1:Record_ID  2:Date  3:Type
-  // 4:D_1000  5:D_500  6:D_200  7:D_100  8:D_50
-  // 9:D_20  10:D_10  11:D_5  12:D_1
-  // 13:Total  14:Notes  15:Created_At
   if (!ss.getSheetByName(SHEETS.DENOMINATIONS)) {
     const s = ss.insertSheet(SHEETS.DENOMINATIONS);
     s.appendRow([
@@ -136,10 +116,6 @@ function initializeSheets() {
     s.getRange('M2:M').setNumberFormat('₱#,##0.00');
   }
 
-  // ── PettyCash_Summary ──────────────────────
-  // 1:Summary_ID  2:Date  3:Opening_Cash  4:Cash_Advance
-  // 5:Total_Exp_With_Receipt  6:Total_Exp_No_Receipt  7:Total_Expenses
-  // 8:Closing_Cash  9:Variance  10:Status  11:Closed_By  12:Updated_At
   if (!ss.getSheetByName(SHEETS.SUMMARY)) {
     const s = ss.insertSheet(SHEETS.SUMMARY);
     s.appendRow([
@@ -153,24 +129,25 @@ function initializeSheets() {
   }
 
   // ── PettyCash_Receipts (BIR Purchases Journal) ──────
+  // Net_Of_VAT column removed — only Gross, Vatable_Sales (Less VAT), VAT_Amount
   // 1:Receipt_ID  2:Entry_ID  3:Date  4:Supplier_Name
   // 5:Address  6:TIN  7:Receipt_No
-  // 8:Gross_Amount  9:Vatable_Sales  10:VAT_Amount  11:Net_Of_VAT
-  // 12:Created_By  13:Created_At
+  // 8:Gross_Amount  9:Vatable_Sales  10:VAT_Amount
+  // 11:Created_By  12:Created_At
   if (!ss.getSheetByName(SHEETS.RECEIPTS)) {
     const s = ss.insertSheet(SHEETS.RECEIPTS);
     s.appendRow([
       'Receipt_ID','Entry_ID','Date','Supplier_Name',
       'Address','TIN','Receipt_No',
-      'Gross_Amount','Vatable_Sales','VAT_Amount','Net_Of_VAT',
+      'Gross_Amount','Vatable_Sales','VAT_Amount',
       'Created_By','Created_At'
     ]);
     s.setFrozenRows(1);
     formatHeaderRow(s);
-    s.getRange('H2:K').setNumberFormat('₱#,##0.00');
-    s.setColumnWidth(4, 200); // Supplier_Name
-    s.setColumnWidth(5, 200); // Address
-    s.setColumnWidth(6, 140); // TIN
+    s.getRange('H2:J').setNumberFormat('₱#,##0.00');
+    s.setColumnWidth(4, 200);
+    s.setColumnWidth(5, 200);
+    s.setColumnWidth(6, 140);
   }
 
   return { success: true };
@@ -178,14 +155,11 @@ function initializeSheets() {
 
 // ─────────────────────────────────────────────
 // SUMMARY RECALCULATION
-// Always reads fresh from sheet — never uses stale in-memory state.
-// Called after every write that affects daily totals.
 // ─────────────────────────────────────────────
 function recalculateDailySummary(date) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-    // Tally entries
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
     let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0, cashAdvance = 0;
 
@@ -200,7 +174,7 @@ function recalculateDailySummary(date) {
       if (type === 'CASH_ADVANCE') {
         cashAdvance += amt;
       } else if (type === 'CASH_OVER' || type === 'REPLENISHMENT') {
-        // Not outflows — tracked in entries sheet but excluded from expense totals
+        // excluded from expense totals
       } else {
         totalExp += amt;
         if (row[6] === 'YES') totalReceipt   += amt;
@@ -208,7 +182,6 @@ function recalculateDailySummary(date) {
       }
     }
 
-    // Get denomination totals
     const denomData = ss.getSheetByName(SHEETS.DENOMINATIONS).getDataRange().getValues();
     let openingCash = 0, closingCash = 0, hasClosing = false;
 
@@ -224,7 +197,6 @@ function recalculateDailySummary(date) {
     const variance = closingCash - expected;
     const status   = hasClosing ? 'CLOSED' : 'OPEN';
 
-    // Upsert summary — IMPORTANT: preserve existing Closed_By
     const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
     const sumData  = sumSheet.getDataRange().getValues();
     let targetRow  = -1, existingClosedBy = '';
@@ -232,18 +204,17 @@ function recalculateDailySummary(date) {
     for (let i = 1; i < sumData.length; i++) {
       if (normalizeDate(sumData[i][1]) === date) {
         targetRow = i + 1;
-        existingClosedBy = sumData[i][10] || ''; // col 11 — preserve Closed_By
+        existingClosedBy = sumData[i][10] || '';
         break;
       }
     }
 
-    // Columns 3–12: Opening_Cash through Updated_At (10 values)
     const summaryRow = [
       openingCash, cashAdvance,
       totalReceipt, totalNoReceipt, totalExp,
       closingCash, variance, status,
-      existingClosedBy,        // AUDIT FIX: was always overwritten with ''
-      new Date().toISOString() // Updated_At
+      existingClosedBy,
+      new Date().toISOString()
     ];
 
     if (targetRow === -1) {
@@ -282,9 +253,9 @@ function saveExpenseEntry(data) {
       data.requestedBy || '',
       data.approvedBy  || '',
       'ACTIVE',
-      now, // Created_At
-      now, // Updated_At
-      ''   // Deleted_At
+      now,
+      now,
+      ''
     ]);
 
     recalculateDailySummary(data.date);
@@ -302,7 +273,6 @@ function saveReplenishmentEntry(data) {
   return saveExpenseEntry({ ...data, type: 'REPLENISHMENT', hasReceipt: false });
 }
 
-// Single-object payload — google.script.run supports only ONE argument
 function updateExpenseEntry(payload) {
   try {
     const id = payload.id;
@@ -319,7 +289,6 @@ function updateExpenseEntry(payload) {
       const row     = i + 1;
       const now     = new Date().toISOString();
 
-      // Update cols 2–11 (Date → Status), keep Created_At (col 12) intact
       sheet.getRange(row, 2, 1, 10).setValues([[
         payload.date,
         payload.type        || 'EXPENSE',
@@ -332,7 +301,7 @@ function updateExpenseEntry(payload) {
         payload.approvedBy  || '',
         'ACTIVE'
       ]]);
-      sheet.getRange(row, 13).setValue(now); // Updated_At
+      sheet.getRange(row, 13).setValue(now);
 
       recalculateDailySummary(payload.date);
       if (oldDate && oldDate !== payload.date) recalculateDailySummary(oldDate);
@@ -358,9 +327,9 @@ function deleteExpenseEntry(entryId) {
       const date = normalizeDate(dataRange[i][1]);
       const row  = i + 1;
 
-      sheet.getRange(row, 11).setValue('DELETED');                    // Status
-      sheet.getRange(row, 13).setValue(now);                          // Updated_At
-      sheet.getRange(row, 14).setValue(`${userEmail} @ ${now}`);      // Deleted_At — full trail
+      sheet.getRange(row, 11).setValue('DELETED');
+      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 14).setValue(`${userEmail} @ ${now}`);
 
       recalculateDailySummary(date);
       return { success: true };
@@ -408,7 +377,7 @@ function getExpenseEntries(date) {
 
 // ─────────────────────────────────────────────
 // BIR RECEIPTS — Purchases Journal
-// Linked to PettyCash_Entries via Entry_ID (foreign key)
+// Net_Of_VAT column removed from sheet schema
 // ─────────────────────────────────────────────
 function saveReceiptRecord(data) {
   try {
@@ -429,9 +398,9 @@ function saveReceiptRecord(data) {
       data.tin        || '', // TIN
       data.receiptNo  || '', // Receipt_No / OR No.
       vat.grossAmount,       // Gross_Amount
-      vat.vatableSales,      // Vatable_Sales
+      vat.vatableSales,      // Vatable_Sales (Less: VAT)
       vat.vatAmount,         // VAT_Amount (12%)
-      vat.netOfVat,          // Net_Of_VAT
+      // Net_Of_VAT removed
       user,                  // Created_By
       now                    // Created_At
     ]);
@@ -463,11 +432,11 @@ function getReceiptByEntryId(entryId) {
           tin         : row[5],
           receiptNo   : row[6],
           grossAmount : row[7],
-          vatableSales: row[8],
-          vatAmount   : row[9],
-          netOfVat    : row[10],
-          createdBy   : row[11],
-          createdAt   : row[12]
+          vatableSales: row[8],  // Less: VAT
+          vatAmount   : row[9],  // VAT Amount (12%)
+          // netOfVat removed (was row[10])
+          createdBy   : row[10],
+          createdAt   : row[11]
         }
       };
     }
@@ -500,8 +469,8 @@ function getReceiptsByDate(date) {
         receiptNo   : row[6],
         grossAmount : row[7],
         vatableSales: row[8],
-        vatAmount   : row[9],
-        netOfVat    : row[10]
+        vatAmount   : row[9]
+        // netOfVat removed
       });
     }
     return { success: true, data: records };
@@ -711,7 +680,6 @@ function getCategories() {
   };
 }
 
-// Utility: recalculate a range of dates (for data recovery / migration)
 function recalculateRange(params) {
   const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
   const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();

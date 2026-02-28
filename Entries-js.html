@@ -3,8 +3,6 @@
 // ENTRIES + BIR RECEIPT MODAL
 // =============================================
 
-// Pending receipt data for the current form session.
-// Populated when user fills the receipt modal. Cleared on save or clear.
 let _pendingReceipt = null;
 
 function clearEntryForm() {
@@ -21,7 +19,6 @@ function clearEntryForm() {
   updateReceiptIndicator();
 }
 
-// Show "Receipt attached" chip, or the dashed Add button
 function updateReceiptIndicator() {
   const indicator = document.getElementById('receiptIndicator');
   const addBtn    = document.getElementById('addReceiptBtn');
@@ -51,9 +48,8 @@ function removeReceipt() {
   toast('Receipt removed', 'warning');
 }
 
-// Keep modal pre-filled in sync as user types amount
 function syncReceiptAmount() {
-  if (_pendingReceipt) return; // don't overwrite if receipt already attached
+  if (_pendingReceipt) return;
   const amt   = parseFloat(document.getElementById('entryAmount')?.value) || 0;
   const gross = document.getElementById('rcptGross');
   if (gross) gross.value = amt || '';
@@ -137,12 +133,6 @@ function renderEntries() {
   }).join('');
 }
 
-// ─────────────────────────────────────────────
-// SAVE ENTRY
-// Always saves the entry first.
-// If _pendingReceipt exists, saves it after and links by entry ID.
-// Receipt is NEVER required — no receipt = saved as hasReceipt: false.
-// ─────────────────────────────────────────────
 async function saveEntry() {
   const desc = document.getElementById('entryDesc').value.trim();
   const amt  = parseFloat(document.getElementById('entryAmount').value);
@@ -175,7 +165,6 @@ async function saveEntry() {
     return;
   }
 
-  // Save receipt if one was attached
   if (_pendingReceipt && entryRes.id) {
     const rcptRes = await callServer('saveReceiptRecord', {
       ..._pendingReceipt,
@@ -203,13 +192,11 @@ async function deleteEntry(id) {
   else toast('Error deleting.', 'error');
 }
 
-// View receipt for an already-saved entry
 async function viewReceipt(entryId) {
   const res = await callServer('getReceiptByEntryId', entryId);
   if (res.success && res.data) {
     openReceiptModal({ mode: 'view', receiptData: res.data });
   } else {
-    // Entry has receipt flag but no record yet — let them fill it in
     const entry = state.entries.find(e => e.id === entryId);
     openReceiptModal({
       mode       : 'attach',
@@ -221,14 +208,6 @@ async function viewReceipt(entryId) {
 
 // ─────────────────────────────────────────────
 // RECEIPT MODAL
-//
-// mode:'new'    — from "Add Receipt" on the form.
-//                 Stores data in _pendingReceipt only (no server call).
-//                 Actual save happens inside saveEntry().
-//
-// mode:'attach' — entry already saved; saves receipt to server now.
-//
-// mode:'view'   — read-only display of a saved receipt.
 // ─────────────────────────────────────────────
 let _rCtx = {};
 
@@ -237,7 +216,6 @@ function openReceiptModal(ctx) {
   const modal = document.getElementById('receiptModal');
   if (!modal) return;
 
-  // Unlock all fields by default
   ['rcptDate','rcptSupplier','rcptAddress','rcptTin','rcptReceiptNo','rcptGross'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.readOnly = false; el.value = ''; }
@@ -248,7 +226,6 @@ function openReceiptModal(ctx) {
   if (dateEl) dateEl.value = state.currentDate;
 
   if (ctx.mode === 'new') {
-    // Pre-fill with either existing pending data (editing) or entry amount
     if (_pendingReceipt) {
       const setV = (id, v) => { const el = document.getElementById(id); if(el) el.value = v || ''; };
       setV('rcptSupplier',  _pendingReceipt.supplierName);
@@ -290,7 +267,6 @@ function openReceiptModal(ctx) {
   }
 
   modal.classList.remove('hidden');
-  // Focus first editable field
   if (ctx.mode !== 'view') {
     setTimeout(() => document.getElementById('rcptSupplier')?.focus(), 100);
   }
@@ -302,14 +278,22 @@ function closeReceiptModal() {
   _rCtx = {};
 }
 
+// ─────────────────────────────────────────────
+// VAT BREAKDOWN — 3 lines only:
+//   Gross Amount  (display only)
+//   Less: VAT     (= Gross - Gross/1.12)
+//   VAT Amount    (= Gross / 1.12)
+// Net of VAT removed.
+// ─────────────────────────────────────────────
 function computeReceiptVAT() {
-  const gross = parseFloat(document.getElementById('rcptGross')?.value) || 0;
-  const net   = gross / 1.12;
-  const vat   = gross - net;
-  const setT  = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmt(v); };
-  setT('rcptVatableSales', net);
-  setT('rcptVatAmount',    vat);
-  setT('rcptNetOfVat',     net);
+  const gross     = parseFloat(document.getElementById('rcptGross')?.value) || 0;
+  const vatAmount = gross - (gross / 1.12);   // the VAT portion
+  const netOfVat  = gross / 1.12;             // amount excluding VAT
+
+  const setT = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmt(v); };
+  setT('rcptGrossDisplay', gross);     // Gross Amount (display)
+  setT('rcptVatAmount',    vatAmount); // Less: VAT (12%)
+  setT('rcptVatableSales', netOfVat);  // VAT Amount (net line)
 }
 
 async function saveReceiptModal() {
@@ -322,13 +306,12 @@ async function saveReceiptModal() {
   const receiptData = {
     date        : document.getElementById('rcptDate')?.value || state.currentDate,
     supplierName: supplier,
-    address     : document.getElementById('rcptAddress')?.value.trim()    || '',
-    tin         : document.getElementById('rcptTin')?.value.trim()        || '',
-    receiptNo   : document.getElementById('rcptReceiptNo')?.value.trim()  || '',
+    address     : document.getElementById('rcptAddress')?.value.trim()   || '',
+    tin         : document.getElementById('rcptTin')?.value.trim()       || '',
+    receiptNo   : document.getElementById('rcptReceiptNo')?.value.trim() || '',
     grossAmount : gross
   };
 
-  // MODE: new — just store in memory, don't hit server yet
   if (_rCtx.mode === 'new') {
     _pendingReceipt = receiptData;
     updateReceiptIndicator();
@@ -337,7 +320,6 @@ async function saveReceiptModal() {
     return;
   }
 
-  // MODE: attach — entry already exists, save immediately
   const saveBtn = document.getElementById('receiptSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
 
