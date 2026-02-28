@@ -7,7 +7,7 @@ function buildDenomGrid() {
   const container = document.getElementById('denomGrid');
   if(!container) return;
   
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
 
   container.innerHTML = billTypes.map(bill => {
     let colorClass = 'text-gray-700'; 
@@ -38,9 +38,21 @@ function buildDenomGrid() {
   }).join('');
 }
 
+function autoSwitchDenomTab() {
+  const records = state.denomRecords || [];
+  const opening = records.find(r => r.type === 'START');
+  if (opening) {
+    lockOpeningDisplay(opening.total); // lock and show total
+    switchDenomTab('END');
+  } else {
+    unlockOpeningDisplay();
+    switchDenomTab('START');
+  }
+}
+
 function calcDenomTotal() {
   let total = 0;
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
 
   billTypes.forEach(bill => {
     const el = document.getElementById('denom-' + bill);
@@ -64,7 +76,7 @@ function calcDenomTotal() {
 }
 
 function clearDenomForm() {
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
   billTypes.forEach(bill => {
     const el = document.getElementById('denom-' + bill);
     if(el) el.value = '';
@@ -163,7 +175,7 @@ async function saveDenomination() {
 
   const breakdown = {};
   let total = 0;
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
 
   billTypes.forEach(bill => {
     const el = document.getElementById('denom-' + bill);
@@ -371,15 +383,21 @@ async function confirmClosingSave() {
 
   loadDayData();
 }
+
 async function executeSave(data) {
   showLoading(true);
   try {
     const res = await callServer('saveDenominationRecord', data);
     if (res.success) {
-      toast('Cash count saved', 'success');
+      if (state.editingOpening) {
+        toast('Opening count updated & change logged ✓', 'success');
+        state.editingOpening = false;
+      } else {
+        toast('Cash count saved', 'success');
+      }
       clearDenomForm();
       loadDayData();
-      loadDenominations();
+      loadDenominations(); // this will re-run autoSwitchDenomTab + lock if needed
     } else {
       toast(res.message || 'Failed to save', 'error');
     }
@@ -396,42 +414,132 @@ async function loadDenominations() {
   if (!container) return;
 
   checkOpeningEligibility();
-
   container.innerHTML = '<div class="text-center py-6 text-gray-400 text-sm animate-pulse">Loading records...</div>';
 
   try {
     const res = await callServer('getDenominationRecords', state.currentDate);
-    if (res.success && res.data && res.data.length > 0) {
-      container.innerHTML = res.data.map(d => {
-        const isStart = d.type === 'START';
-        const color = isStart
-          ? 'text-blue-600 bg-blue-50 border-blue-200'
-          : 'text-amber-600 bg-amber-50 border-amber-200';
-        const icon  = isStart ? '☀️' : '🌙';
-        const label = isStart ? 'Opening' : 'Closing';
-        const ts = d.timestamp ? new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--';
-        return `
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-white hover:bg-gray-50 rounded-xl border border-gray-200 transition-all shadow-sm">
-            <div class="flex items-center gap-3 mb-2 sm:mb-0">
-              <div class="w-10 h-10 rounded-full flex items-center justify-center text-lg border ${color}">${icon}</div>
-              <div>
-                <div class="font-bold text-gray-800 text-sm">${label} Count</div>
-                <div class="text-xs text-gray-400 font-mono">${ts}</div>
-              </div>
-            </div>
-            <div class="text-right w-full sm:w-auto">
-              <div class="font-black text-xl text-gray-800 tracking-tight">${fmt(d.total)}</div>
-              <div class="text-xs text-gray-400 italic truncate max-w-[180px]">${d.notes || 'No notes'}</div>
-            </div>
-          </div>`;
-      }).join('');
-    } else {
-      container.innerHTML = `<div class="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm">No denomination records for this date</div>`;
+    if (res.success) {
+      state.denomRecords = res.data || [];
+      autoSwitchDenomTab();
+      renderDenomRecords(state.denomRecords); // ← just this one line now
     }
   } catch(e) {
     console.error(e);
     container.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">Failed to load records</div>';
   }
+}
+
+function renderDenomRecords(data) {
+  const container = document.getElementById('savedDenomsContainer');
+  if (!container) return;
+
+  if (data && data.length > 0) {
+    container.innerHTML = data.map(d => {
+      const isStart = d.type === 'START';
+      const color = isStart
+        ? 'text-blue-600 bg-blue-50 border-blue-200'
+        : 'text-amber-600 bg-amber-50 border-amber-200';
+      const icon  = isStart ? '☀️' : '🌙';
+      const label = isStart ? 'Opening' : 'Closing';
+      const ts = d.timestamp ? new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--';
+      const editBtn = isStart
+        ? `<button onclick="editOpeningCount('${d.id}')" class="mt-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition">✏️ Edit Opening</button>`
+        : '';
+      return `
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-white hover:bg-gray-50 rounded-xl border border-gray-200 transition-all shadow-sm">
+          <div class="flex items-center gap-3 mb-2 sm:mb-0">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center text-lg border ${color}">${icon}</div>
+            <div>
+              <div class="font-bold text-gray-800 text-sm">${label} Count</div>
+              <div class="text-xs text-gray-400 font-mono">${ts}</div>
+              ${editBtn}
+            </div>
+          </div>
+          <div class="text-right w-full sm:w-auto">
+            <div class="font-black text-xl text-gray-800 tracking-tight">${fmt(d.total)}</div>
+            <div class="text-xs text-gray-400 italic truncate max-w-[180px]">${d.notes || 'No notes'}</div>
+          </div>
+        </div>`;
+    }).join('');
+  } else {
+    container.innerHTML = `<div class="text-center py-8 bg-gray-50 rounded-xl border border-dashed border-gray-300 text-gray-400 text-sm">No denomination records for this date</div>`;
+  }
+}
+
+function lockOpeningDisplay(total) {
+  const container = document.getElementById('denomCardContainer');
+  const label     = document.getElementById('denomLabel');
+  const totalEl   = document.getElementById('denomTotalDisplay');
+
+  // Show locked total
+  if (label)   label.textContent = 'Opening Total (Locked)';
+  if (totalEl) { totalEl.textContent = fmt(total).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
+
+  // Hide the bill grid and notes, show lock message
+  const grid  = document.getElementById('denomGrid');
+  const notes = document.getElementById('denomNotes');
+  const saveBtn = document.querySelector('button[onclick="saveDenomination()"]');
+  const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
+
+  if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.add('hidden');
+  if (notes)    notes.closest('.p-6.border-t')?.classList.add('hidden');
+  if (saveBtn)  saveBtn.closest('.flex.gap-3')?.querySelector('button[onclick="saveDenomination()"]') && (saveBtn.style.display = 'none');
+  if (clearBtn) clearBtn.style.display = 'none';
+
+  // Add lock message if not already there
+  if (!document.getElementById('openingLockedMsg')) {
+    const msg = document.createElement('div');
+    msg.id = 'openingLockedMsg';
+    msg.className = 'px-6 pb-6 pt-2';
+    msg.innerHTML = `
+      <div class="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">🔒</span>
+          <div>
+            <div class="text-sm font-bold text-blue-800">Opening Cash Locked</div>
+            <div class="text-xs text-blue-500 mt-0.5">Opening count has been saved and locked.</div>
+          </div>
+        </div>
+        <button onclick="editOpeningCount()" class="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-50 transition shadow-sm">
+          ✏️ Edit Opening
+        </button>
+      </div>`;
+    container?.appendChild(msg);
+  }
+}
+
+function unlockOpeningDisplay() {
+  document.getElementById('openingLockedMsg')?.remove();
+
+  const grid  = document.getElementById('denomGrid');
+  const notes = document.getElementById('denomNotes');
+  const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
+  const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
+
+  if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.remove('hidden');
+  if (notes)    notes.closest('.p-6.border-t')?.classList.remove('hidden');
+  if (saveBtn)  saveBtn.style.display = '';
+  if (clearBtn) clearBtn.style.display = '';
+}
+
+function editOpeningCount() {
+  if (!confirm('Edit the opening count? This will be logged as a change in the saved records.')) return;
+  unlockOpeningDisplay();
+
+  // Pre-fill grid with existing opening values
+  const openingRecord = (state.denomRecords || []).find(r => r.type === 'START');
+  if (openingRecord?.denominations) {
+    const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+    billTypes.forEach(bill => {
+      const el = document.getElementById('denom-' + bill);
+      if (el) el.value = openingRecord.denominations[String(bill)] || '';
+    });
+    calcDenomTotal();
+  }
+
+  // Mark as an edit so the save note reflects the change
+  state.editingOpening = true;
+  switchDenomTab('START');
 }
 
 document.addEventListener('DOMContentLoaded', () => {
