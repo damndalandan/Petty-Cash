@@ -19,23 +19,21 @@
          </div>
       </div>
 
-      <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+      <!-- Header + Day Status inline -->
+      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-gray-200">
         <div>
-          <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Dashboard</h1>
-          <p class="text-sm text-gray-500 mt-1" id="dash-date-label">—</p>
+          <h1 class="text-2xl font-bold text-gray-800 font-display leading-tight">Dashboard</h1>
+          <p class="text-xs text-gray-400 mt-0.5" id="dash-date-label">—</p>
         </div>
-      </div>
-
-      <!-- Day Status Banner -->
-      <div id="dayStatusBanner" class="hidden rounded-xl px-5 py-3 flex items-center justify-between gap-3 border shadow-sm">
-        <div class="flex items-center gap-3">
-          <span id="dayStatusIcon" class="text-2xl">⏳</span>
+        <!-- Day Status Badge — inline with header -->
+        <div id="dayStatusBanner" class="hidden rounded-lg px-4 py-2 flex items-center gap-3 border shadow-sm text-sm">
+          <span id="dayStatusIcon">⏳</span>
           <div>
-            <div class="text-sm font-bold" id="dayStatusTitle">Loading...</div>
-            <div class="text-xs opacity-75" id="dayStatusSub"></div>
+            <div class="font-bold text-xs" id="dayStatusTitle">Loading...</div>
+            <div class="text-[10px] opacity-75" id="dayStatusSub"></div>
           </div>
+          <div id="dayStatusAction"></div>
         </div>
-        <div id="dayStatusAction"></div>
       </div>
 
       <!-- Stats Grid -->
