@@ -69,6 +69,13 @@ function switchEntryTab(tab) {
   renderEntries();
 }
 
+function syncEntryAmount() {
+  if (_pendingReceipt) return; // don't overwrite if receipt already finalized
+  const gross   = parseFloat(document.getElementById('rcptGross')?.value) || 0;
+  const entryAmt = document.getElementById('entryAmount');
+  if (entryAmt && gross) entryAmt.value = gross;
+}
+
 async function loadEntries(triggerEl) {
   if (triggerEl) triggerEl.classList.add('animate-spin');
   const res = await callServer('getExpenseEntries', state.currentDate);

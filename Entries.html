@@ -179,7 +179,7 @@
         <div>
           <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Gross Amount (VAT-inclusive) <span class="text-red-500">*</span></label>
           <input type="number" id="rcptGross" placeholder="0.00" step="0.01" min="0"
-            oninput="computeReceiptVAT()"
+              oninput="computeReceiptVAT(); syncEntryAmount()"
             class="w-full p-2 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-green-500 outline-none text-right text-lg font-bold">
         </div>
 
