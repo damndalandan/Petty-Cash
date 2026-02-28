@@ -1,112 +1,209 @@
 <!-- ENTRIES PAGE -->
-    <div id="page-entries" class="page-view hidden space-y-6">
-      <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
-        <div>
-          <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Expense Entries</h1>
-          <p class="text-sm text-gray-500 mt-1">Add individual expenses for <span id="entries-date-label" class="font-medium text-gray-700"></span></p>
-        </div>
-        <div class="flex gap-1 mt-4 md:mt-0 bg-gray-100 p-1 rounded-lg">
-           <button class="tab-btn px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm bg-white text-gray-800" onclick="switchEntryTab('all')" data-tab="all">All</button>
-           <button class="tab-btn px-4 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-all" onclick="switchEntryTab('withReceipt')" data-tab="withReceipt">Receipt</button>
-           <button class="tab-btn px-4 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-all" onclick="switchEntryTab('noReceipt')" data-tab="noReceipt">No Receipt</button>
-        </div>
-      </div>
+<div id="page-entries" class="page-view hidden space-y-6">
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Expense Entries</h1>
+      <p class="text-sm text-gray-500 mt-1">Add individual expenses for <span id="entries-date-label" class="font-medium text-gray-700"></span></p>
+    </div>
+    <div class="flex gap-1 mt-4 md:mt-0 bg-gray-100 p-1 rounded-lg">
+      <button class="tab-btn px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm bg-white text-gray-800" onclick="switchEntryTab('all')" data-tab="all">All</button>
+      <button class="tab-btn px-4 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-all" onclick="switchEntryTab('withReceipt')" data-tab="withReceipt">Receipt</button>
+      <button class="tab-btn px-4 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-200 transition-all" onclick="switchEntryTab('noReceipt')" data-tab="noReceipt">No Receipt</button>
+    </div>
+  </div>
 
-      <div class="grid lg:grid-cols-3 gap-6">
-         <!-- Form -->
-         <div class="lg:col-span-1">
-            <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-4">
-              <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                <span class="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-xs">➕</span>
-                Add New Entry
-              </h2>
-              <div class="space-y-4">
-                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
-                    <select id="entryType" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
-                      <option value="EXPENSE">Expense</option>
-                      <option value="CASH_ADVANCE">Cash Advance</option>
-                    </select>
-                 </div>
-                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
-                    <select id="entryCategory" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
-                      <option value="Office Supplies">Office Supplies</option>
-                      <option value="Transportation">Transportation</option>
-                      <option value="Meals &amp; Entertainment">Meals &amp; Entertainment</option>
-                      <option value="Utilities">Utilities</option>
-                      <option value="Repairs &amp; Maintenance">Repairs &amp; Maintenance</option>
-                      <option value="Postage &amp; Courier">Postage &amp; Courier</option>
-                      <option value="Miscellaneous">Miscellaneous</option>
-                    </select>
-                 </div>
-                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
-                    <input type="text" id="entryDesc" placeholder="Describe the expense..." class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
-                 </div>
-                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (₱)</label>
-                    <input type="number" id="entryAmount" placeholder="0.00" min="0" step="0.01" class="w-full p-2 border border-gray-300 rounded font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
-                 </div>
-                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Reference / OR</label>
-                    <input type="text" id="entryRef" placeholder="Optional" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
-                 </div>
-                 <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested By</label>
-                    <input type="text" id="entryRequested" placeholder="Name" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
-                 </div>
-                 <div>
-                   <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Has Receipt?</label>
-                   <div class="flex rounded-md shadow-sm" role="group">
-                     <button type="button" id="rcpt-yes" onclick="setReceipt(true)" class="flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md hover:bg-green-700 focus:z-10 focus:ring-2 focus:ring-green-500">
-                       ✅ YES
-                     </button>
-                     <button type="button" id="rcpt-no" onclick="setReceipt(false)" class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 focus:z-10 focus:ring-2 focus:ring-blue-500">
-                       ⚠️ NO
-                     </button>
-                   </div>
-                 </div>
-                 
-                 <div class="pt-4 flex gap-3">
-                   <button id="saveEntryBtn" onclick="saveEntry()" class="flex-1 bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 shadow-sm transition transform active:scale-95 text-sm">
-                     💾 Save
-                   </button>
-                   <button onclick="clearEntryForm()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded hover:bg-gray-50 font-medium text-sm transition">
-                     Clear
-                   </button>
-                 </div>
-              </div>
+  <div class="grid lg:grid-cols-3 gap-6">
+    <!-- Form -->
+    <div class="lg:col-span-1">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 sticky top-4">
+        <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+          <span class="w-6 h-6 rounded bg-blue-100 text-blue-600 flex items-center justify-center text-xs">➕</span>
+          Add New Entry
+        </h2>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
+            <select id="entryType" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+              <option value="EXPENSE">Expense</option>
+              <option value="CASH_ADVANCE">Cash Advance</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
+            <select id="entryCategory" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+              <option value="Office Supplies">Office Supplies</option>
+              <option value="Transportation">Transportation</option>
+              <option value="Meals &amp; Entertainment">Meals &amp; Entertainment</option>
+              <option value="Utilities">Utilities</option>
+              <option value="Repairs &amp; Maintenance">Repairs &amp; Maintenance</option>
+              <option value="Postage &amp; Courier">Postage &amp; Courier</option>
+              <option value="Miscellaneous">Miscellaneous</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+            <input type="text" id="entryDesc" placeholder="Describe the expense..." class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (₱)</label>
+            <input type="number" id="entryAmount" placeholder="0.00" min="0" step="0.01" class="w-full p-2 border border-gray-300 rounded font-mono focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Reference / OR No.</label>
+            <input type="text" id="entryRef" placeholder="Optional" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested By</label>
+            <input type="text" id="entryRequested" placeholder="Name" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm">
+          </div>
+
+          <!-- Receipt Toggle — DEFAULT: NO -->
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Has Official Receipt?</label>
+            <div class="flex rounded-md shadow-sm" role="group">
+              <!-- YES: opens BIR receipt modal -->
+              <button type="button" id="rcpt-yes" onclick="onReceiptYesClick()"
+                class="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 focus:z-10 focus:ring-2 focus:ring-green-500 transition">
+                🧾 WITH RECEIPT
+              </button>
+              <!-- NO: default, active -->
+              <button type="button" id="rcpt-no" onclick="setReceipt(false)"
+                class="flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md hover:bg-yellow-600 focus:z-10 focus:ring-2 focus:ring-yellow-400 transition">
+                ⚠️ NO RECEIPT
+              </button>
             </div>
-         </div>
+            <p class="text-[10px] text-gray-400 mt-1">Choosing "With Receipt" will open the BIR receipt form.</p>
+          </div>
 
-         <!-- Table -->
-         <div class="lg:col-span-2">
-           <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
-              <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                 <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Entries</h2>
-                 <div class="flex items-center gap-3">
-                   <span class="text-xs text-gray-500 font-mono">Total: <span id="entries-total" class="text-green-600 font-bold text-sm">₱0.00</span></span>
-                   <!-- FIX: pass `this` so loadEntries can spin this specific button -->
-                   <button onclick="loadEntries(this)" class="text-gray-400 hover:text-blue-600 transition">↺</button>
-                 </div>
-              </div>
-              <div class="overflow-x-auto flex-1">
-                <table class="w-full text-left text-sm">
-                  <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
-                    <tr>
-                      <th class="px-4 py-3">Details</th>
-                      <th class="px-4 py-3 text-right">Amount</th>
-                      <th class="px-4 py-3 text-center">Receipt</th>
-                      <th class="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody id="entriesBody" class="divide-y divide-gray-100">
-                    <!-- JS Injected -->
-                  </tbody>
-                </table>
-              </div>
-           </div>
-         </div>
+          <div class="pt-2 flex gap-3">
+            <button id="saveEntryBtn" onclick="saveEntry()" class="flex-1 bg-blue-600 text-white font-bold py-2 px-4 rounded hover:bg-blue-700 shadow-sm transition transform active:scale-95 text-sm">
+              💾 Save
+            </button>
+            <button onclick="clearEntryForm()" class="px-4 py-2 border border-gray-300 text-gray-600 rounded hover:bg-gray-50 font-medium text-sm transition">
+              Clear
+            </button>
+          </div>
+        </div>
       </div>
     </div>
+
+    <!-- Table -->
+    <div class="lg:col-span-2">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden flex flex-col h-full">
+        <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+          <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Entries</h2>
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-gray-500 font-mono">Total: <span id="entries-total" class="text-green-600 font-bold text-sm">₱0.00</span></span>
+            <button onclick="loadEntries(this)" class="text-gray-400 hover:text-blue-600 transition">↺</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto flex-1">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+              <tr>
+                <th class="px-4 py-3">Details</th>
+                <th class="px-4 py-3 text-right">Amount</th>
+                <th class="px-4 py-3 text-center">Receipt</th>
+                <th class="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="entriesBody" class="divide-y divide-gray-100">
+              <!-- JS injected -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- =============================================
+     BIR RECEIPT MODAL
+     Captures: Date, Supplier, Address, TIN, Receipt No., Amount
+     Auto-computes: VAT (12%), Net of VAT, Vatable Sales
+     Saves to: PettyCash_Receipts sheet (linked to Entry_ID)
+     ============================================= -->
+<div id="receiptModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+  <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-green-700 to-green-600 p-5 flex justify-between items-center">
+      <div>
+        <h3 class="text-white font-bold text-lg font-display" id="receiptModalTitle">🧾 Official Receipt Details</h3>
+        <p class="text-green-100 text-xs mt-0.5">For BIR Purchases Journal compliance</p>
+      </div>
+      <button onclick="closeReceiptModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+
+    <div class="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
+
+      <!-- Date -->
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Date</label>
+          <input type="date" id="rcptDate" class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Receipt / OR No.</label>
+          <input type="text" id="rcptReceiptNo" placeholder="e.g. 0001234" class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+        </div>
+      </div>
+
+      <!-- Supplier -->
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Name of Supplier <span class="text-red-500">*</span></label>
+        <input type="text" id="rcptSupplier" placeholder="Business / individual name" class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+      </div>
+
+      <!-- Address -->
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Supplier Address</label>
+        <input type="text" id="rcptAddress" placeholder="Street, City, Province" class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+      </div>
+
+      <!-- TIN -->
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">TIN No.</label>
+        <input type="text" id="rcptTin" placeholder="000-000-000-000" class="w-full p-2 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-green-500 outline-none">
+      </div>
+
+      <!-- Amount + VAT breakdown -->
+      <div class="border-t border-gray-200 pt-4">
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Gross Amount (VAT-inclusive) <span class="text-red-500">*</span></label>
+        <input type="number" id="rcptGross" placeholder="0.00" step="0.01" min="0"
+          oninput="computeReceiptVAT()"
+          class="w-full p-2 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-green-500 outline-none">
+      </div>
+
+      <!-- Auto-computed VAT breakdown -->
+      <div class="bg-green-50 border border-green-200 rounded-xl p-4 space-y-2">
+        <div class="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">VAT Breakdown (Auto-computed @ 12%)</div>
+        <div class="flex justify-between items-center py-1 border-b border-green-100">
+          <span class="text-sm text-gray-600">Vatable Sales (Net of VAT)</span>
+          <span class="font-mono font-bold text-gray-800" id="rcptVatableSales">₱0.00</span>
+        </div>
+        <div class="flex justify-between items-center py-1 border-b border-green-100">
+          <span class="text-sm text-gray-600">VAT Amount (12%)</span>
+          <span class="font-mono font-bold text-green-700" id="rcptVatAmount">₱0.00</span>
+        </div>
+        <div class="flex justify-between items-center py-1">
+          <span class="text-sm font-bold text-gray-700">Net of VAT</span>
+          <span class="font-mono font-black text-gray-800" id="rcptNetOfVat">₱0.00</span>
+        </div>
+        <p class="text-[10px] text-gray-400 mt-2">Formula: Gross ÷ 1.12 = Vatable Sales &nbsp;|&nbsp; Gross − Vatable Sales = VAT</p>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+      <button id="receiptSkipBtn" onclick="closeReceiptModal()" class="flex-1 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">
+        Skip for Now
+      </button>
+      <button id="receiptSaveBtn" onclick="saveReceiptModal()" class="flex-1 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition flex justify-center items-center gap-2">
+        💾 Save Receipt
+      </button>
+    </div>
+  </div>
+</div>

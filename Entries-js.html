@@ -1,49 +1,52 @@
 <script>
 // =============================================
-// ENTRIES
+// ENTRIES + BIR RECEIPT MODAL
 // =============================================
+
+// Receipt toggle visual state — NO is the default
 function setReceipt(val) {
   state.hasReceipt = val;
   const yesBtn = document.getElementById('rcpt-yes');
   const noBtn  = document.getElementById('rcpt-no');
   if (val) {
-    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md hover:bg-green-700 focus:z-10 focus:ring-2 focus:ring-green-500";
-    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 focus:z-10 focus:ring-2 focus:ring-blue-500";
+    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md hover:bg-green-700 focus:z-10 transition";
+    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md hover:bg-gray-50 focus:z-10 transition";
   } else {
-    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 focus:z-10 focus:ring-2 focus:ring-green-500";
-    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md hover:bg-yellow-600 focus:z-10 focus:ring-2 focus:ring-yellow-400";
+    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md hover:bg-gray-50 focus:z-10 transition";
+    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md hover:bg-yellow-600 focus:z-10 transition";
   }
 }
 
 function clearEntryForm() {
-  document.getElementById('entryDesc').value      = '';
-  document.getElementById('entryAmount').value    = '';
-  document.getElementById('entryRef').value       = '';
-  document.getElementById('entryRequested').value = '';
-  document.getElementById('entryCategory').selectedIndex = 0;
-  setReceipt(true);
+  ['entryDesc','entryAmount','entryRef','entryRequested'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const cat = document.getElementById('entryCategory');
+  if (cat) cat.selectedIndex = 0;
+  const typ = document.getElementById('entryType');
+  if (typ) typ.value = 'EXPENSE';
+  setReceipt(false); // always reset to NO
 }
 
 function switchEntryTab(tab) {
   state.entryTab = tab;
   document.querySelectorAll('.tab-btn').forEach(b => {
     if (b.dataset.tab === tab) {
-      b.classList.remove('text-gray-500', 'hover:bg-gray-200');
-      b.classList.add('bg-white', 'text-gray-800', 'shadow-sm', 'font-bold');
+      b.classList.remove('text-gray-500','hover:bg-gray-200');
+      b.classList.add('bg-white','text-gray-800','shadow-sm','font-bold');
     } else {
-      b.classList.remove('bg-white', 'text-gray-800', 'shadow-sm', 'font-bold');
-      b.classList.add('text-gray-500', 'hover:bg-gray-200');
+      b.classList.remove('bg-white','text-gray-800','shadow-sm','font-bold');
+      b.classList.add('text-gray-500','hover:bg-gray-200');
     }
   });
   renderEntries();
 }
 
-// FIX: no longer relies on implicit `event` — pass the button element explicitly
 async function loadEntries(triggerEl) {
   if (triggerEl) triggerEl.classList.add('animate-spin');
   const res = await callServer('getExpenseEntries', state.currentDate);
   if (triggerEl) triggerEl.classList.remove('animate-spin');
-
   if (res.success) {
     state.entries = res.data || [];
     renderEntries();
@@ -51,12 +54,13 @@ async function loadEntries(triggerEl) {
   }
 }
 
-// Badge config for special entry types
 function entryTypeBadge(type) {
-  if (type === 'CASH_ADVANCE')  return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800">ADVANCE</span>';
-  if (type === 'CASH_OVER')     return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">OVERAGE</span>';
-  if (type === 'REPLENISHMENT') return '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800">REPLENISH</span>';
-  return ''; // plain EXPENSE — no extra badge
+  const map = {
+    CASH_ADVANCE : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800">ADVANCE</span>',
+    CASH_OVER    : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">OVERAGE</span>',
+    REPLENISHMENT: '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800">REPLENISH</span>'
+  };
+  return map[type] || '';
 }
 
 function renderEntries() {
@@ -65,65 +69,72 @@ function renderEntries() {
   if (state.entryTab === 'noReceipt')   filtered = filtered.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
 
   const total = filtered
-    .filter(e => e.type === 'EXPENSE') // only count actual expenses in the displayed total
+    .filter(e => e.type === 'EXPENSE')
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   document.getElementById('entries-total').textContent = fmt(total);
 
   const tbody = document.getElementById('entriesBody');
-  if (filtered.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm italic">No entries found</td></tr>`;
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm italic">No entries found</td></tr>';
     return;
   }
 
   tbody.innerHTML = filtered.map(e => {
     const isSpecial = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
-    const rowBg     = e.type === 'CASH_OVER'     ? 'bg-emerald-50/40'
-                    : e.type === 'REPLENISHMENT'  ? 'bg-purple-50/40'
-                    : e.type === 'CASH_ADVANCE'   ? 'bg-blue-50/40'
-                    : '';
-    return `
-    <tr class="hover:bg-gray-50 transition group ${rowBg}">
-      <td class="px-4 py-3">
-        <div class="font-medium text-gray-900 flex items-center gap-2">
-          ${e.description}
-          ${entryTypeBadge(e.type)}
-        </div>
-        <div class="text-xs text-gray-500 mt-0.5">
-          ${e.category}
-          ${e.referenceNo  ? '• Ref: ' + e.referenceNo  : ''}
-          ${e.requestedBy  ? '• By: '  + e.requestedBy  : ''}
-        </div>
-      </td>
-      <td class="px-4 py-3 text-right font-mono ${isSpecial ? 'text-blue-700' : 'text-gray-700'}">${fmt(e.amount)}</td>
-      <td class="px-4 py-3 text-center">
-        ${isSpecial
-          ? entryTypeBadge(e.type)
-          : `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${e.hasReceipt ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">${e.hasReceipt ? 'YES' : 'NO'}</span>`
-        }
-      </td>
-      <td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">
-        ${!isSpecial ? `<button onclick="openEditModal('${e.id}')" class="text-blue-600 hover:text-blue-900 mx-1">✏️</button>` : ''}
-        <button onclick="deleteEntry('${e.id}')" class="text-red-500 hover:text-red-700 mx-1">🗑️</button>
-      </td>
-    </tr>`;
+    const rowBg = e.type === 'CASH_OVER'    ? 'bg-emerald-50/40'
+                : e.type === 'REPLENISHMENT' ? 'bg-purple-50/40'
+                : e.type === 'CASH_ADVANCE'  ? 'bg-blue-50/40'
+                : '';
+
+    const receiptCell = isSpecial
+      ? entryTypeBadge(e.type)
+      : e.hasReceipt
+        ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition">🧾 YES</button>'
+        : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">NO</span>';
+
+    return '<tr class="hover:bg-gray-50 transition group ' + rowBg + '">'
+      + '<td class="px-4 py-3">'
+      + '<div class="font-medium text-gray-900 flex items-center gap-2">' + e.description + ' ' + entryTypeBadge(e.type) + '</div>'
+      + '<div class="text-xs text-gray-500 mt-0.5">' + e.category
+        + (e.referenceNo ? ' &bull; Ref: ' + e.referenceNo : '')
+        + (e.requestedBy ? ' &bull; By: '  + e.requestedBy  : '')
+        + '</div></td>'
+      + '<td class="px-4 py-3 text-right font-mono ' + (isSpecial ? 'text-blue-700' : 'text-gray-700') + '">' + fmt(e.amount) + '</td>'
+      + '<td class="px-4 py-3 text-center">' + receiptCell + '</td>'
+      + '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
+        + (!isSpecial ? '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-600 hover:text-blue-900 mx-1">&#9999;&#65039;</button>' : '')
+        + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-500 hover:text-red-700 mx-1">🗑️</button>'
+        + '</td></tr>';
   }).join('');
 }
 
+// ─────────────────────────────────────────────
+// SAVE ENTRY — NO RECEIPT path
+// Saves directly when receipt toggle is NO
+// ─────────────────────────────────────────────
 async function saveEntry() {
   const desc = document.getElementById('entryDesc').value.trim();
   const amt  = parseFloat(document.getElementById('entryAmount').value);
-  if (!desc || !amt) { toast('Please fill in description and amount', 'warning'); return; }
+  if (!desc) { toast('Please enter a description', 'warning'); return; }
+  if (!amt)  { toast('Please enter an amount', 'warning'); return; }
+
+  // If user has receipt toggled ON but clicked Save directly,
+  // route them through the receipt modal instead
+  if (state.hasReceipt) {
+    onReceiptYesClick();
+    return;
+  }
 
   const data = {
-    date:        state.currentDate,
-    type:        document.getElementById('entryType').value,
-    category:    document.getElementById('entryCategory').value,
+    date       : state.currentDate,
+    type       : document.getElementById('entryType').value,
+    category   : document.getElementById('entryCategory').value,
     description: desc,
-    amount:      amt,
-    hasReceipt:  state.hasReceipt,
-    referenceNo: document.getElementById('entryRef').value,
-    requestedBy: document.getElementById('entryRequested').value,
-    approvedBy:  ''
+    amount     : amt,
+    hasReceipt : false,
+    referenceNo: document.getElementById('entryRef').value.trim(),
+    requestedBy: document.getElementById('entryRequested').value.trim(),
+    approvedBy : ''
   };
 
   const btn = document.getElementById('saveEntryBtn');
@@ -136,13 +147,37 @@ async function saveEntry() {
   btn.innerHTML = '💾 Save';
 
   if (res.success) {
-    toast('Entry added!');
+    toast('Entry saved!');
     clearEntryForm();
     loadEntries();
     loadDayData();
   } else {
-    toast(res.message, 'error');
+    toast(res.message || 'Save failed', 'error');
   }
+}
+
+// ─────────────────────────────────────────────
+// WITH RECEIPT path
+// Clicking "WITH RECEIPT" button:
+//   1. Validates desc + amount exist
+//   2. Opens receipt modal
+//   3. Receipt modal saves BOTH entry + receipt on confirm
+// ─────────────────────────────────────────────
+function onReceiptYesClick() {
+  const desc = document.getElementById('entryDesc').value.trim();
+  const amt  = parseFloat(document.getElementById('entryAmount').value);
+  if (!desc) { toast('Please enter a description first', 'warning'); return; }
+  if (!amt)  { toast('Please enter an amount first', 'warning'); return; }
+
+  // Mark receipt toggle as active visually
+  setReceipt(true);
+
+  // Open receipt modal — entry will be saved when receipt form is submitted
+  openReceiptModal({
+    mode       : 'new',
+    date       : state.currentDate,
+    grossAmount: amt
+  });
 }
 
 async function deleteEntry(id) {
@@ -152,19 +187,177 @@ async function deleteEntry(id) {
   else toast('Error deleting.', 'error');
 }
 
-// =============================================
+// View or attach receipt for an existing entry
+async function viewReceipt(entryId) {
+  const res = await callServer('getReceiptByEntryId', entryId);
+  if (res.success && res.data) {
+    openReceiptModal({ mode: 'view', receiptData: res.data });
+  } else {
+    const entry = state.entries.find(e => e.id === entryId);
+    openReceiptModal({
+      mode       : 'attach',
+      entryId    : entryId,
+      date       : state.currentDate,
+      grossAmount: entry ? entry.amount : 0
+    });
+  }
+}
+
+// ─────────────────────────────────────────────
+// RECEIPT MODAL — BIR Purchases Journal
+//
+// Modes:
+//  'new'    — entry not yet saved; modal saves entry THEN receipt together
+//  'attach' — entry already saved; modal saves receipt only, linked by entryId
+//  'view'   — read-only display of saved receipt
+// ─────────────────────────────────────────────
+let _rCtx = {}; // receipt modal context
+
+function openReceiptModal(ctx) {
+  _rCtx = ctx;
+  const modal = document.getElementById('receiptModal');
+  if (!modal) return;
+
+  // Always reset fields first
+  ['rcptSupplier','rcptAddress','rcptTin','rcptReceiptNo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.readOnly = false; }
+  });
+
+  const dateEl  = document.getElementById('rcptDate');
+  const grossEl = document.getElementById('rcptGross');
+
+  if (dateEl)  { dateEl.value  = ctx.date || state.currentDate; dateEl.readOnly  = false; }
+  if (grossEl) { grossEl.value = ctx.grossAmount || ''; grossEl.readOnly = false; }
+  computeReceiptVAT();
+
+  const titleEl   = document.getElementById('receiptModalTitle');
+  const saveBtn   = document.getElementById('receiptSaveBtn');
+  const skipBtn   = document.getElementById('receiptSkipBtn');
+
+  if (ctx.mode === 'view' && ctx.receiptData) {
+    // ── READ-ONLY view ─────────────────────────
+    const d = ctx.receiptData;
+    const setV = (id, v) => { const el = document.getElementById(id); if(el) { el.value = v; el.readOnly = true; } };
+    setV('rcptDate',      d.date);
+    setV('rcptSupplier',  d.supplierName);
+    setV('rcptAddress',   d.address);
+    setV('rcptTin',       d.tin);
+    setV('rcptReceiptNo', d.receiptNo);
+    setV('rcptGross',     d.grossAmount);
+    computeReceiptVAT();
+    if (titleEl) titleEl.textContent = '🧾 Receipt Details';
+    if (saveBtn) saveBtn.classList.add('hidden');
+    if (skipBtn) skipBtn.textContent = 'Close';
+
+  } else {
+    // ── EDITABLE (new / attach) ────────────────
+    if (titleEl) titleEl.textContent = '🧾 Official Receipt Details';
+    if (saveBtn) {
+      saveBtn.classList.remove('hidden');
+      saveBtn.innerHTML = ctx.mode === 'new'
+        ? '💾 Save Entry + Receipt'
+        : '💾 Save Receipt';
+    }
+    if (skipBtn) skipBtn.textContent = ctx.mode === 'attach' ? 'Skip for Now' : 'Cancel';
+  }
+
+  modal.classList.remove('hidden');
+}
+
+function closeReceiptModal() {
+  const modal = document.getElementById('receiptModal');
+  if (modal) modal.classList.add('hidden');
+  // If user cancels a 'new' receipt, reset receipt toggle back to NO
+  if (_rCtx.mode === 'new') setReceipt(false);
+  _rCtx = {};
+}
+
+function computeReceiptVAT() {
+  const gross = parseFloat(document.getElementById('rcptGross')?.value) || 0;
+  const net   = gross / 1.12;
+  const vat   = gross - net;
+  const setT  = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmt(v); };
+  setT('rcptVatableSales', net);
+  setT('rcptVatAmount',    vat);
+  setT('rcptNetOfVat',     net);
+}
+
+async function saveReceiptModal() {
+  const supplier = document.getElementById('rcptSupplier')?.value.trim();
+  const gross    = parseFloat(document.getElementById('rcptGross')?.value);
+  const date     = document.getElementById('rcptDate')?.value || state.currentDate;
+
+  if (!supplier) { toast('Supplier name is required', 'warning'); return; }
+  if (!gross)    { toast('Amount is required', 'warning'); return; }
+
+  const saveBtn = document.getElementById('receiptSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+  let entryId = _rCtx.entryId || '';
+
+  // ── MODE: 'new' — save ENTRY first, then RECEIPT ──
+  if (_rCtx.mode === 'new') {
+    const entryData = {
+      date       : date,
+      type       : document.getElementById('entryType').value,
+      category   : document.getElementById('entryCategory').value,
+      description: document.getElementById('entryDesc').value.trim(),
+      amount     : parseFloat(document.getElementById('entryAmount').value),
+      hasReceipt : true,
+      referenceNo: document.getElementById('rcptReceiptNo')?.value.trim() || '',
+      requestedBy: document.getElementById('entryRequested').value.trim(),
+      approvedBy : ''
+    };
+
+    const entryRes = await callServer('saveExpenseEntry', entryData);
+    if (!entryRes.success) {
+      toast(entryRes.message || 'Failed to save entry', 'error');
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 Save Entry + Receipt'; }
+      return;
+    }
+    entryId = entryRes.id;
+  }
+
+  // ── Save RECEIPT record (both modes) ──
+  const receiptData = {
+    entryId     : entryId,
+    date        : date,
+    supplierName: supplier,
+    address     : document.getElementById('rcptAddress')?.value.trim() || '',
+    tin         : document.getElementById('rcptTin')?.value.trim() || '',
+    receiptNo   : document.getElementById('rcptReceiptNo')?.value.trim() || '',
+    grossAmount : gross
+  };
+
+  const rcptRes = await callServer('saveReceiptRecord', receiptData);
+
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 Save Receipt'; }
+
+  if (rcptRes.success) {
+    toast('Entry + receipt saved for BIR compliance ✓', 'success');
+    closeReceiptModal();
+    clearEntryForm();
+    loadEntries();
+    loadDayData();
+  } else {
+    toast(rcptRes.message || 'Receipt save failed', 'error');
+  }
+}
+
+// ─────────────────────────────────────────────
 // EDIT MODAL
-// =============================================
+// ─────────────────────────────────────────────
 function openEditModal(id) {
   const entry = state.entries.find(e => e.id === id);
   if (!entry) return;
 
-  document.getElementById('editEntryId').value    = entry.id;
-  document.getElementById('editType').value       = entry.type;
-  document.getElementById('editCategory').value   = entry.category;
-  document.getElementById('editDesc').value       = entry.description;
-  document.getElementById('editAmount').value     = entry.amount;
-  document.getElementById('editRef').value        = entry.referenceNo || '';
+  document.getElementById('editEntryId').value  = entry.id;
+  document.getElementById('editType').value     = entry.type;
+  document.getElementById('editCategory').value = entry.category;
+  document.getElementById('editDesc').value     = entry.description;
+  document.getElementById('editAmount').value   = entry.amount;
+  document.getElementById('editRef').value      = entry.referenceNo || '';
 
   setEditReceipt(entry.hasReceipt);
   document.getElementById('editModal').classList.remove('hidden');
@@ -176,35 +369,33 @@ function closeEditModal() {
 
 function setEditReceipt(val) {
   state.editHasReceipt = val;
-  const yesInfo = document.getElementById('edit-rcpt-yes');
-  const noInfo  = document.getElementById('edit-rcpt-no');
+  const yesBtn = document.getElementById('edit-rcpt-yes');
+  const noBtn  = document.getElementById('edit-rcpt-no');
   if (val) {
-    yesInfo.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md";
-    noInfo.className  = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md";
+    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md";
+    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md";
   } else {
-    yesInfo.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md";
-    noInfo.className  = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md";
+    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md";
+    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md";
   }
 }
 
-// FIX: sends a SINGLE merged payload object — google.script.run only supports one argument.
-// Previously this called updateExpenseEntry(id, data) with two args which silently failed.
+// Single merged payload — google.script.run only supports one argument
 async function updateEntry() {
   const id = document.getElementById('editEntryId').value;
   if (!id) { toast('No entry selected', 'error'); return; }
 
-  // Merge id INTO the data payload — backend receives one object
   const payload = {
-    id:          id,
-    date:        state.currentDate,
-    type:        document.getElementById('editType').value,
-    category:    document.getElementById('editCategory').value,
+    id,
+    date       : state.currentDate,
+    type       : document.getElementById('editType').value,
+    category   : document.getElementById('editCategory').value,
     description: document.getElementById('editDesc').value,
-    amount:      parseFloat(document.getElementById('editAmount').value),
-    hasReceipt:  state.editHasReceipt,
+    amount     : parseFloat(document.getElementById('editAmount').value),
+    hasReceipt : state.editHasReceipt,
     referenceNo: document.getElementById('editRef').value,
     requestedBy: '',
-    approvedBy:  ''
+    approvedBy : ''
   };
 
   const btn = document.querySelector('#editModal button[onclick="updateEntry()"]');
