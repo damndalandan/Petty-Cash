@@ -11,7 +11,8 @@ const SHEETS = {
   SUMMARY      : 'PettyCash_Summary',
   RECEIPTS     : 'PettyCash_Receipts',
   NO_RECEIPTS  : 'PettyCash_NoReceipts',
-  ACCESS       : 'PettyCash_Access'
+  ACCESS       : 'PettyCash_Access',
+  AUDIT_LOG    : 'PettyCash_AuditLog'
 };
 
 // ─────────────────────────────────────────────
@@ -213,6 +214,76 @@ function formatHeaderRow(sheet) {
 }
 
 // ─────────────────────────────────────────────
+// AUDIT LOG
+// ─────────────────────────────────────────────
+function writeAuditLog(action, details, referenceId, date) {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.AUDIT_LOG);
+    if (!sheet) return;
+
+    const email    = getUserEmail();
+    const roleInfo = getUserRole();
+    const role     = roleInfo.success ? roleInfo.role : 'Unknown';
+    const now      = new Date().toISOString();
+    const logDate  = date || normalizeDate(new Date());
+    const id       = generateId('LOG', logDate, sheet);
+
+    sheet.appendRow([
+      id,
+      now,
+      logDate,
+      action,
+      email,
+      role,
+      details,
+      referenceId || ''
+    ]);
+  } catch(e) {
+    // Never let audit log failure break the main action
+    console.error('writeAuditLog error:', e);
+  }
+}
+
+function getAuditLog(params) {
+  // params: { from, to, action (optional) }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.AUDIT_LOG);
+    if (!sheet) return { success: true, data: [] };
+
+    const rows = sheet.getDataRange().getValues();
+    const logs = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row    = rows[i];
+      const logDate = normalizeDate(row[2]);
+
+      if (params.from && logDate < params.from) continue;
+      if (params.to   && logDate > params.to)   continue;
+      if (params.action && row[3] !== params.action) continue;
+
+      logs.push({
+        id         : row[0],
+        timestamp  : row[1],
+        date       : logDate,
+        action     : row[3],
+        actorEmail : row[4],
+        actorRole  : row[5],
+        details    : row[6],
+        referenceId: row[7]
+      });
+    }
+
+    // Most recent first
+    logs.sort((a, b) => b.timestamp > a.timestamp ? 1 : -1);
+    return { success: true, data: logs };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+// ─────────────────────────────────────────────
 // SHEET INITIALIZATION
 // ─────────────────────────────────────────────
 function initializeSheets() {
@@ -322,6 +393,24 @@ function initializeSheets() {
 
     s.getRange(2, 1, 1, 6).setFontColor('#9ca3af').setFontStyle('italic');
     s.getRange('D2:D').setHorizontalAlignment('center');
+  }
+
+  if (!ss.getSheetByName(SHEETS.AUDIT_LOG)) {
+    const s = ss.insertSheet(SHEETS.AUDIT_LOG);
+    s.appendRow([
+      'Log_ID', 'Timestamp', 'Date', 'Action',
+      'Actor_Email', 'Actor_Role', 'Details', 'Reference_ID'
+    ]);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.setColumnWidth(1, 160);
+    s.setColumnWidth(2, 180);
+    s.setColumnWidth(3, 100);
+    s.setColumnWidth(4, 160);
+    s.setColumnWidth(5, 220);
+    s.setColumnWidth(6, 100);
+    s.setColumnWidth(7, 400);
+    s.setColumnWidth(8, 160);
   }
 
   return { success: true };
@@ -464,6 +553,17 @@ function saveExpenseEntry(data) {
     }
 
     recalculateDailySummary(data.date);
+
+    // Audit log for cash advance
+    if (data.type === 'CASH_ADVANCE') {
+      writeAuditLog(
+        'CASH_ADVANCE_ISSUED',
+        `Cash advance of ₱${parseFloat(data.amount).toFixed(2)} issued to ${data.requestedBy || '—'}. Desc: ${data.description || '—'}`,
+        id,
+        data.date
+      );
+    }
+
     return { success: true, id };
   } catch(e) {
     return { success: false, message: e.toString() };
@@ -595,10 +695,15 @@ function deleteExpenseEntry(entryId) {
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 14).setValue(`${userEmail} @ ${now}`);
 
-      // Mark corresponding NRC row as DELETED
       markNoReceiptDeleted(entryId);
-
       recalculateDailySummary(date);
+
+      writeAuditLog(
+        'ENTRY_DELETED',
+        `Entry ${entryId} deleted by ${userEmail}`,
+        entryId,
+        date
+      );
       return { success: true };
     }
     return { success: false, message: 'Entry not found' };
@@ -919,6 +1024,15 @@ function saveDenominationRecord(data) {
     }
 
     recalculateDailySummary(data.date);
+
+    const actionLabel = data.type === 'START' ? 'OPENING_SAVED' : 'CLOSING_SAVED';
+    writeAuditLog(
+      actionLabel,
+      `${data.type === 'START' ? 'Opening' : 'Closing'} denomination saved. Total: ₱${total.toFixed(2)}. Notes: ${data.notes || '—'}`,
+      recordId,
+      data.date
+    );
+
     return { success: true, id: recordId, total };
   } catch(e) {
     return { success: false, message: e.toString() };
@@ -1070,11 +1184,17 @@ function auditApproveDay(data) {
     for (let i = 1; i < rows.length; i++) {
       if (normalizeDate(rows[i][1]) !== data.date) continue;
       const row = i + 1;
-      sheet.getRange(row, 12).setValue('CLOSED');        // Status col
-      sheet.getRange(row, 13).setValue(email);           // Closed_By col
-      sheet.getRange(row, 14).setValue(now);             // Updated_At col
-      // Store audit notes in a new col 15 if provided
+      sheet.getRange(row, 12).setValue('CLOSED');
+      sheet.getRange(row, 13).setValue(email);
+      sheet.getRange(row, 14).setValue(now);
       if (data.notes) sheet.getRange(row, 15).setValue('[AUDIT] ' + data.notes);
+
+      writeAuditLog(
+        'DAY_APPROVED',
+        `Auditor approved and closed the day. Notes: ${data.notes || '—'}`,
+        '',
+        data.date
+      );
       return { success: true };
     }
     return { success: false, message: 'No summary record found for ' + data.date };
@@ -1254,6 +1374,13 @@ function submitLiquidation(data) {
       sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + (data.note || ''));
+
+      writeAuditLog(
+        'LIQUIDATION_SUBMITTED',
+        `Cashier submitted liquidation for advance ${data.id}. Notes: ${data.note || '—'}`,
+        data.id,
+        normalizeDate(rows[i][1])
+      );
       return { success: true };
     }
     return { success: false, message: 'Advance not found' };
@@ -1281,6 +1408,13 @@ function approveLiquidation(data) {
         (rows[i][14] || '') + ' | [APPROVED BY ' + email + '] ' + (data.note || '')
       );
       recalculateDailySummary(normalizeDate(rows[i][1]));
+
+      writeAuditLog(
+        'LIQUIDATION_APPROVED',
+        `Auditor approved liquidation for advance ${data.id}. Notes: ${data.note || '—'}`,
+        data.id,
+        normalizeDate(rows[i][1])
+      );
       return { success: true };
     }
     return { success: false, message: 'Advance not found' };
@@ -1306,6 +1440,13 @@ function rejectLiquidation(data) {
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 15).setValue(
         (rows[i][14] || '') + ' | [REJECTED BY ' + email + '] ' + (data.note || '')
+      );
+
+      writeAuditLog(
+        'LIQUIDATION_REJECTED',
+        `Auditor rejected liquidation for advance ${data.id}. Reason: ${data.note || '—'}`,
+        data.id,
+        normalizeDate(rows[i][1])
       );
       return { success: true };
     }

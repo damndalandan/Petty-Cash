@@ -47,10 +47,16 @@
     </button>
 
     <div class="px-3 py-2 mt-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono">Reports</div>
-    
+
     <button onclick="navigate('report')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="report">
       <span class="mr-3 text-lg">📋</span>
       <span>Daily Report</span>
+    </button>
+
+    <button onclick="navigate('auditlog')" id="nav-auditlog"
+      class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="auditlog">
+      <span class="mr-3 text-lg">🔎</span>
+      <span>Audit Log</span>
     </button>
   </nav>
 

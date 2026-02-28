@@ -102,6 +102,10 @@ function applyRoleUI() {
   const nameEl = document.getElementById('user-name');
   if (nameEl && state.userName) nameEl.textContent = state.userName;
 
+  // Show Audit Log for Auditor and Admin
+  const navAuditLog = document.getElementById('nav-auditlog');
+  if (navAuditLog && isAuditor()) navAuditLog.classList.remove('hidden');
+
   // Hide Opening tab from Cashier
   applyDenomRoleRestrictions();
 }
@@ -154,6 +158,7 @@ function navigate(page) {
   if (page === 'report')        initReportPage();
   if (page === 'dashboard')     loadDayData();
   if (page === 'advances')      loadAdvances();
+  if (page === 'auditlog')      loadAuditLog();
 
   // Close mobile sidebar
   const sb = document.getElementById('sidebar');

@@ -1,0 +1,105 @@
+<script>
+// =============================================
+// AUDIT LOG PAGE LOGIC
+// =============================================
+
+async function loadAuditLog() {
+  const tbody  = document.getElementById('auditLogBody');
+  const footer = document.getElementById('auditLogFooter');
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm animate-pulse">Loading...</td></tr>';
+
+  // Default date range — current month
+  const today   = new Date();
+  const fromDef = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2,'0')}-01`;
+  const toDef   = today.toISOString().split('T')[0];
+
+  const fromEl   = document.getElementById('auditFrom');
+  const toEl     = document.getElementById('auditTo');
+  const actionEl = document.getElementById('auditAction');
+
+  // Set defaults if empty
+  if (fromEl && !fromEl.value) fromEl.value = fromDef;
+  if (toEl   && !toEl.value)   toEl.value   = toDef;
+
+  const params = {
+    from  : fromEl?.value   || fromDef,
+    to    : toEl?.value     || toDef,
+    action: actionEl?.value || ''
+  };
+
+  const res = await callServer('getAuditLog', params);
+
+  if (!res.success) {
+    tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-10 text-center text-red-400 text-sm">${res.message || 'Failed to load audit log.'}</td></tr>`;
+    return;
+  }
+
+  const logs = res.data || [];
+
+  if (!logs.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">No records found for this filter.</td></tr>';
+    if (footer) footer.classList.add('hidden');
+    return;
+  }
+
+  const actionColors = {
+    OPENING_SAVED          : 'bg-blue-100 text-blue-700',
+    CLOSING_SAVED          : 'bg-amber-100 text-amber-700',
+    DAY_APPROVED           : 'bg-green-100 text-green-700',
+    CASH_ADVANCE_ISSUED    : 'bg-purple-100 text-purple-700',
+    LIQUIDATION_SUBMITTED  : 'bg-orange-100 text-orange-700',
+    LIQUIDATION_APPROVED   : 'bg-green-100 text-green-700',
+    LIQUIDATION_REJECTED   : 'bg-red-100 text-red-700',
+    ENTRY_DELETED          : 'bg-red-100 text-red-700'
+  };
+
+  const roleColors = {
+    Admin  : 'bg-purple-100 text-purple-700',
+    Auditor: 'bg-blue-100 text-blue-700',
+    Cashier: 'bg-green-100 text-green-700'
+  };
+
+  tbody.innerHTML = logs.map(log => {
+    const ts = log.timestamp
+      ? new Date(log.timestamp).toLocaleString('en-PH', {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit'
+        })
+      : '—';
+
+    const actionColor = actionColors[log.action] || 'bg-gray-100 text-gray-600';
+    const roleColor   = roleColors[log.actorRole] || 'bg-gray-100 text-gray-500';
+
+    return `
+      <tr class="hover:bg-gray-50 transition">
+        <td class="px-4 py-3 text-xs font-mono text-gray-500 whitespace-nowrap">${ts}</td>
+        <td class="px-4 py-3 text-xs font-mono text-gray-600 whitespace-nowrap">${log.date}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${actionColor}">${log.action}</span>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">${log.actorEmail}</td>
+        <td class="px-4 py-3 whitespace-nowrap">
+          <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${roleColor}">${log.actorRole}</span>
+        </td>
+        <td class="px-4 py-3 text-xs text-gray-600 max-w-xs">${log.details}</td>
+        <td class="px-4 py-3 text-[10px] font-mono text-gray-400 whitespace-nowrap">${log.referenceId || '—'}</td>
+      </tr>`;
+  }).join('');
+
+  if (footer) {
+    footer.classList.remove('hidden');
+    document.getElementById('auditLogCount').textContent = logs.length;
+  }
+}
+
+function clearAuditFilters() {
+  const fromEl   = document.getElementById('auditFrom');
+  const toEl     = document.getElementById('auditTo');
+  const actionEl = document.getElementById('auditAction');
+  if (fromEl)   fromEl.value   = '';
+  if (toEl)     toEl.value     = '';
+  if (actionEl) actionEl.value = '';
+  loadAuditLog();
+}
+</script>
