@@ -372,7 +372,7 @@ function recalculateDailySummary(date) {
 
     const expected = openingCash - (totalExp + cashAdvance);
     const variance = closingCash - expected;
-    const status   = hasClosing ? 'CLOSED' : 'OPEN';
+    const status   = hasClosing ? 'PENDING_AUDIT' : 'OPEN';
 
     const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
     const sumData  = sumSheet.getDataRange().getValues();
@@ -984,7 +984,8 @@ function findUnclosedPastDate(beforeDate) {
     for (let i = 1; i < data.length; i++) {
       if (data[i].length < 12) continue;
       const rDate = normalizeDate(data[i][1]);
-      if (rDate < beforeDate && data[i][11] === 'OPEN') unclosed.push(rDate);
+      const s = data[i][11];
+      if (rDate < beforeDate && (s === 'OPEN' || s === 'PENDING_AUDIT')) unclosed.push(rDate);
     }
 
     if (!unclosed.length) return { success: true, date: null };
@@ -992,6 +993,56 @@ function findUnclosedPastDate(beforeDate) {
     return { success: true, date: unclosed[0] };
   } catch(e) {
     return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// AUDITOR APPROVAL
+// ─────────────────────────────────────────────
+function auditApproveDay(data) {
+  // data: { date, notes }
+  try {
+    const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet    = ss.getSheetByName(SHEETS.SUMMARY);
+    const rows     = sheet.getDataRange().getValues();
+    const email    = getUserEmail();
+    const now      = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (normalizeDate(rows[i][1]) !== data.date) continue;
+      const row = i + 1;
+      sheet.getRange(row, 12).setValue('CLOSED');        // Status col
+      sheet.getRange(row, 13).setValue(email);           // Closed_By col
+      sheet.getRange(row, 14).setValue(now);             // Updated_At col
+      // Store audit notes in a new col 15 if provided
+      if (data.notes) sheet.getRange(row, 15).setValue('[AUDIT] ' + data.notes);
+      return { success: true };
+    }
+    return { success: false, message: 'No summary record found for ' + data.date };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function getPreviousDayClosing(date) {
+  // Returns the closing total of the most recent day before `date` that is CLOSED
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const rows  = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    let best    = null;
+
+    for (let i = 1; i < rows.length; i++) {
+      const rDate  = normalizeDate(rows[i][1]);
+      const status = rows[i][11];
+      if (rDate < date && status === 'CLOSED') {
+        if (!best || rDate > best.date) {
+          best = { date: rDate, closingCash: parseFloat(rows[i][9]) || 0 };
+        }
+      }
+    }
+    return { success: true, data: best };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: null };
   }
 }
 

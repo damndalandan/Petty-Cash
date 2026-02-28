@@ -28,6 +28,15 @@
     <!-- Bill Grid -->
     <div class="p-6 bg-gray-50/30">
       <input type="hidden" id="denomType" value="START">
+      <!-- Yesterday's closing reference — shown only on Opening tab -->
+      <div id="prevClosingRef" class="hidden mb-4 flex items-center justify-between bg-white border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
+        <div class="flex items-center gap-2 text-sm text-blue-700">
+          <span class="text-base">📋</span>
+          <span>Yesterday's Closing Total:</span>
+          <span class="font-black font-mono text-blue-800" id="prevClosingAmount">₱0.00</span>
+        </div>
+        <div id="prevClosingMatch" class="text-xs font-bold px-2.5 py-1 rounded-full"></div>
+      </div>
       <div class="flex flex-wrap gap-3 pb-2 overflow-x-auto" id="denomGrid">
         <!-- JS Injected -->
       </div>

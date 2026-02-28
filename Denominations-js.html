@@ -70,6 +70,7 @@
       totalEl.classList.add('text-gray-400');
     }
     totalEl.textContent = fmt(total).replace('₱', '');
+    refreshPrevClosingMatch();
   }
 
   function clearDenomForm() {
@@ -446,24 +447,81 @@
     container.innerHTML = '<div class="text-center py-6 text-gray-400 text-sm animate-pulse">Loading records...</div>';
 
     try {
-      const [denomRes, summaryRes] = await Promise.all([
+      const [denomRes, summaryRes, prevRes] = await Promise.all([
         callServer('getDenominationRecords', state.currentDate),
-        callServer('getDailySummary', state.currentDate)
+        callServer('getDailySummary', state.currentDate),
+        callServer('getPreviousDayClosing', state.currentDate)
       ]);
 
       if (summaryRes.success && summaryRes.data) {
         state.summary = summaryRes.data;
       }
 
+      // Store yesterday's closing for reference
+      state.prevDayClosing = (prevRes.success && prevRes.data) ? prevRes.data.closingCash : null;
+      state.prevDayDate    = (prevRes.success && prevRes.data) ? prevRes.data.date : null;
+
       if (denomRes.success) {
         state.denomRecords = denomRes.data || [];
         autoSwitchDenomTab();
         renderDenomRecords(state.denomRecords);
         applyClosedDayGuard();
+        updatePrevClosingRef();
       }
     } catch(e) {
       console.error(e);
       container.innerHTML = '<div class="text-center text-red-400 py-4 text-sm">Failed to load records</div>';
+    }
+  }
+
+  function updatePrevClosingRef() {
+    const banner = document.getElementById('prevClosingRef');
+    const amountEl = document.getElementById('prevClosingAmount');
+    const matchEl  = document.getElementById('prevClosingMatch');
+    if (!banner) return;
+
+    // Only show on Opening tab, only for Auditor, only if no opening saved yet
+    const hasOpening = (state.denomRecords || []).some(r => r.type === 'START');
+    if (state.denomTab !== 'START' || hasOpening || !isAuditor()) {
+      banner.classList.add('hidden');
+      return;
+    }
+
+    if (state.prevDayClosing !== null) {
+      banner.classList.remove('hidden');
+      amountEl.textContent = fmt(state.prevDayClosing);
+      // Live comparison updated by calcDenomTotal
+      refreshPrevClosingMatch();
+    } else {
+      // First day ever — no previous closing
+      banner.classList.remove('hidden');
+      amountEl.textContent = '—';
+      matchEl.textContent  = 'First Day';
+      matchEl.className    = 'text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500';
+    }
+  }
+
+  function refreshPrevClosingMatch() {
+    const matchEl = document.getElementById('prevClosingMatch');
+    if (!matchEl || state.prevDayClosing === null) return;
+
+    // Read current denomination total
+    let currentTotal = 0;
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-' + bill);
+      currentTotal += (parseFloat(el?.value) || 0) * bill;
+    });
+
+    const diff = currentTotal - state.prevDayClosing;
+    if (Math.abs(diff) < 0.01) {
+      matchEl.textContent = '✓ Matched';
+      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700';
+    } else if (diff > 0) {
+      matchEl.textContent = `+${fmt(diff)} Over`;
+      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700';
+    } else {
+      matchEl.textContent = `${fmt(Math.abs(diff))} Short`;
+      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700';
     }
   }
 
@@ -504,9 +562,59 @@
     }
   }
 
+  async function confirmAuditApprove() {
+    const notes = document.getElementById('auditNotes')?.value?.trim() || '';
+    if (!confirm('Approve and close this day? This action cannot be undone.')) return;
+
+    const res = await callServer('auditApproveDay', {
+      date : state.currentDate,
+      notes: notes
+    });
+
+    if (res.success) {
+      toast('Day approved and closed ✓', 'success');
+      loadDayData();
+      loadDenominations();
+    } else {
+      toast(res.message || 'Failed to approve', 'error');
+    }
+  }
+  
   function applyClosedDayGuard() {
-    const isClosed = state.summary && state.summary.status === 'CLOSED';
+    const status   = state.summary?.status;
+    const isClosed = status === 'CLOSED';
+    const isPendingAudit = status === 'PENDING_AUDIT';
     const isToday  = state.currentDate === new Date().toISOString().split('T')[0];
+
+    // Show audit approve button for Auditor when day is PENDING_AUDIT
+    let auditBanner = document.getElementById('pendingAuditBanner');
+    if (auditBanner) auditBanner.remove();
+
+    if (isPendingAudit && isAuditor()) {
+      const container = document.getElementById('denomCardContainer');
+      if (container) {
+        auditBanner = document.createElement('div');
+        auditBanner.id = 'pendingAuditBanner';
+        auditBanner.className = 'mb-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl p-4 shadow-sm';
+        auditBanner.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🔍</span>
+            <div>
+              <div class="text-sm font-bold text-amber-800">Pending Audit Review</div>
+              <div class="text-xs text-amber-600 mt-0.5">Cashier has submitted closing for <span class="font-mono font-bold">${state.currentDate}</span>. Review entries and approve to close the day.</div>
+            </div>
+          </div>
+          <div class="flex gap-2 w-full sm:w-auto">
+            <input type="text" id="auditNotes" placeholder="Audit notes (optional)"
+              class="flex-1 sm:w-48 text-xs px-3 py-2 border border-amber-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-amber-500">
+            <button onclick="confirmAuditApprove()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition whitespace-nowrap">
+              ✓ Approve & Close
+            </button>
+          </div>
+        `;
+        container.parentElement.insertBefore(auditBanner, container);
+      }
+    }
 
     // Remove any existing guard banner first
     document.getElementById('closedDayBanner')?.remove();
