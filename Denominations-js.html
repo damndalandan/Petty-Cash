@@ -7,7 +7,7 @@
     const container = document.getElementById('denomGrid');
     if(!container) return;
 
-    container.innerHTML = billTypes.map(bill => {
+    container.innerHTML = BILLS.map(bill => {
       let colorClass = 'text-gray-700'; 
       if(bill >= 1000) colorClass = 'text-blue-600';
       else if(bill >= 500) colorClass = 'text-yellow-600';
