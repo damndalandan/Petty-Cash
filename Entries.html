@@ -95,12 +95,22 @@
           </div>
         </div>
         <div class="overflow-x-auto flex-1">
+          <!-- Carried-forward advances notice -->
+          <div id="carriedForwardNotice" class="hidden px-4 py-2 bg-orange-50 border-b border-orange-200 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2 text-xs text-orange-700">
+              <span>📅</span>
+              <span id="carriedForwardText" class="font-medium"></span>
+            </div>
+            <button onclick="navigate('advances')" class="text-xs font-bold text-orange-700 hover:text-orange-900 underline whitespace-nowrap">
+              View All →
+            </button>
+          </div>
           <table class="w-full text-left text-sm">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
               <tr>
                 <th class="px-4 py-3">Details</th>
                 <th class="px-4 py-3 text-right">Amount</th>
-                <th class="px-4 py-3 text-center">Receipt</th>
+                <th class="px-4 py-3 text-center">Receipt / Action</th>
                 <th class="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>

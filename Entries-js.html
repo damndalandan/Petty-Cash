@@ -84,7 +84,25 @@ async function loadEntries(triggerEl) {
     state.entries = res.data || [];
     renderEntries();
     updateDashStats();
+    updateCarriedForwardNotice();
   }
+}
+
+function updateCarriedForwardNotice() {
+  const notice  = document.getElementById('carriedForwardNotice');
+  const textEl  = document.getElementById('carriedForwardText');
+  if (!notice || !textEl) return;
+
+  const carried = state.entries.filter(e => e.carriedForward);
+  if (carried.length === 0) {
+    notice.classList.add('hidden');
+    return;
+  }
+
+  const total = carried.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  notice.classList.remove('hidden');
+  textEl.textContent =
+    `${carried.length} unliquidated advance${carried.length > 1 ? 's' : ''} carried forward — ${fmt(total)} still outstanding`;
 }
 
 function entryTypeBadge(type) {
@@ -113,30 +131,63 @@ function renderEntries() {
   }
 
   tbody.innerHTML = filtered.map(e => {
-    const isSpecial = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
-    const rowBg = e.type === 'CASH_OVER'    ? 'bg-emerald-50/40'
-                : e.type === 'REPLENISHMENT' ? 'bg-purple-50/40'
-                : e.type === 'CASH_ADVANCE'  ? 'bg-blue-50/40'
-                : '';
+    const isSpecial      = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
+    const isCarried      = !!e.carriedForward;
 
-    const receiptCell = isSpecial
-      ? entryTypeBadge(e.type)
-      : e.hasReceipt
-        ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition">🧾 View</button>'
-        : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">No Receipt</span>';
+    const rowBg = isCarried
+      ? 'bg-orange-50/60'
+      : e.type === 'CASH_OVER'    ? 'bg-emerald-50/40'
+      : e.type === 'REPLENISHMENT' ? 'bg-purple-50/40'
+      : e.type === 'CASH_ADVANCE'  ? 'bg-blue-50/40'
+      : '';
+
+    // Carried-forward badge + days outstanding
+    const carriedBadge = isCarried
+      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">
+           📅 Carried · ${e.daysOutstanding}d · from ${e.originalDate}
+         </span>`
+      : '';
+
+    // Pending liquidation badge
+    const pendingBadge = e.status === 'LIQUIDATION_PENDING'
+      ? '<span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">Pending Review</span>'
+      : '';
+
+    const receiptCell = isCarried
+      ? `<button onclick="navigate('advances')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition">
+           Liquidate →
+         </button>`
+      : isSpecial
+        ? entryTypeBadge(e.type)
+        : e.hasReceipt
+          ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition">🧾 View</button>'
+          : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">No Receipt</span>';
+
+    // Carried-forward rows: no edit/delete (they belong to a previous date)
+    const actionCell = isCarried
+      ? '<td class="px-4 py-3"></td>'
+      : '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
+          + (!isSpecial ? '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-600 hover:text-blue-900 mx-1 text-base">✏️</button>' : '')
+          + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-500 hover:text-red-700 mx-1 text-base">🗑️</button>'
+          + '</td>';
 
     return '<tr class="hover:bg-gray-50 transition group ' + rowBg + '">'
       + '<td class="px-4 py-3">'
-        + '<div class="font-medium text-gray-900 flex items-center gap-2">' + e.description + ' ' + entryTypeBadge(e.type) + '</div>'
-        + '<div class="text-xs text-gray-500 mt-0.5">' + e.category
-          + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
-          + '</div></td>'
-      + '<td class="px-4 py-3 text-right font-mono ' + (isSpecial ? 'text-blue-700' : 'text-gray-700') + '">' + fmt(e.amount) + '</td>'
+        + '<div class="font-medium text-gray-900 flex items-center gap-2 flex-wrap">'
+          + e.description + ' ' + entryTypeBadge(e.type) + pendingBadge
+        + '</div>'
+        + '<div class="flex items-center gap-2 mt-1 flex-wrap">'
+          + '<span class="text-xs text-gray-500">' + (e.category || '')
+            + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
+          + '</span>'
+          + carriedBadge
+        + '</div>'
+      + '</td>'
+      + '<td class="px-4 py-3 text-right font-mono ' + (isSpecial || isCarried ? 'text-orange-700' : 'text-gray-700') + '">'
+        + fmt(e.amount)
+      + '</td>'
       + '<td class="px-4 py-3 text-center">' + receiptCell + '</td>'
-      + '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
-        + (!isSpecial ? '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-600 hover:text-blue-900 mx-1 text-base">✏️</button>' : '')
-        + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-500 hover:text-red-700 mx-1 text-base">🗑️</button>'
-        + '</td></tr>';
+      + actionCell;
   }).join('');
 }
 

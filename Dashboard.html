@@ -26,8 +26,20 @@
         </div>
       </div>
 
+      <!-- Day Status Banner -->
+      <div id="dayStatusBanner" class="hidden rounded-xl px-5 py-3 flex items-center justify-between gap-3 border shadow-sm">
+        <div class="flex items-center gap-3">
+          <span id="dayStatusIcon" class="text-2xl">⏳</span>
+          <div>
+            <div class="text-sm font-bold" id="dayStatusTitle">Loading...</div>
+            <div class="text-xs opacity-75" id="dayStatusSub"></div>
+          </div>
+        </div>
+        <div id="dayStatusAction"></div>
+      </div>
+
       <!-- Stats Grid -->
-      <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
         <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-blue-500">
           <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Opening Cash</h3>
           <p class="text-lg md:text-2xl font-bold text-gray-800 font-mono" id="stat-opening">₱0.00</p>
@@ -35,6 +47,10 @@
         <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-red-500">
           <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Total Expenses</h3>
           <p class="text-lg md:text-2xl font-bold text-red-600 font-mono" id="stat-expenses">₱0.00</p>
+        </div>
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-purple-500">
+          <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Replenishment</h3>
+          <p class="text-lg md:text-2xl font-bold text-purple-600 font-mono" id="stat-replenishment">₱0.00</p>
         </div>
         <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-yellow-500">
           <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Closing Cash</h3>
@@ -44,7 +60,6 @@
              <span id="stat-expected" class="font-mono font-bold text-gray-700">₱0.00</span>
           </div>
         </div>
-        
         <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
            <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-1">With Receipt</h3>
            <p class="text-lg font-mono font-medium text-gray-700" id="stat-receipt">₱0.00</p>
@@ -53,6 +68,21 @@
            <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-1">No Receipt</h3>
            <p class="text-lg font-mono font-medium text-gray-700" id="stat-noreceipt">₱0.00</p>
         </div>
+      </div>
+
+      <!-- Outstanding Cash Advances Alert -->
+      <div id="outstandingAdvBanner" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-4 shadow-sm">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl">💳</span>
+          <div>
+            <div class="text-sm font-bold text-blue-800" id="outstandingAdvTitle">Outstanding Cash Advances</div>
+            <div class="text-xs text-blue-600" id="outstandingAdvSub"></div>
+          </div>
+        </div>
+        <button onclick="navigate('advances')"
+          class="whitespace-nowrap px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition">
+          View All →
+        </button>
       </div>
 
       <!-- Discrepancy Overview -->

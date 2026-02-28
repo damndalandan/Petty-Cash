@@ -339,23 +339,39 @@ function recalculateDailySummary(date) {
         cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0;
 
     for (let i = 1; i < entryData.length; i++) {
-      const row   = entryData[i];
-      const rDate = normalizeDate(row[1]);
-      if (rDate !== date || row[10] === 'DELETED') continue;
+      const row    = entryData[i];
+      const rDate  = normalizeDate(row[1]);
+      const type   = row[2];
+      const status = row[10];
 
-      const amt  = parseFloat(row[5]) || 0;
-      const type = row[2];
+      if (status === 'DELETED') continue;
 
-      if (type === 'CASH_ADVANCE') {
+      const amt = parseFloat(row[5]) || 0;
+
+      // Entries recorded ON this date
+      if (rDate === date) {
+        if (type === 'CASH_ADVANCE') {
+          cashAdvance += amt;
+        } else if (type === 'CASH_OVER') {
+          totalCashOver += amt;
+        } else if (type === 'REPLENISHMENT') {
+          totalReplenishment += amt;
+        } else {
+          totalExp += amt;
+          if (row[6] === 'YES') totalReceipt   += amt;
+          else                  totalNoReceipt += amt;
+        }
+        continue;
+      }
+
+      // Carried-forward unliquidated advances from BEFORE this date
+      // They still count against the expected balance until liquidated
+      if (
+        type === 'CASH_ADVANCE' &&
+        rDate < date &&
+        status !== 'LIQUIDATED'
+      ) {
         cashAdvance += amt;
-      } else if (type === 'CASH_OVER') {
-        totalCashOver += amt;
-      } else if (type === 'REPLENISHMENT') {
-        totalReplenishment += amt;
-      } else {
-        totalExp += amt;
-        if (row[6] === 'YES') totalReceipt   += amt;
-        else                  totalNoReceipt += amt;
       }
     }
 
@@ -370,7 +386,7 @@ function recalculateDailySummary(date) {
       if (type === 'END')   { closingCash = total; hasClosing = true; }
     }
 
-    const expected = openingCash - (totalExp + cashAdvance);
+    const expected = (openingCash + totalReplenishment) - (totalExp + cashAdvance);
     const variance = closingCash - expected;
     const status   = hasClosing ? 'PENDING_AUDIT' : 'OPEN';
 
@@ -601,24 +617,67 @@ function getExpenseEntries(date) {
     for (let i = 1; i < dataRange.length; i++) {
       const row     = dataRange[i];
       const rowDate = normalizeDate(row[1]);
-      if (rowDate !== date || row[10] === 'DELETED') continue;
+      const type    = row[2];
+      const status  = row[10];
 
-      entries.push({
-        id         : row[0],
-        date       : rowDate,
-        type       : row[2],
-        category   : row[3],
-        description: row[4],
-        amount     : row[5],
-        hasReceipt : row[6] === 'YES',
-        referenceNo: row[7],
-        requestedBy: row[8],
-        approvedBy : row[9],
-        status     : row[10],
-        createdAt  : row[11],
-        updatedAt  : row[12]
-      });
+      if (status === 'DELETED') continue;
+
+      // Always include entries recorded ON this date
+      if (rowDate === date) {
+        entries.push({
+          id              : row[0],
+          date            : rowDate,
+          type            : type,
+          category        : row[3],
+          description     : row[4],
+          amount          : row[5],
+          hasReceipt      : row[6] === 'YES',
+          referenceNo     : row[7],
+          requestedBy     : row[8],
+          approvedBy      : row[9],
+          status          : status,
+          createdAt       : row[11],
+          updatedAt       : row[12],
+          carriedForward  : false,
+          originalDate    : rowDate
+        });
+        continue;
+      }
+
+      // Carry forward unliquidated cash advances from BEFORE this date
+      if (
+        type === 'CASH_ADVANCE' &&
+        rowDate < date &&
+        status !== 'LIQUIDATED' &&
+        status !== 'DELETED'
+      ) {
+        const issuedDate  = rowDate;
+        const msPerDay    = 1000 * 60 * 60 * 24;
+        const daysOut     = Math.floor(
+          (new Date(date) - new Date(issuedDate)) / msPerDay
+        );
+
+        entries.push({
+          id              : row[0],
+          date            : date,          // appears on today's view
+          type            : type,
+          category        : row[3],
+          description     : row[4],
+          amount          : row[5],
+          hasReceipt      : false,
+          referenceNo     : row[7],
+          requestedBy     : row[8],
+          approvedBy      : row[9],
+          status          : status,
+          createdAt       : row[11],
+          updatedAt       : row[12],
+          carriedForward  : true,
+          originalDate    : issuedDate,
+          daysOutstanding : daysOut
+        });
+      }
     }
+
     return { success: true, data: entries };
   } catch(e) {
     return { success: false, message: e.toString(), data: [] };
@@ -1043,6 +1102,56 @@ function getPreviousDayClosing(date) {
     return { success: true, data: best };
   } catch(e) {
     return { success: false, message: e.toString(), data: null };
+  }
+}
+
+function getDayStatus(date) {
+  // Returns full status info for a given date including outstanding advances
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sumRows = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    let summaryStatus = 'NO_RECORD';
+    let openingCash   = 0;
+    let closingCash   = 0;
+    let replenishment = 0;
+
+    for (let i = 1; i < sumRows.length; i++) {
+      if (normalizeDate(sumRows[i][1]) !== date) continue;
+      summaryStatus = sumRows[i][11] || 'OPEN';
+      openingCash   = parseFloat(sumRows[i][2])  || 0;
+      closingCash   = parseFloat(sumRows[i][9])  || 0;
+      replenishment = parseFloat(sumRows[i][8])  || 0;
+      break;
+    }
+
+    // Count outstanding cash advances for this date and earlier
+    const entryRows  = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    let outstandingAdvances = 0;
+    let outstandingTotal    = 0;
+
+    for (let i = 1; i < entryRows.length; i++) {
+      const row    = entryRows[i];
+      const rDate  = normalizeDate(row[1]);
+      const type   = row[2];
+      const status = row[10];
+      if (type !== 'CASH_ADVANCE') continue;
+      if (status === 'DELETED' || status === 'LIQUIDATED') continue;
+      if (rDate > date) continue;
+      outstandingAdvances++;
+      outstandingTotal += parseFloat(row[5]) || 0;
+    }
+
+    return {
+      success            : true,
+      status             : summaryStatus,
+      openingCash        : openingCash,
+      closingCash        : closingCash,
+      replenishment      : replenishment,
+      outstandingAdvances: outstandingAdvances,
+      outstandingTotal   : outstandingTotal
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
   }
 }
 

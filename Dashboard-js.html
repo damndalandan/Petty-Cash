@@ -174,20 +174,22 @@ function updateDashStats() {
   const opening = summary.openingCash || 0;
   const closing = summary.closingCash || 0;
 
-  const withReceipt = state.entries.filter(e => e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-  const noReceipt = state.entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-  const totalExp = withReceipt + noReceipt;
+  const withReceipt   = state.entries.filter(e => e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  const noReceipt     = state.entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  const totalExp      = withReceipt + noReceipt;
+  const totalReplenish = state.entries.filter(e => e.type === 'REPLENISHMENT' && e.status !== 'DELETED').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  const so = document.getElementById('stat-opening'); if(so) so.textContent = fmt(opening);
-  const se = document.getElementById('stat-expenses'); if(se) se.textContent = fmt(totalExp);
-  const sc = document.getElementById('stat-closing'); if(sc) sc.textContent = fmt(closing);
+  const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
+  const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExp);
+  const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
+  const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish);
 
-  // Compute expected live from entries so it stays responsive before summary is saved
+  // Expected = opening + replenishment - expenses - advances
   const liveCashAdv = state.entries
     .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED')
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  const expectedInfo = opening - (totalExp + liveCashAdv);
+  const expectedInfo = (opening + totalReplenish) - (totalExp + liveCashAdv);
 
   const sexp = document.getElementById('stat-expected');
   if (sexp) {
@@ -196,11 +198,66 @@ function updateDashStats() {
     else sexp.classList.remove('text-red-500');
   }
 
-  const sr = document.getElementById('stat-receipt'); if(sr) sr.textContent = fmt(withReceipt);
-  const sn = document.getElementById('stat-noreceipt'); if(sn) sn.textContent = fmt(noReceipt);
+  const sr = document.getElementById('stat-receipt');    if(sr) sr.textContent = fmt(withReceipt);
+  const sn = document.getElementById('stat-noreceipt');  if(sn) sn.textContent = fmt(noReceipt);
+  const qsCash = document.getElementById('qs-cash');     if(qsCash) qsCash.textContent = fmt(opening);
+  const qsExp  = document.getElementById('qs-expenses'); if(qsExp)  qsExp.textContent  = fmt(totalExp);
 
-  const qsCash = document.getElementById('qs-cash'); if(qsCash) qsCash.textContent = fmt(opening);
-  const qsExp = document.getElementById('qs-expenses'); if(qsExp) qsExp.textContent = fmt(totalExp);
+  // Load day status banner and outstanding advances
+  loadDayStatusBanner();
+}
+
+async function loadDayStatusBanner() {
+  const res = await callServer('getDayStatus', state.currentDate);
+  if (!res.success) return;
+
+  // ── Day Status Banner ──
+  const banner    = document.getElementById('dayStatusBanner');
+  const iconEl    = document.getElementById('dayStatusIcon');
+  const titleEl   = document.getElementById('dayStatusTitle');
+  const subEl     = document.getElementById('dayStatusSub');
+  const actionEl  = document.getElementById('dayStatusAction');
+
+  if (!banner) return;
+  banner.classList.remove('hidden');
+
+  const statusMap = {
+    NO_RECORD    : { icon:'📋', title:'No record yet', sub:'Auditor has not opened this day.', bg:'bg-gray-50 border-gray-200 text-gray-700' },
+    OPEN         : { icon:'🟢', title:'Day is Open',   sub:'Cashier can record expenses.',      bg:'bg-green-50 border-green-200 text-green-800' },
+    PENDING_AUDIT: { icon:'🔍', title:'Pending Audit', sub:'Closing submitted. Awaiting auditor approval.', bg:'bg-amber-50 border-amber-300 text-amber-800' },
+    CLOSED       : { icon:'🔒', title:'Day Closed',    sub:'Auditor has approved and closed this day.',     bg:'bg-blue-50 border-blue-200 text-blue-800' }
+  };
+
+  const info = statusMap[res.status] || statusMap['NO_RECORD'];
+  banner.className = `rounded-xl px-5 py-3 flex items-center justify-between gap-3 border shadow-sm ${info.bg}`;
+  iconEl.textContent  = info.icon;
+  titleEl.textContent = info.title;
+  titleEl.className   = `text-sm font-bold`;
+  subEl.textContent   = info.sub;
+
+  // Show approve button for Auditor on PENDING_AUDIT
+  actionEl.innerHTML = '';
+  if (res.status === 'PENDING_AUDIT' && isAuditor()) {
+    actionEl.innerHTML = `
+      <button onclick="navigate('denominations')"
+        class="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition">
+        Review & Approve →
+      </button>`;
+  }
+
+  // ── Outstanding Advances Banner ──
+  const advBanner = document.getElementById('outstandingAdvBanner');
+  if (advBanner) {
+    if (res.outstandingAdvances > 0) {
+      advBanner.classList.remove('hidden');
+      document.getElementById('outstandingAdvTitle').textContent =
+        `${res.outstandingAdvances} Outstanding Cash Advance${res.outstandingAdvances > 1 ? 's' : ''}`;
+      document.getElementById('outstandingAdvSub').textContent =
+        `Total of ${fmt(res.outstandingTotal)} still unliquidated as of ${state.currentDate}`;
+    } else {
+      advBanner.classList.add('hidden');
+    }
+  }
 }
 
 </script>
