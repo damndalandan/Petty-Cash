@@ -249,12 +249,12 @@ function showClosingModal(actual) {
   if(overagePanel)  overagePanel.classList.add('hidden');
 
   // Reset checkboxes
-  const chkShortage = document.getElementById('chkCreateShortage');
-  const chkOverage  = document.getElementById('chkCreateOverage');
-  const chkReplenish = document.getElementById('chkReplenish');
-  if(chkShortage) chkShortage.checked = false;
-  if(chkOverage)  chkOverage.checked  = false;
-  if(chkReplenish) chkReplenish.checked = false;
+  const chkShortage    = document.getElementById('chkCreateShortage');
+  const chkCustodian   = document.getElementById('chkCustodianTopUp');
+  const chkOverage     = document.getElementById('chkCreateOverage');
+  if (chkShortage)  chkShortage.checked  = false;
+  if (chkCustodian) chkCustodian.checked = false;
+  if (chkOverage)   chkOverage.checked   = false;
 
   if (Math.abs(variance) < 0.01) {
     // ── BALANCED ──
@@ -295,17 +295,16 @@ function closeClosingModal() {
 async function confirmClosingSave() {
   if (!pendingClosingData) return;
 
-  const vEl = document.getElementById('modVariance');
-  // Read from data attribute — reliable, no regex on currency strings
+  const vEl         = document.getElementById('modVariance');
   const varianceVal = parseFloat(vEl?.dataset.value || '0');
 
   const chkShortage  = document.getElementById('chkCreateShortage');
+  const chkCustodian = document.getElementById('chkCustodianTopUp');
   const chkOverage   = document.getElementById('chkCreateOverage');
-  const chkReplenish = document.getElementById('chkReplenish');
 
-  const createShortageEntry = chkShortage?.checked && varianceVal < -0.01;
-  const createOverageEntry  = chkOverage?.checked  && varianceVal >  0.01;
-  const createReplenish     = chkReplenish?.checked && varianceVal < -0.01;
+  const createShortageEntry  = chkShortage?.checked  && varianceVal < -0.01;
+  const createCustodianTopUp = chkCustodian?.checked && varianceVal < -0.01;
+  const createOverageEntry   = chkOverage?.checked   && varianceVal >  0.01;
 
   const dataToSave = { ...pendingClosingData };
   closeClosingModal();
@@ -313,72 +312,65 @@ async function confirmClosingSave() {
   // 1. Save the closing denomination record
   await executeSave(dataToSave);
 
-  // 2. Handle SHORTAGE
+  // 2. Record shortage — books the missing cash as an expense
   if (createShortageEntry) {
-    // Record a "Cash Shortage" expense — the cash is gone, this is the audit trail
-    const shortageAmt = Math.abs(varianceVal);
-    const adjData = {
-      date: dataToSave.date,
-      type: 'EXPENSE',
-      category: 'Miscellaneous',
-      description: `Cash Shortage — actual is ${fmt(shortageAmt)} less than expected`,
-      amount: shortageAmt,
-      hasReceipt: false,
+    const amt = Math.abs(varianceVal);
+    toast('Recording shortage entry...', 'info');
+    const res = await callServer('saveExpenseEntry', {
+      date       : dataToSave.date,
+      type       : 'EXPENSE',
+      category   : 'Miscellaneous',
+      description: `Cash Shortage — ₱${amt.toFixed(2)} unaccounted`,
+      amount     : amt,
+      hasReceipt : false,
       referenceNo: 'SHORTAGE-ADJ',
       requestedBy: 'System',
-      approvedBy: 'Auto'
-    };
-    toast('Recording shortage entry...', 'info');
-    const res = await callServer('saveExpenseEntry', adjData);
-    if(res.success) toast(`Shortage of ${fmt(shortageAmt)} recorded`, 'success');
+      approvedBy : 'Auto'
+    });
+    if (res.success) toast(`Shortage of ${fmt(amt)} recorded ✓`, 'success');
     else toast('Failed to record shortage: ' + res.message, 'error');
   }
 
-  // 3. Handle OVERAGE
+  // 3. Custodian top-up — logs that the custodian replaced the missing cash
+  if (createCustodianTopUp) {
+    const amt = Math.abs(varianceVal);
+    toast('Recording custodian top-up...', 'info');
+    const res = await callServer('saveReplenishmentEntry', {
+      date       : dataToSave.date,
+      type       : 'REPLENISHMENT',
+      category   : 'Replenishment',
+      description: `Custodian Top-Up — ₱${amt.toFixed(2)} replaced by custodian from own pocket`,
+      amount     : amt,
+      hasReceipt : false,
+      referenceNo: 'CUSTODIAN-TOPUP',
+      requestedBy: 'Custodian',
+      approvedBy : ''
+    });
+    if (res.success) toast(`Custodian top-up of ${fmt(amt)} logged ✓`, 'success');
+    else toast('Failed to log top-up: ' + res.message, 'error');
+  }
+
+  // 4. Record overage
   if (createOverageEntry) {
-    // Record a CASH_OVER entry — this is a special type that adds back to the fund
-    const overAmt = Math.abs(varianceVal);
-    const overData = {
-      date: dataToSave.date,
-      type: 'CASH_OVER',
-      category: 'Miscellaneous',
-      description: `Cash Overage — actual is ${fmt(overAmt)} more than expected`,
-      amount: overAmt,
-      hasReceipt: false,
+    const amt = Math.abs(varianceVal);
+    toast('Recording overage entry...', 'info');
+    const res = await callServer('saveCashOverEntry', {
+      date       : dataToSave.date,
+      type       : 'CASH_OVER',
+      category   : 'Miscellaneous',
+      description: `Cash Overage — ₱${amt.toFixed(2)} more than expected`,
+      amount     : amt,
+      hasReceipt : false,
       referenceNo: 'OVER-ADJ',
       requestedBy: 'System',
-      approvedBy: 'Auto'
-    };
-    toast('Recording overage entry...', 'info');
-    const res = await callServer('saveCashOverEntry', overData);
-    if(res.success) toast(`Overage of ${fmt(overAmt)} recorded`, 'success');
+      approvedBy : 'Auto'
+    });
+    if (res.success) toast(`Overage of ${fmt(amt)} recorded ✓`, 'success');
     else toast('Failed to record overage: ' + res.message, 'error');
   }
 
-  // 4. Handle REPLENISHMENT request (shortage path only)
-  if (createReplenish) {
-    const replenishAmt = Math.abs(varianceVal);
-    const repData = {
-      date: dataToSave.date,
-      type: 'REPLENISHMENT',
-      category: 'Replenishment',
-      description: `Fund replenishment request for shortage of ${fmt(replenishAmt)}`,
-      amount: replenishAmt,
-      hasReceipt: false,
-      referenceNo: 'REPLENISH-REQ',
-      requestedBy: 'System',
-      approvedBy: ''
-    };
-    toast('Creating replenishment request...', 'info');
-    const res = await callServer('saveReplenishmentEntry', repData);
-    if(res.success) toast(`Replenishment request of ${fmt(replenishAmt)} created`, 'success');
-    else toast('Failed to create replenishment: ' + res.message, 'error');
-  }
-
-  // Refresh everything
   loadDayData();
 }
-
 async function executeSave(data) {
   showLoading(true);
   try {

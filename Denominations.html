@@ -106,42 +106,46 @@
 
       <!-- ── SHORTAGE PANEL ── shown when variance < 0 -->
       <div id="shortagePanel" class="hidden mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 overflow-hidden">
-        <div class="px-4 py-3 bg-red-100 border-b border-red-200 flex items-center gap-2">
-          <span class="text-red-600 text-lg">⚠️</span>
-          <div>
+      <div class="px-4 py-3 bg-red-100 border-b border-red-200 flex items-center gap-2">
+         <span class="text-red-600 text-lg">⚠️</span>
+         <div>
             <div class="text-sm font-bold text-red-800">Cash Shortage Detected</div>
             <div class="text-xs text-red-600">The physical count is <span class="variance-amount font-bold">₱0.00</span> short</div>
-          </div>
-        </div>
-        <div class="p-4 space-y-3">
+         </div>
+      </div>
+      <div class="p-4 space-y-3">
 
-          <!-- Option A: Record shortage -->
-          <label class="flex items-start gap-3 cursor-pointer group">
+         <!-- Option A: Record shortage (books adjustment) -->
+         <label class="flex items-start gap-3 cursor-pointer group p-3 rounded-lg hover:bg-red-100 transition">
             <input type="checkbox" id="chkCreateShortage" class="mt-0.5 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500">
             <div>
-              <div class="text-sm font-bold text-red-800 group-hover:text-red-900">Record Shortage Entry</div>
-              <div class="text-xs text-red-600 mt-0.5">
-                Creates an expense entry of <span class="variance-amount font-bold">₱0.00</span> under "Miscellaneous" so the books balance.
-                Use this when cash is simply missing (unreceipted spend, counting error, etc.)
-              </div>
+            <div class="text-sm font-bold text-red-800">Record Shortage Entry</div>
+            <div class="text-xs text-red-500 mt-0.5">
+               Books <span class="variance-amount font-bold">₱0.00</span> as a miscellaneous expense so the ledger balances.
+               Use when cash is unaccounted for (unreceipted spend, counting error).
             </div>
-          </label>
+            </div>
+         </label>
 
-          <div class="border-t border-red-200"></div>
+         <div class="border-t border-red-200"></div>
 
-          <!-- Option B: Request replenishment -->
-          <label class="flex items-start gap-3 cursor-pointer group">
-            <input type="checkbox" id="chkReplenish" class="mt-0.5 w-4 h-4 text-orange-500 rounded border-gray-300 focus:ring-orange-400">
+         <!-- Option B: Custodian covers shortage from own pocket -->
+         <label class="flex items-start gap-3 cursor-pointer group p-3 rounded-lg hover:bg-orange-50 transition">
+            <input type="checkbox" id="chkCustodianTopUp" class="mt-0.5 w-4 h-4 text-orange-500 rounded border-gray-300 focus:ring-orange-400">
             <div>
-              <div class="text-sm font-bold text-orange-800 group-hover:text-orange-900">Request Replenishment</div>
-              <div class="text-xs text-orange-600 mt-0.5">
-                Logs a replenishment request for <span class="variance-amount font-bold">₱0.00</span> to top up the petty cash fund.
-                Use this when the fund is genuinely running low.
-              </div>
+            <div class="text-sm font-bold text-orange-800">Custodian Top-Up</div>
+            <div class="text-xs text-orange-600 mt-0.5">
+               The custodian will replace <span class="variance-amount font-bold">₱0.00</span> from their own pocket.
+               Logs this as a cash top-up so the fund is whole. The custodian may file a reimbursement separately.
             </div>
-          </label>
+            </div>
+         </label>
 
-        </div>
+         <div class="p-3 bg-white rounded-lg border border-red-100 text-xs text-gray-500">
+            💡 You can select <strong>both</strong> — record the shortage for audit trail, and log the top-up to show the fund was made whole before closing.
+         </div>
+
+      </div>
       </div>
 
       <!-- ── OVERAGE PANEL ── shown when variance > 0 -->
