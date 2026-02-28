@@ -7,11 +7,11 @@ function buildDenomGrid() {
   const container = document.getElementById('denomGrid');
   if(!container) return;
   
-  // Use global BILLS if available, otherwise fallback
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  // Use global BILLS — defined in Global-js. Never fall back to a different list
+  // to avoid inconsistency between grid display and calculation.
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
 
   container.innerHTML = billTypes.map(bill => {
-    // Determine color/icon based on bill value for visual distinctness
     let colorClass = 'text-gray-700'; 
     if(bill >= 1000) colorClass = 'text-blue-600';
     else if(bill >= 500) colorClass = 'text-yellow-600';
@@ -21,12 +21,9 @@ function buildDenomGrid() {
     return `
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-3 xl:p-4 transition-all hover:shadow-md hover:-translate-y-1 group flex-1 min-w-[110px]">
        <div class="flex flex-col items-center gap-2">
-          <!-- Bill Image/Value -->
           <div class="text-xl xl:text-2xl font-black font-mono ${colorClass} opacity-80 group-hover:opacity-100 transition-opacity">
             ₱${bill}
           </div>
-          
-          <!-- Input -->
           <input type="number" 
                  id="denom-${bill}" 
                  data-bill="${bill}"
@@ -34,8 +31,6 @@ function buildDenomGrid() {
                  placeholder="0" 
                  class="w-full text-center text-xl font-bold p-2 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none text-gray-800"
                  oninput="calcDenomTotal(this)">
-          
-          <!-- Subtotal -->
           <div class="w-full text-center text-xs font-medium text-gray-400 border-t border-gray-100 pt-2 mt-1">
              <span class="font-mono text-gray-600 group-hover:text-blue-600 transition-colors" id="dsub-${bill}">₱0.00</span>
           </div>
@@ -47,10 +42,7 @@ function buildDenomGrid() {
 
 function calcDenomTotal(changedInput) {
   let total = 0;
-  
-  // Recalculate all
-  // Use global BILLS or fallback
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
 
   billTypes.forEach(bill => {
     const el = document.getElementById('denom-' + bill);
@@ -60,93 +52,77 @@ function calcDenomTotal(changedInput) {
     const sub = qty * bill;
     total += sub;
     
-    // Update subtotal display
     const sEl = document.getElementById('dsub-' + bill);
     if(sEl) sEl.textContent = fmt(sub);
   });
   
-  // Update Total Display with animation effect 
   const totalEl = document.getElementById('denomTotalDisplay');
-  // Simple check to add color if positive
   if (total > 0) {
       totalEl.classList.remove('text-gray-400');
       totalEl.classList.add('text-gray-800');
   } else {
       totalEl.classList.add('text-gray-400');
   }
-  totalEl.textContent = fmt(total).replace('₱', ''); // Remove symbol as it's separate in new design
+  totalEl.textContent = fmt(total).replace('₱', '');
 }
 
 function clearDenomForm() {
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
   billTypes.forEach(bill => {
     const el = document.getElementById('denom-' + bill);
     if(el) el.value = '';
     const sel = document.getElementById('dsub-' + bill);
     if(sel) sel.textContent = '₱0.00';
   });
-  document.getElementById('denomNotes').value = '';
-  document.getElementById('denomTotalDisplay').textContent = '0.00';
+  const notesEl = document.getElementById('denomNotes');
+  if(notesEl) notesEl.value = '';
+  const totalEl = document.getElementById('denomTotalDisplay');
+  if(totalEl) totalEl.textContent = '0.00';
 }
 
 function switchDenomTab(type) {
   state.denomTab = type;
   document.getElementById('denomType').value = type;
   
-  // UI References
   const btnStart = document.getElementById('btn-tab-start');
   const btnEnd = document.getElementById('btn-tab-end');
   const container = document.getElementById('denomCardContainer');
   const label = document.getElementById('denomLabel');
 
-  // Remove any existing blocking message if switching tabs
   const existingMsg = document.getElementById('openingBlockedMessage');
   if(existingMsg) existingMsg.remove();
   if(container) container.classList.remove('hidden');
 
-  // Reset basic styles
   btnStart.className = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
   btnEnd.className = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
   container.className = "bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-colors duration-500 border-t-4";
 
   if (type === 'START') {
-     // Opening Styles (Blue)
      btnStart.classList.add('bg-blue-600', 'text-white', 'shadow-md');
      btnEnd.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
-     
      container.classList.add('border-blue-500');
      label.textContent = "Opening Total";
-     
-     // CHECK FOR UNCLOSED PAST DATES
      checkOpeningEligibility();
-     
   } else {
-     // Closing Styles (Orange/Yellow)
      btnStart.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
      btnEnd.classList.add('bg-amber-500', 'text-white', 'shadow-md');
-     
      container.classList.add('border-amber-500');
      label.textContent = "Closing Total";
   }
 }
 
 async function checkOpeningEligibility() {
-   // Loading state?
-   // Only block if we truly find an unclosed date
-   
    const res = await callServer('findUnclosedPastDate', state.currentDate);
    if (res.success && res.date) {
-       // Block the view
        const container = document.getElementById('denomCardContainer');
        if(container) container.classList.add('hidden');
        
        const wrapper = container.parentElement; 
-       // Check if message already exists to avoid dupes
        if(document.getElementById('openingBlockedMessage')) return;
        
        const msg = document.createElement('div');
        msg.id = 'openingBlockedMessage';
-       msg.className = 'p-8 text-center bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm animate-pulse-once';
+       msg.className = 'p-8 text-center bg-red-50 border-l-4 border-red-500 rounded-r-xl shadow-sm';
        msg.innerHTML = `
           <div class="text-4xl mb-4">🚫</div>
           <h3 class="text-lg font-bold text-red-700 mb-2">Previous Day Unclosed</h3>
@@ -157,7 +133,6 @@ async function checkOpeningEligibility() {
              </button>
           </div>
        `;
-       
        wrapper.insertBefore(msg, container);
    }
 }
@@ -167,10 +142,6 @@ function goToDate(date) {
     if(picker) {
         picker.value = date;
         if(typeof onDateChange === 'function') onDateChange();
-        // Switch to Closing Tab automatically for that date
-        // setTimeout so page load can happen first?
-        // Actually onDateChange is async (calls loadDayData).
-        // But switching visual tab is instant.
         setTimeout(() => {
              navigate('denominations');
              switchDenomTab('END');
@@ -178,7 +149,6 @@ function goToDate(date) {
     }
 }
 
-// Backend Integration
 function showLoading(bool) {
   const btn = document.querySelector('button[onclick="saveDenomination()"]');
   if(!btn) return;
@@ -189,7 +159,7 @@ function showLoading(bool) {
     btn.disabled = true;
     btn.classList.add('opacity-75', 'cursor-wait');
   } else {
-    btn.innerHTML = btn.dataset.original || `<span>💾</span> Save Record`;
+    btn.innerHTML = btn.dataset.original || `<span>💾</span> Save Count`;
     btn.disabled = false;
     btn.classList.remove('opacity-75', 'cursor-wait');
   }
@@ -200,7 +170,7 @@ let pendingClosingData = null;
 async function saveDenomination() {
   const breakdown = {};
   let total = 0;
-  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1];
 
   billTypes.forEach(bill => {
     const el = document.getElementById('denom-' + bill);
@@ -221,30 +191,34 @@ async function saveDenomination() {
     notes: document.getElementById('denomNotes').value
   };
 
-  // If calculating Closing Cash, show confirmation modal
   if (state.denomTab === 'END') {
       pendingClosingData = data;
+      // FIX: Re-fetch fresh entries from server before showing closing modal
+      // to avoid stale state leading to wrong variance calculation
+      await refreshEntriesForClosingModal();
       showClosingModal(total);
       return;
   }
   
-  // Direct save for Opening
   await executeSave(data);
+}
+
+// FIX: New helper — fetches fresh entries + summary from server before closing modal
+async function refreshEntriesForClosingModal() {
+  const [entriesRes, summaryRes] = await Promise.all([
+    callServer('getExpenseEntries', state.currentDate),
+    callServer('getDailySummary', state.currentDate)
+  ]);
+  if (entriesRes.success) state.entries = entriesRes.data || [];
+  if (summaryRes.success && summaryRes.data) state.summary = summaryRes.data;
 }
 
 function showClosingModal(actual) {
     const modal = document.getElementById('closingModal');
     if(!modal) return;
 
-    // Calculate Expected
-    // Expected = Opening - Expenses
-    // We rely on state.summary and state.entries being up to date.
-    // Ideally we should re-fetch or ensure consistent state.
-    // Assuming loadDayData has run.
-
     const opening = (state.summary && state.summary.openingCash) ? parseFloat(state.summary.openingCash) : 0;
     
-    // Calculate total expenses from current entries state
     const expenses = state.entries
         .filter(e => e.type === 'EXPENSE' && e.status !== 'DELETED')
         .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
@@ -256,7 +230,6 @@ function showClosingModal(actual) {
     const expected = opening - (expenses + cashAdvance);
     const variance = actual - expected;
 
-    // Update UI
     document.getElementById('modExpected').textContent = fmt(expected);
     document.getElementById('modActual').textContent = fmt(actual);
     
@@ -299,15 +272,11 @@ function closeClosingModal() {
 }
 
 async function confirmClosingSave() {
-    // Check for pending data
     if (!pendingClosingData) return;
 
-    // Get current state from Modal UI BEFORE closing it
     const varianceEl = document.getElementById('modVariance');
     const chk = document.getElementById('chkAutoAdjust');
     
-    // Parse variance carefully. remove currency symbol, but keep minus sign
-    // Remove "₱" and "+" sign, keep "-"
     let varianceVal = 0;
     if(varianceEl) {
         const txt = varianceEl.innerText.replace(/[^\d.-]/g, '');
@@ -315,33 +284,18 @@ async function confirmClosingSave() {
     }
     
     const shouldAdjust = chk && chk.checked;
-    const dataToSave = { ...pendingClosingData }; // Clone
+    const dataToSave = { ...pendingClosingData };
 
     closeClosingModal();
     
-    // 1. Save the Closing Data
     await executeSave(dataToSave);
     
-    // 2. Create Adjustment if requested
-    // Logic: 
-    // Variance = Actual - Expected
-    // Expected = Opening - Expenses
-    // We want NewExpected = Actual
-    // So NewExpected = Expected + AdjustmentEffect
-    // Opening - (Expenses + AdjEntry) = Expected - AdjEntry
-    // Expected - AdjEntry = Actual
-    // AdjEntry = Expected - Actual = -Variance
-    
-    // So if Variance is -100 (Shortage), Entry Amount should be +100 (Expense increasing outflows).
-    // If Variance is +100 (Overage), Entry Amount should be -100 (Negative Expense decreasing outflows).
-    
     if (shouldAdjust && Math.abs(varianceVal) > 0.01) {
-        // Create entry
         const amount = -varianceVal;
         
         const adjData = {
             date: dataToSave.date,
-            type: 'EXPENSE', // Standard expense type
+            type: 'EXPENSE',
             category: 'Miscellaneous',
             description: varianceVal < 0 ? 'Cash Shortage Adjustment' : 'Cash Overage Adjustment',
             amount: amount, 
@@ -356,7 +310,7 @@ async function confirmClosingSave() {
             const res = await callServer('saveExpenseEntry', adjData);
             if(res.success) {
                 toast('Adjustment created successfully', 'success');
-                loadDayData(); // Refresh summary/dashboard
+                loadDayData();
             } else {
                 toast('Failed to balance: ' + res.message, 'error');
             }
@@ -375,7 +329,6 @@ async function executeSave(data) {
         toast('Record saved successfully', 'success');
         clearDenomForm();
         loadDayData();
-        // Also refresh summary if needed, but loadDayData handles it
       } else {
         toast(res.message || 'Failed to save', 'error'); 
       }
@@ -387,8 +340,13 @@ async function executeSave(data) {
   }
 }
 
+// FIX: loadDenominations now renders into the correct container ID 'savedDenomsContainer'
+// which is defined in Denominations.html below the card grid
 async function loadDenominations() {
   const container = document.getElementById('savedDenomsContainer');
+  // If the element doesn't exist yet, nothing to do
+  if (!container) return;
+
   container.innerHTML = '<div class="text-center py-6 text-gray-400 animate-pulse">Loading records...</div>';
   
   try {
@@ -409,10 +367,9 @@ async function loadDenominations() {
                   </div>
                   <div>
                     <div class="font-bold text-gray-800 text-sm">${label} Count</div>
-                    <div class="text-xs text-gray-400 font-mono">${new Date(d.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                    <div class="text-xs text-gray-400 font-mono">${new Date(d.timestamp || d.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
                   </div>
               </div>
-              
               <div class="text-right w-full sm:w-auto">
                  <div class="font-black text-xl text-gray-800 tracking-tight">${fmt(d.total)}</div>
                  <div class="text-xs text-gray-400 italic truncate max-w-[150px]">${d.notes || 'No notes'}</div>
@@ -431,21 +388,10 @@ async function loadDenominations() {
   }
 }
 
-// Initial Setup when page view is activated
-// This is likely handled by global router, but we ensure grid is built
-// We can hook into a hypothetical 'onViewLoad' if it exists, or just ensure buildDenomGrid is called
-// when script loads or when tab is switched. 
-// Ideally global script calls init functions. 
-// For now, let's expose an init function or just run it if page is visible?
-// 'BILLS' might not be ready if this runs too early. 
-// Let's assume the main Index logic calls `buildDenomGrid` or we attach it to window load.
-
 document.addEventListener('DOMContentLoaded', () => {
-    // Retry building grid if BILLS wasn't ready immediately
     setTimeout(buildDenomGrid, 100); 
 });
 
-// Also expose it globally if needed
 window.refreshDenomGrid = buildDenomGrid;
 
 </script>

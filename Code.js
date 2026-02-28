@@ -32,7 +32,6 @@ function include(filename) {
 function initializeSheets() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-  // PettyCash_Entries sheet
   let entriesSheet = ss.getSheetByName(SHEETS.ENTRIES);
   if (!entriesSheet) {
     entriesSheet = ss.insertSheet(SHEETS.ENTRIES);
@@ -45,12 +44,11 @@ function initializeSheets() {
     formatHeaderRow(entriesSheet);
   }
 
-  // PettyCash_Denominations sheet
   let denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
   if (!denomSheet) {
     denomSheet = ss.insertSheet(SHEETS.DENOMINATIONS);
     denomSheet.appendRow([
-      'Record ID', 'Date', 'Type', // Type: START, END, ADVANCE
+      'Record ID', 'Date', 'Type',
       'D_1000', 'D_500', 'D_200', 'D_100', 'D_50',
       'D_20', 'D_10', 'D_5', 'D_1',
       'Total', 'Notes', 'Timestamp'
@@ -59,7 +57,6 @@ function initializeSheets() {
     formatHeaderRow(denomSheet);
   }
 
-  // PettyCash_Summary sheet
   let summarySheet = ss.getSheetByName(SHEETS.SUMMARY);
   if (!summarySheet) {
     summarySheet = ss.insertSheet(SHEETS.SUMMARY);
@@ -90,14 +87,13 @@ function recalculateDailySummary(date) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     
-    // 1. CALCULATE EXPENSES FROM ENTRIES
     const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
     const entryData = entrySheet.getDataRange().getValues();
     
     let totalExp = 0;
     let totalReceipt = 0;
     let totalNoReceipt = 0;
-    let cashAdvance = 0; // If you track cash advances as entries
+    let cashAdvance = 0;
     
     for (let i = 1; i < entryData.length; i++) {
         let rDate = entryData[i][1];
@@ -113,7 +109,6 @@ function recalculateDailySummary(date) {
             if (type === 'CASH_ADVANCE') {
                 cashAdvance += amt;
             } else {
-                // Regular Expense
                 totalExp += amt;
                 if(hasReceipt) totalReceipt += amt;
                 else totalNoReceipt += amt;
@@ -121,14 +116,12 @@ function recalculateDailySummary(date) {
         }
     }
     
-    // 2. GET CASH COUNTS FROM DENOMINATIONS
     const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
     const denomData = denomSheet.getDataRange().getValues();
     
     let openingCash = 0;
     let closingCash = 0;
     
-    // We take the LATEST record for start/end if multiple exist
     for (let i = 1; i < denomData.length; i++) {
         let rDate = denomData[i][1];
         if (rDate instanceof Date) {
@@ -138,28 +131,27 @@ function recalculateDailySummary(date) {
         if (rDate === date) {
             const type = denomData[i][2];
             const total = parseFloat(denomData[i][12]) || 0;
-            
-            if (type === 'START') openingCash = total; // Overwrite if multiple, effectively getting last one
+            if (type === 'START') openingCash = total;
             if (type === 'END') closingCash = total;
         }
     }
-    
-    // 3. CALCULATE VARIANCE
-    // Expected Cash = Opening + Cash Advances (if they add to pot?) - Expenses
-    // NOTE: Usually Cash Advance IS an expense-like outflow unless it's replenishment. 
-    // If 'Cash Advance' means "Employee took cash", it reduces the box.
-    // If opening is 1000, and I spent 200, box should have 800.
-    // Variance = Actual Closing - (Opening - Total Outflows)
-    
-    // Check if Cash Advance is an OUTFLOW or INFLOW. 
-    // In typical petty cash, "Cash Advance" is money GIVEN to someone, so it leaves the box.
-    // So Total Outflows = Total Expenses + Cash Advance
     
     const totalOutflows = totalExp + cashAdvance; 
     const expected = openingCash - totalOutflows; 
     const variance = closingCash - expected; 
     
-    // 4. UPDATE SUMMARY SHEET
+    let newStatus = 'OPEN';
+    for (let i = 1; i < denomData.length; i++) {
+        let rDate = denomData[i][1];
+        if (rDate instanceof Date) {
+             rDate = new Date(rDate.getTime() - (rDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+        if (rDate === date && denomData[i][2] === 'END') {
+            newStatus = 'CLOSED';
+            break;
+        }
+    }
+
     const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
     const sumData = sumSheet.getDataRange().getValues();
     let targetRow = -1;
@@ -174,49 +166,16 @@ function recalculateDailySummary(date) {
             break;
         }
     }
-    
-    // Determine Status
-    // If Closing Cash > 0, we can assume it's CLOSED? 
-    // Or do we need explicit closing action? 
-    // The user flow is: Count Money -> Save Closing.
-    // So if Closing Cash is present (and > 0 or even 0 if they really have 0), it should be CLOSED.
-    // However, they might save a partial count? 
-    // Typically, if 'DEN-CC' (Closing Count) exists, it is closed.
-    
-    // Check if we found a closing record in Step 2
-    let newStatus = 'OPEN';
-    
-    // Scan denomData again to see if we have an END record
-    for (let i = 1; i < denomData.length; i++) {
-        let rDate = denomData[i][1];
-        if (rDate instanceof Date) {
-             rDate = new Date(rDate.getTime() - (rDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
-        }
-        if (rDate === date && denomData[i][2] === 'END') {
-            newStatus = 'CLOSED';
-            break;
-        }
-    }
 
     if (targetRow === -1) {
-        // Create new
         const summaryId = generateId('SUM');
         sumSheet.appendRow([
-            summaryId,
-            date,
-            openingCash,
-            cashAdvance,
-            totalReceipt,
-            totalNoReceipt,
-            totalExp, 
-            closingCash,
-            variance,
-            newStatus, // Status
-            '',
+            summaryId, date, openingCash, cashAdvance,
+            totalReceipt, totalNoReceipt, totalExp, 
+            closingCash, variance, newStatus, '',
             new Date().toISOString()
         ]);
     } else {
-        // Update existing (Col indexes 1-based)
         sumSheet.getRange(targetRow, 3).setValue(openingCash);
         sumSheet.getRange(targetRow, 4).setValue(cashAdvance);
         sumSheet.getRange(targetRow, 5).setValue(totalReceipt);
@@ -224,7 +183,7 @@ function recalculateDailySummary(date) {
         sumSheet.getRange(targetRow, 7).setValue(totalExp);
         sumSheet.getRange(targetRow, 8).setValue(closingCash);
         sumSheet.getRange(targetRow, 9).setValue(variance);
-        sumSheet.getRange(targetRow, 10).setValue(newStatus); // Update Status
+        sumSheet.getRange(targetRow, 10).setValue(newStatus);
         sumSheet.getRange(targetRow, 12).setValue(new Date().toISOString());
     }
     
@@ -251,7 +210,7 @@ function saveExpenseEntry(data) {
     sheet.appendRow([
       entryId,
       data.date,
-      data.type, // EXPENSE, CASH_ADVANCE
+      data.type,
       data.category,
       data.description,
       parseFloat(data.amount),
@@ -263,7 +222,6 @@ function saveExpenseEntry(data) {
       timestamp
     ]);
     
-    // SYNC SUMMARY
     recalculateDailySummary(data.date);
 
     return { success: true, id: entryId, message: 'Entry saved successfully' };
@@ -272,6 +230,9 @@ function saveExpenseEntry(data) {
   }
 }
 
+// FIX: updateExpenseEntry is now a proper top-level callable function
+// (previously it existed but wasn't wired up — the frontend was calling saveExpenseEntry
+// which created duplicate rows instead of updating the existing one)
 function updateExpenseEntry(entryId, data) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -281,10 +242,12 @@ function updateExpenseEntry(entryId, data) {
     for (let i = 1; i < dataRange.length; i++) {
         if (dataRange[i][0] === entryId) {
              const row = i + 1;
-             // Check if date changed, we might need to recalc BOTH dates
-             // For simplicity, assume date is locked or specific to today. 
-             // Ideally we fetch old date to recalc it too.
-             const oldDate = dataRange[i][1]; // raw
+             
+             // Capture old date so we can recalc it too if date changed
+             let oldDate = dataRange[i][1];
+             if (oldDate instanceof Date) {
+               oldDate = new Date(oldDate.getTime() - (oldDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+             }
              
              sheet.getRange(row, 2).setValue(data.date);
              sheet.getRange(row, 3).setValue(data.type);
@@ -297,8 +260,14 @@ function updateExpenseEntry(entryId, data) {
              sheet.getRange(row, 10).setValue(data.approvedBy || '');
              sheet.getRange(row, 12).setValue(new Date().toISOString());
              
+             // Recalc new date's summary
              recalculateDailySummary(data.date);
-             // If date changed: recalculateDailySummary(oldDate normalized)
+             
+             // Also recalc old date if date was changed
+             if (oldDate && oldDate !== data.date) {
+               recalculateDailySummary(oldDate);
+             }
+             
              return { success: true, message: 'Entry updated successfully' };
         }
     }
@@ -321,7 +290,6 @@ function deleteExpenseEntry(entryId) {
                  
                  sheet.getRange(row, 11).setValue('DELETED');
                  
-                 // Normalize and recalc
                  let dStr = date;
                  if (date instanceof Date) dStr = new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
                  
@@ -336,7 +304,6 @@ function deleteExpenseEntry(entryId) {
   }
 }
 
-
 function getExpenseEntries(date) {
   try {
     initializeSheets();
@@ -349,9 +316,7 @@ function getExpenseEntries(date) {
       const row = dataRange[i];
       let rowDate = row[1];
 
-      // Normalize date if it's a Date object
       if (rowDate instanceof Date) {
-        // Adjust for timezone offset to ensure correct day
         rowDate = new Date(rowDate.getTime() - (rowDate.getTimezoneOffset() * 60000))
                   .toISOString().split('T')[0];
       }
@@ -391,14 +356,16 @@ function saveDenomination(data) {
     if (data.type === 'START') prefix = 'DEN-OC';
     else if (data.type === 'END') prefix = 'DEN-CC';
     
-    const recordId = generateId(prefix, data.date);
+    // FIX: generateDenomId now appends a timestamp suffix so multiple saves
+    // on the same day for the same type get unique IDs instead of colliding.
+    const recordId = generateDenomId(prefix, data.date);
     const denominations = data.denominations;
     const total = calculateDenomTotal(denominations);
 
     sheet.appendRow([
       recordId,
       data.date,
-      data.type, // START, END, ADVANCE
+      data.type,
       denominations['1000'] || 0,
       denominations['500'] || 0,
       denominations['200'] || 0,
@@ -413,7 +380,6 @@ function saveDenomination(data) {
       new Date().toISOString()
     ]);
     
-    // Automatically update Summary based on denom type
     recalculateDailySummary(data.date);
 
     return { success: true, id: recordId, total: total };
@@ -421,9 +387,6 @@ function saveDenomination(data) {
     return { success: false, message: e.toString() };
   }
 }
-
-// updateSummaryFromDenom REMOVED in favor of recalculateDailySummary
-// which handles full re-aggregation.
 
 function getDenominations(date) {
   try {
@@ -453,7 +416,8 @@ function getDenominations(date) {
             '10': row[9], '5': row[10], '1': row[11]
           },
           total: row[12],
-          notes: row[13]
+          notes: row[13],
+          timestamp: row[14] // pass timestamp to frontend for display
         });
       }
     }
@@ -472,13 +436,15 @@ function saveDailySummary(data) {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.SUMMARY);
 
-    // Check if summary already exists for this date
     const existing = getDailySummary(data.date);
     if (existing.success && existing.data) {
-      // Update existing
       const dataRange = sheet.getDataRange().getValues();
       for (let i = 1; i < dataRange.length; i++) {
-        if (dataRange[i][1] === data.date) {
+        let rowDate = dataRange[i][1];
+        if (rowDate instanceof Date) {
+          rowDate = new Date(rowDate.getTime() - (rowDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+        }
+        if (rowDate === data.date) {
           const row = i + 1;
           sheet.getRange(row, 3).setValue(parseFloat(data.openingCash));
           sheet.getRange(row, 4).setValue(parseFloat(data.cashAdvance));
@@ -528,24 +494,23 @@ function getDailySummary(date) {
         const row = dataRange[i];
         let rowDate = row[1];
         
-        // Normalize Date Object if needed, similar to generateReportData
         if (rowDate instanceof Date) {
             rowDate = new Date(rowDate.getTime() - (rowDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
     
         if (rowDate === date) {
-        return {
-          success: true,
-          data: {
-            id: row[0], date: rowDate,
-            openingCash: row[2], cashAdvance: row[3],
-            totalWithReceipt: row[4], totalWithoutReceipt: row[5],
-            totalExpenses: row[6], closingCash: row[7],
-            variance: row[8], status: row[9],
-            closedBy: row[10]
-          }
-        };
-      }
+          return {
+            success: true,
+            data: {
+              id: row[0], date: rowDate,
+              openingCash: row[2], cashAdvance: row[3],
+              totalWithReceipt: row[4], totalWithoutReceipt: row[5],
+              totalExpenses: row[6], closingCash: row[7],
+              variance: row[8], status: row[9],
+              closedBy: row[10]
+            }
+          };
+        }
     }
     return { success: true, data: null };
   } catch (e) {
@@ -553,8 +518,15 @@ function getDailySummary(date) {
   }
 }
 
-function getDateRange(startDate, endDate) {
+// FIX: getDateRange now normalizes Date objects to strings before comparing,
+// matching the same pattern used throughout the rest of the codebase.
+// Previously it did raw comparison of Date objects against strings which always silently returned 0 rows.
+function getDateRange(params) {
   try {
+    // Support both getDateRange({from, to}) object and legacy positional args
+    const startDate = (params && params.from) ? params.from : params;
+    const endDate = (params && params.to) ? params.to : arguments[1];
+
     initializeSheets();
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const summarySheet = ss.getSheetByName(SHEETS.SUMMARY);
@@ -563,10 +535,15 @@ function getDateRange(startDate, endDate) {
     const results = [];
     for (let i = 1; i < summaryData.length; i++) {
       const row = summaryData[i];
-      const rowDate = row[1];
+      // FIX: normalize date before string comparison
+      let rowDate = row[1];
+      if (rowDate instanceof Date) {
+        rowDate = new Date(rowDate.getTime() - (rowDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+      }
+
       if (rowDate >= startDate && rowDate <= endDate) {
         results.push({
-          id: row[0], date: row[1],
+          id: row[0], date: rowDate,
           openingCash: row[2], cashAdvance: row[3],
           totalWithReceipt: row[4], totalWithoutReceipt: row[5],
           totalExpenses: row[6], closingCash: row[7],
@@ -583,21 +560,19 @@ function getDateRange(startDate, endDate) {
 // =============================================
 // HELPERS
 // =============================================
-function generateId(prefix, dateStr) {
-  // If date provided (custom format), use it: prefix-MMDDYYYY
-  // Otherwise default random
-  if (!dateStr || !prefix) {
-     const now = new Date();
-     return `ID-${now.getTime().toString(36).toUpperCase()}`;
-  }
-  
-  // Custom Formats
-  // If DEN-OC-MMDDYYYY
-  // Parse dateStr (expected YYYY-MM-DD) -> MMDDYYYY
+function generateId(prefix) {
+  const now = new Date();
+  return `${prefix}-${now.getTime().toString(36).toUpperCase()}`;
+}
+
+// FIX: Denomination IDs now include a millisecond timestamp to guarantee uniqueness.
+// Previously DEN-OC-MMDDYYYY was generated identically for every save on the same day,
+// meaning only the first was truly unique — subsequent counts silently used the same ID.
+function generateDenomId(prefix, dateStr) {
   const [y, m, d] = dateStr.split('-');
   const datePart = `${m}${d}${y}`;
-  
-  return `${prefix}-${datePart}`;
+  const timePart = new Date().getTime().toString(36).toUpperCase();
+  return `${prefix}-${datePart}-${timePart}`;
 }
 
 function generateExpenseId(dateStr) {
@@ -605,14 +580,11 @@ function generateExpenseId(dateStr) {
      const [y, m, d] = dateStr.split('-');
      const datePart = `${m}${d}${y}`;
      
-     // Need to count how many EXPs exist for this date to append N
      const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
      const sheet = ss.getSheetByName(SHEETS.ENTRIES);
      const data = sheet.getDataRange().getValues();
      
      let maxNum = 0;
-     // Regex to match EXP-N-MMDDYYYY
-     // We start looking for N
      const regex = new RegExp(`^exp-(\\d+)-${datePart}$`, 'i');
      
      for(let i=1; i<data.length; i++) {
@@ -656,7 +628,7 @@ function getCategories() {
 // =============================================
 
 function saveDenominationRecord(data) {
-  var payload = JSON.parse(JSON.stringify(data)); // Clone
+  var payload = JSON.parse(JSON.stringify(data));
   if (typeof payload.breakdown === 'string') {
     try {
       payload.denominations = JSON.parse(payload.breakdown);
@@ -666,33 +638,29 @@ function saveDenominationRecord(data) {
   } else {
     payload.denominations = payload.breakdown || {};
   }
-  return saveDenomination(payload); // Ensure this function exists in your main logic
+  return saveDenomination(payload);
 }
 
 function getDenominationRecords(date) {
-  return getDenominations(date); // Ensure this function exists in your main logic
+  return getDenominations(date);
 }
 
 function generateReportData(data) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     
-    // 1. Get Entries
     var sheet = ss.getSheetByName(SHEETS.ENTRIES);
     if (!sheet) return { success: false, message: 'Entries sheet not found' };
     
     var dataRange = sheet.getDataRange().getValues();
     var entries = [];
     
-    // Skip header
     for (var i = 1; i < dataRange.length; i++) {
         var row = dataRange[i];
-        if (row.length < 11) continue; // Safety check
+        if (row.length < 11) continue;
         
         var rDate = row[1];
-        // Normalize date to string YYYY-MM-DD if it's a Date object
         if (rDate instanceof Date) {
-            // Adjust for timezone offset to ensure correct day
             var localDate = new Date(rDate.getTime() - (rDate.getTimezoneOffset() * 60000));
             rDate = localDate.toISOString().split('T')[0];
         }
@@ -700,7 +668,7 @@ function generateReportData(data) {
         if (rDate >= data.from && rDate <= data.to && row[10] !== 'DELETED') {
            entries.push({
               id: row[0],
-              date: rDate, // Return the normalized string
+              date: rDate,
               type: row[2],
               category: row[3],
               description: row[4],
@@ -714,14 +682,13 @@ function generateReportData(data) {
         }
     }
     
-    // 2. Get Daily Summaries
     var summaries = [];
-    var sumSheet = ss.getSheetByName(SHEETS.SUMMARY); // Ensure SHEETS.SUMMARY is defined
+    var sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
     if (sumSheet) {
       var sumData = sumSheet.getDataRange().getValues();
       for(var j = 1; j < sumData.length; j++){
          var sRow = sumData[j];
-         if (sRow.length < 8) continue; // Safety check
+         if (sRow.length < 8) continue;
          
          var sDate = sRow[1];
          if (sDate instanceof Date) {
@@ -750,7 +717,6 @@ function generateReportData(data) {
   }
 }
 
-// Find the first unclosed date in the past
 function findUnclosedPastDate(beforeDate) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -759,7 +725,6 @@ function findUnclosedPastDate(beforeDate) {
     
     let unclosed = [];
     
-    // Skip header
     for (var i = 1; i < data.length; i++) {
         var row = data[i];
         if (row.length < 10) continue;
@@ -769,19 +734,13 @@ function findUnclosedPastDate(beforeDate) {
             rDate = new Date(rDate.getTime() - (rDate.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
         }
         
-        if (rDate < beforeDate) {
-             // Check Status (Col 9 index) or Closing Cash
-             // Col indices: 0=ID, 1=Date, ..., 9=Status (OPEN/CLOSED)
-             // If Status is 'OPEN', it is unclosed.
-             if (row[9] === 'OPEN') {
-                 unclosed.push(rDate);
-             }
+        if (rDate < beforeDate && row[9] === 'OPEN') {
+            unclosed.push(rDate);
         }
     }
     
     if (unclosed.length === 0) return { success: true, date: null };
     
-    // Sort Ascending (Oldest first) to fix the chain from the start
     unclosed.sort();
     return { success: true, date: unclosed[0] }; 
     

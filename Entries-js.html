@@ -38,14 +38,14 @@ function switchEntryTab(tab) {
   renderEntries();
 }
 
-async function loadEntries() {
-  const btn = event?.currentTarget;
-  // Only spin if it's the refresh button (usually an icon), not the sidebar link
-  const isRefresh = btn && btn.classList.contains('text-gray-400'); 
-  
-  if(isRefresh) btn.classList.add('animate-spin');
+// FIX: Removed reliance on implicit `event` global — now accepts an optional triggerEl param
+async function loadEntries(triggerEl) {
+  // Spin the button only if a specific button element was passed
+  if (triggerEl) triggerEl.classList.add('animate-spin');
+
   const res = await callServer('getExpenseEntries', state.currentDate);
-  if(isRefresh) btn.classList.remove('animate-spin');
+
+  if (triggerEl) triggerEl.classList.remove('animate-spin');
 
   if (res.success) {
     state.entries = res.data || [];
@@ -123,7 +123,7 @@ async function saveEntry() {
     clearEntryForm();
     loadEntries();
     updateDashStats();
-    loadDayData(); // Refresh overview
+    loadDayData();
   } else {
     toast(res.message, 'error');
   }
@@ -178,10 +178,13 @@ function setEditReceipt(val) {
   }
 }
 
+// FIX: updateEntry now correctly calls updateExpenseEntry (not saveExpenseEntry)
+// which updates the existing row rather than creating a duplicate
 async function updateEntry() {
   const id = document.getElementById('editEntryId').value;
+  if (!id) { toast('No entry selected', 'error'); return; }
+
   const data = {
-    id: id,
     date: state.currentDate,
     type: document.getElementById('editType').value,
     category: document.getElementById('editCategory').value,
@@ -189,18 +192,25 @@ async function updateEntry() {
     amount: parseFloat(document.getElementById('editAmount').value),
     hasReceipt: state.editHasReceipt,
     referenceNo: document.getElementById('editRef').value,
-    requestedBy: '', // preserve?
+    requestedBy: '',
     approvedBy: ''
   };
 
-  const res = await callServer('saveExpenseEntry', data);
+  const btn = document.querySelector('#editModal button[onclick="updateEntry()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  // FIX: was incorrectly calling saveExpenseEntry — now calls updateExpenseEntry
+  const res = await callServer('updateExpenseEntry', id, data);
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '💾 Save'; }
+
   if(res.success) {
     toast('Entry updated');
     closeEditModal();
     loadEntries();
     loadDayData();
   } else {
-    toast(res.message, 'error');
+    toast(res.message || 'Update failed', 'error');
   }
 }
 </script>

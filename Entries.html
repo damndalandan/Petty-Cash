@@ -1,4 +1,4 @@
-    <!-- ENTRIES PAGE -->
+<!-- ENTRIES PAGE -->
     <div id="page-entries" class="page-view hidden space-y-6">
       <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
         <div>
@@ -33,10 +33,10 @@
                     <select id="entryCategory" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">
                       <option value="Office Supplies">Office Supplies</option>
                       <option value="Transportation">Transportation</option>
-                      <option value="Meals & Entertainment">Meals & Entertainment</option>
+                      <option value="Meals &amp; Entertainment">Meals &amp; Entertainment</option>
                       <option value="Utilities">Utilities</option>
-                      <option value="Repairs & Maintenance">Repairs & Maintenance</option>
-                      <option value="Postage & Courier">Postage & Courier</option>
+                      <option value="Repairs &amp; Maintenance">Repairs &amp; Maintenance</option>
+                      <option value="Postage &amp; Courier">Postage &amp; Courier</option>
                       <option value="Miscellaneous">Miscellaneous</option>
                     </select>
                  </div>
@@ -87,7 +87,8 @@
                  <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Entries</h2>
                  <div class="flex items-center gap-3">
                    <span class="text-xs text-gray-500 font-mono">Total: <span id="entries-total" class="text-green-600 font-bold text-sm">₱0.00</span></span>
-                   <button onclick="loadEntries()" class="text-gray-400 hover:text-blue-600 transition">↺</button>
+                   <!-- FIX: pass `this` so loadEntries can spin this specific button -->
+                   <button onclick="loadEntries(this)" class="text-gray-400 hover:text-blue-600 transition">↺</button>
                  </div>
               </div>
               <div class="overflow-x-auto flex-1">
