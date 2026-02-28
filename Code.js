@@ -1046,6 +1046,166 @@ function getPreviousDayClosing(date) {
   }
 }
 
+// ─────────────────────────────────────────────
+// CASH ADVANCE TRACKING
+// ─────────────────────────────────────────────
+
+function getOutstandingCashAdvances() {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const entries = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const today   = normalizeDate(new Date());
+    const advances = [];
+
+    for (let i = 1; i < entries.length; i++) {
+      const row    = entries[i];
+      const type   = row[2];
+      const status = row[10];
+
+      if (type !== 'CASH_ADVANCE') continue;
+      if (status === 'DELETED') continue;
+      // ACTIVE = outstanding, LIQUIDATION_PENDING = submitted by cashier, LIQUIDATED = closed
+      if (status === 'LIQUIDATED') continue;
+
+      const issuedDate = normalizeDate(row[1]);
+      const msPerDay   = 1000 * 60 * 60 * 24;
+      const daysOut    = Math.floor(
+        (new Date(today) - new Date(issuedDate)) / msPerDay
+      );
+
+      advances.push({
+        id             : row[0],
+        date           : issuedDate,
+        description    : row[4],
+        amount         : row[5],
+        requestedBy    : row[8],
+        status         : status,
+        daysOutstanding: daysOut,
+        liquidationNote: row[14] || ''
+      });
+    }
+
+    // Sort by days outstanding descending (oldest first)
+    advances.sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+    return { success: true, data: advances };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+function getAllCashAdvances() {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const entries = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const today   = normalizeDate(new Date());
+    const advances = [];
+
+    for (let i = 1; i < entries.length; i++) {
+      const row = entries[i];
+      if (row[2] !== 'CASH_ADVANCE') continue;
+      if (row[10] === 'DELETED') continue;
+
+      const issuedDate = normalizeDate(row[1]);
+      const msPerDay   = 1000 * 60 * 60 * 24;
+      const daysOut    = Math.floor(
+        (new Date(today) - new Date(issuedDate)) / msPerDay
+      );
+
+      advances.push({
+        id             : row[0],
+        date           : issuedDate,
+        description    : row[4],
+        amount         : row[5],
+        requestedBy    : row[8],
+        status         : row[10],
+        daysOutstanding: daysOut,
+        liquidationNote: row[14] || ''
+      });
+    }
+
+    advances.sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+    return { success: true, data: advances };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+function submitLiquidation(data) {
+  // Called by Cashier — marks advance as LIQUIDATION_PENDING
+  // data: { id, note }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const rows  = sheet.getDataRange().getValues();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.id) continue;
+      const row = i + 1;
+      sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
+      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + (data.note || ''));
+      return { success: true };
+    }
+    return { success: false, message: 'Advance not found' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function approveLiquidation(data) {
+  // Called by Auditor — marks advance as LIQUIDATED
+  // data: { id, note }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.id) continue;
+      const row = i + 1;
+      sheet.getRange(row, 11).setValue('LIQUIDATED');
+      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 15).setValue(
+        (rows[i][14] || '') + ' | [APPROVED BY ' + email + '] ' + (data.note || '')
+      );
+      recalculateDailySummary(normalizeDate(rows[i][1]));
+      return { success: true };
+    }
+    return { success: false, message: 'Advance not found' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function rejectLiquidation(data) {
+  // Called by Auditor — sends back to ACTIVE/outstanding
+  // data: { id, note }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.id) continue;
+      const row = i + 1;
+      sheet.getRange(row, 11).setValue('ACTIVE');
+      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 15).setValue(
+        (rows[i][14] || '') + ' | [REJECTED BY ' + email + '] ' + (data.note || '')
+      );
+      return { success: true };
+    }
+    return { success: false, message: 'Advance not found' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
 function updateDenominationRecord(data) {
   try {
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);

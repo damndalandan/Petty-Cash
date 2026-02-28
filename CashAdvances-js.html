@@ -1,0 +1,225 @@
+<script>
+// =============================================
+// CASH ADVANCES PAGE LOGIC
+// =============================================
+
+let allAdvances     = [];
+let currentAdvTab   = 'outstanding';
+
+async function loadAdvances() {
+  const listEl = document.getElementById('advances-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm animate-pulse">Loading advances...</div>';
+
+  const res = await callServer('getOutstandingCashAdvances');
+  if (!res.success) {
+    listEl.innerHTML = '<div class="text-center py-10 text-red-400 text-sm">Failed to load advances.</div>';
+    return;
+  }
+
+  // Include liquidated ones too for the liquidated tab — fetch all
+  const allRes = await callServer('getAllCashAdvances');
+  allAdvances = allRes.success ? allRes.data : res.data;
+
+  updateAdvancesBadge(res.data);
+  renderAdvances();
+}
+
+function updateAdvancesBadge(outstanding) {
+  const badge = document.getElementById('advances-badge');
+  if (!badge) return;
+  const count = outstanding.filter(a => a.status === 'ACTIVE').length;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function switchAdvanceTab(tab) {
+  currentAdvTab = tab;
+  ['outstanding','pending','liquidated'].forEach(t => {
+    const btn = document.getElementById('adv-tab-' + t);
+    if (!btn) return;
+    if (t === tab) {
+      btn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm bg-white text-gray-800';
+    } else {
+      btn.className = 'px-4 py-2 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700';
+    }
+  });
+  renderAdvances();
+}
+
+function renderAdvances() {
+  const listEl = document.getElementById('advances-list');
+  if (!listEl) return;
+
+  let filtered = allAdvances.filter(a => {
+    if (currentAdvTab === 'outstanding') return a.status === 'ACTIVE';
+    if (currentAdvTab === 'pending')     return a.status === 'LIQUIDATION_PENDING';
+    if (currentAdvTab === 'liquidated')  return a.status === 'LIQUIDATED';
+    return true;
+  });
+
+  if (!filtered.length) {
+    const msgs = {
+      outstanding: '🎉 No outstanding cash advances!',
+      pending    : 'No advances pending review.',
+      liquidated : 'No liquidated advances yet.'
+    };
+    listEl.innerHTML = `<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 text-sm">${msgs[currentAdvTab]}</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(a => {
+    const urgency = a.daysOutstanding >= 7
+      ? 'border-red-300 bg-red-50'
+      : a.daysOutstanding >= 3
+        ? 'border-amber-300 bg-amber-50'
+        : 'border-gray-200 bg-white';
+
+    const daysBadge = a.status === 'LIQUIDATED'
+      ? '<span class="text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700">✅ Liquidated</span>'
+      : a.daysOutstanding >= 7
+        ? `<span class="text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700">🔴 ${a.daysOutstanding} days</span>`
+        : a.daysOutstanding >= 3
+          ? `<span class="text-xs font-bold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700">🟡 ${a.daysOutstanding} days</span>`
+          : `<span class="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">${a.daysOutstanding} day${a.daysOutstanding !== 1 ? 's' : ''}</span>`;
+
+    const pendingBadge = a.status === 'LIQUIDATION_PENDING'
+      ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 ml-2">Pending Review</span>'
+      : '';
+
+    // Action buttons based on role and status
+    let actions = '';
+    if (a.status === 'ACTIVE' && isCashier()) {
+      actions = `
+        <button onclick="openLiquidationModal('${a.id}', 'submit')"
+          class="px-3 py-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">
+          Submit Liquidation
+        </button>`;
+    }
+    if (a.status === 'LIQUIDATION_PENDING' && isAuditor()) {
+      actions = `
+        <button onclick="openLiquidationModal('${a.id}', 'approve')"
+          class="px-3 py-1.5 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition">
+          ✓ Approve
+        </button>
+        <button onclick="openLiquidationModal('${a.id}', 'reject')"
+          class="px-3 py-1.5 text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-lg shadow transition">
+          ✕ Reject
+        </button>`;
+    }
+
+    return `
+      <div class="rounded-xl border ${urgency} p-4 shadow-sm transition-all">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xs font-mono text-gray-400">${a.id}</span>
+              ${daysBadge}
+              ${pendingBadge}
+            </div>
+            <div class="font-bold text-gray-800 mt-1 text-sm">${a.description || 'Cash Advance'}</div>
+            <div class="text-xs text-gray-500 mt-0.5">
+              👤 <span class="font-medium">${a.requestedBy || '—'}</span>
+              &nbsp;·&nbsp;
+              📅 Issued: <span class="font-mono">${a.date}</span>
+            </div>
+            ${a.liquidationNote ? `<div class="text-xs text-gray-400 mt-1 italic">${a.liquidationNote}</div>` : ''}
+          </div>
+          <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <div class="text-right">
+              <div class="text-lg font-black font-mono text-gray-800">${fmt(a.amount)}</div>
+            </div>
+            <div class="flex gap-2">${actions}</div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openLiquidationModal(id, action) {
+  const advance = allAdvances.find(a => a.id === id);
+  if (!advance) return;
+
+  document.getElementById('liqAdvanceId').value = id;
+  document.getElementById('liqAction').value    = action;
+  document.getElementById('liqNote').value      = '';
+
+  const titles = {
+    submit : 'Submit Liquidation',
+    approve: 'Approve Liquidation',
+    reject : 'Reject Liquidation'
+  };
+  const subtitles = {
+    submit : 'Provide receipt or breakdown details',
+    approve: 'Confirm this advance has been properly liquidated',
+    reject : 'Send back to outstanding — state the reason'
+  };
+  const btnColors = {
+    submit : 'bg-blue-600 hover:bg-blue-700',
+    approve: 'bg-green-600 hover:bg-green-700',
+    reject : 'bg-red-500 hover:bg-red-600'
+  };
+
+  document.getElementById('liqModalTitle').textContent    = titles[action];
+  document.getElementById('liqModalSubtitle').textContent = subtitles[action];
+  document.getElementById('liqConfirmBtn').className =
+    `flex-1 py-2.5 text-sm font-bold text-white ${btnColors[action]} rounded-xl shadow transition`;
+
+  document.getElementById('liqAdvanceDetails').innerHTML = `
+    <div class="flex justify-between items-center">
+      <span>${advance.description || 'Cash Advance'}</span>
+      <span class="font-black font-mono text-blue-700">${fmt(advance.amount)}</span>
+    </div>
+    <div class="text-xs text-gray-500 mt-1">👤 ${advance.requestedBy || '—'} · 📅 ${advance.date} · ${advance.daysOutstanding} days outstanding</div>
+  `;
+
+  document.getElementById('liquidationModal').classList.remove('hidden');
+}
+
+function closeLiquidationModal() {
+  document.getElementById('liquidationModal').classList.add('hidden');
+}
+
+async function confirmLiquidationAction() {
+  const id     = document.getElementById('liqAdvanceId').value;
+  const action = document.getElementById('liqAction').value;
+  const note   = document.getElementById('liqNote').value.trim();
+
+  if (!note && action === 'submit') {
+    toast('Please provide liquidation details or breakdown', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('liqConfirmBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Saving...';
+
+  const fnMap = {
+    submit : 'submitLiquidation',
+    approve: 'approveLiquidation',
+    reject : 'rejectLiquidation'
+  };
+
+  const res = await callServer(fnMap[action], { id, note });
+
+  btn.disabled = false;
+  btn.textContent = 'Confirm';
+
+  if (res.success) {
+    const msgs = {
+      submit : 'Liquidation submitted for review ✓',
+      approve: 'Advance approved and liquidated ✓',
+      reject : 'Advance sent back to outstanding'
+    };
+    toast(msgs[action], 'success');
+    closeLiquidationModal();
+    loadAdvances();
+  } else {
+    toast(res.message || 'Action failed', 'error');
+  }
+}
+</script>
