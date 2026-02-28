@@ -73,11 +73,8 @@ async function loadDayData() {
   }
 
   updateDashStats();
-  
-  // We wait for initial load Day Data to load the widget.
-  // Ideally this should be independent to avoid refetching if day changes but year is same.
-  // But for now it's fine.
   loadDiscrepancyWidget();
+  prefetchDenomRecords()
 }
 
 async function loadDiscrepancyWidget() {
@@ -249,6 +246,15 @@ function updateDashStats() {
   const qsExp = document.getElementById('qs-expenses'); if(qsExp) qsExp.textContent = fmt(totalExp);
 }
 
-// REMOVED: updateDashCalc, saveDailySummary, closeDay
+async function prefetchDenomRecords() {
+  try {
+    const res = await callServer('getDenominationRecords', state.currentDate);
+    if (res.success) {
+      state.denomRecords = res.data || [];
+    }
+  } catch(e) {
+    console.error('prefetch denom failed', e);
+  }
+}
 
 </script>

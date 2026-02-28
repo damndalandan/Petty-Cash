@@ -71,8 +71,8 @@ function computeVAT(grossAmount) {
 }
 
 function calculateDenomTotal(denominations) {
-  return [1000, 500, 200, 100, 50, 20, 10, 5, 1].reduce((sum, bill) => {
-    return sum + (parseInt(denominations[String(bill)]) || 0) * bill;
+  return [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25].reduce((sum, bill) => {
+    return sum + (parseFloat(denominations[String(bill)]) || 0) * bill;
   }, 0);
 }
 
@@ -504,6 +504,7 @@ function saveDenominationRecord(data) {
       denoms['1000']||0, denoms['500']||0, denoms['200']||0,
       denoms['100'] ||0, denoms['50'] ||0, denoms['20'] ||0,
       denoms['10']  ||0, denoms['5']  ||0, denoms['1']  ||0,
+      denoms['0.25']  ||0,
       total, data.notes || '',
       new Date().toISOString()
     ]);
