@@ -118,6 +118,16 @@ function switchDenomTab(type) {
     if(btnEnd)   btnEnd.classList.add('bg-amber-500', 'text-white', 'shadow-md');
     if(container) container.classList.add('border-amber-500');
     if(label) label.textContent = "Closing Total";
+
+    // Always ensure closing form is visible
+    const grid     = document.getElementById('denomGrid');
+    const notes    = document.getElementById('denomNotes');
+    const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
+    const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
+    if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.remove('hidden');
+    if (notes)    notes.closest('.p-6.border-t')?.classList.remove('hidden');
+    if (saveBtn)  saveBtn.style.display = '';
+    if (clearBtn) clearBtn.style.display = '';
   }
 }
 
@@ -443,7 +453,7 @@ function renderDenomRecords(data) {
       const label = isStart ? 'Opening' : 'Closing';
       const ts = d.timestamp ? new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--';
       const editBtn = isStart
-        ? `<button onclick="editOpeningCount('${d.id}')" class="mt-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition">✏️ Edit Opening</button>`
+        ? `<button onclick="openEditOpeningModal()" class="mt-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition">✏️ Edit Opening</button>`
         : '';
       return `
         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 bg-white hover:bg-gray-50 rounded-xl border border-gray-200 transition-all shadow-sm">
@@ -481,10 +491,12 @@ function lockOpeningDisplay(total) {
   const saveBtn = document.querySelector('button[onclick="saveDenomination()"]');
   const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
 
-  if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.add('hidden');
-  if (notes)    notes.closest('.p-6.border-t')?.classList.add('hidden');
-  if (saveBtn)  saveBtn.closest('.flex.gap-3')?.querySelector('button[onclick="saveDenomination()"]') && (saveBtn.style.display = 'none');
-  if (clearBtn) clearBtn.style.display = 'none';
+  if (state.denomTab === 'START') {
+    if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.add('hidden');
+    if (notes)    notes.closest('.p-6.border-t')?.classList.add('hidden');
+    if (saveBtn)  saveBtn.style.display = 'none';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
 
   // Add lock message if not already there
   if (!document.getElementById('openingLockedMsg')) {
@@ -500,7 +512,7 @@ function lockOpeningDisplay(total) {
             <div class="text-xs text-blue-500 mt-0.5">Opening count has been saved and locked.</div>
           </div>
         </div>
-        <button onclick="editOpeningCount()" class="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-50 transition shadow-sm">
+        <button onclick="openEditOpeningModal()" class="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-50 transition shadow-sm">
           ✏️ Edit Opening
         </button>
       </div>`;
@@ -540,6 +552,127 @@ function editOpeningCount() {
   // Mark as an edit so the save note reflects the change
   state.editingOpening = true;
   switchDenomTab('START');
+}
+
+function openEditOpeningModal() {
+  const openingRecord = (state.denomRecords || []).find(r => r.type === 'START');
+  if (!openingRecord) return;
+
+  // Build modal dynamically if not already in DOM
+  if (!document.getElementById('editOpeningModal')) {
+    const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+    const gridHTML = billTypes.map(bill => `
+      <div class="flex flex-col items-center bg-gray-50 rounded-xl p-3 border border-gray-100">
+        <span class="text-xs font-black font-mono text-gray-500 mb-2">₱${bill}</span>
+        <input type="number" id="edit-denom-${bill}" min="0" placeholder="0"
+          class="w-full text-center text-lg font-bold p-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none"
+          oninput="calcEditOpeningTotal()">
+        <span class="text-xs font-mono text-gray-400 mt-1" id="edit-dsub-${bill}">₱0.00</span>
+      </div>`).join('');
+
+    const modal = document.createElement('div');
+    modal.id = 'editOpeningModal';
+    modal.className = 'hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4';
+    modal.innerHTML = `
+      <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-700 to-blue-600 p-5 flex justify-between items-center">
+          <div>
+            <h3 class="text-white font-bold text-lg">✏️ Edit Opening Count</h3>
+            <p class="text-blue-100 text-xs mt-0.5">Changes will be logged as a new record</p>
+          </div>
+          <button onclick="closeEditOpeningModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+        </div>
+        <div class="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
+          <div class="grid grid-cols-3 sm:grid-cols-5 gap-3" id="editOpeningGrid">
+            ${gridHTML}
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Reason for Edit</label>
+            <input type="text" id="editOpeningNotes" placeholder="e.g. Miscounted ₱500 bills..."
+              class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+        </div>
+        <div class="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-3">
+          <div class="text-sm font-mono text-gray-500">
+            New Total: <span id="editOpeningTotal" class="font-black text-gray-800 text-base">₱0.00</span>
+          </div>
+          <div class="flex gap-3">
+            <button onclick="closeEditOpeningModal()" class="px-5 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
+            <button onclick="saveEditOpening()" class="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition">
+              💾 Save Changes
+            </button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  // Pre-fill with existing values
+  const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  billTypes.forEach(bill => {
+    const el = document.getElementById('edit-denom-' + bill);
+    if (el) el.value = openingRecord.denominations?.[String(bill)] || '';
+    const sub = document.getElementById('edit-dsub-' + bill);
+    if (sub) sub.textContent = fmt((parseFloat(openingRecord.denominations?.[String(bill)]) || 0) * bill);
+  });
+  const notesEl = document.getElementById('editOpeningNotes');
+  if (notesEl) notesEl.value = '';
+  calcEditOpeningTotal();
+
+  document.getElementById('editOpeningModal').classList.remove('hidden');
+}
+
+function closeEditOpeningModal() {
+  document.getElementById('editOpeningModal')?.classList.add('hidden');
+}
+
+function calcEditOpeningTotal() {
+  const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  let total = 0;
+  billTypes.forEach(bill => {
+    const qty = parseFloat(document.getElementById('edit-denom-' + bill)?.value) || 0;
+    const sub = qty * bill;
+    total += sub;
+    const subEl = document.getElementById('edit-dsub-' + bill);
+    if (subEl) subEl.textContent = fmt(sub);
+  });
+  const totalEl = document.getElementById('editOpeningTotal');
+  if (totalEl) totalEl.textContent = fmt(total);
+}
+
+async function saveEditOpening() {
+  const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  const breakdown = {};
+  let total = 0;
+  billTypes.forEach(bill => {
+    const qty = parseFloat(document.getElementById('edit-denom-' + bill)?.value) || 0;
+    if (qty > 0) breakdown[bill] = qty;
+    total += qty * bill;
+  });
+
+  const notes = document.getElementById('editOpeningNotes')?.value.trim() || 'Opening count revised';
+
+  const saveBtn = document.querySelector('#editOpeningModal button[onclick="saveEditOpening()"]');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
+
+  const res = await callServer('saveDenominationRecord', {
+    date     : state.currentDate,
+    type     : 'START',
+    breakdown: JSON.stringify(breakdown),
+    total    : total,
+    notes    : `[EDIT] ${notes}`
+  });
+
+  if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 Save Changes'; }
+
+  if (res.success) {
+    toast('Opening count updated & logged ✓', 'success');
+    closeEditOpeningModal();
+    loadDayData();
+    loadDenominations();
+  } else {
+    toast(res.message || 'Failed to save', 'error');
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
