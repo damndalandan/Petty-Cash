@@ -2,16 +2,6 @@
 // =============================================
 // DASHBOARD LOGIC
 // =============================================
-function callServer(fn, data) {
-  return new Promise((resolve) => {
-    const args = data !== undefined ? [data] : [];
-    google.script.run
-      .withSuccessHandler(resolve)
-      .withFailureHandler((e) => resolve({ success: false, message: e.message }))
-      [fn](...args);
-  });
-}
-
 
 let discrepancyData = [];
 let rawDiscrepancies = [];
@@ -46,20 +36,15 @@ function initDiscrepancyFilters() {
 
 async function loadDayData() {
   if (!state.currentDate) return;
-  
-  // Show minimal loading state on dashboard numbers
+
   const statOpening = document.getElementById('stat-opening');
   if (statOpening) statOpening.classList.add('opacity-50');
 
-  const yearStart = state.currentDate.substring(0,4) + '-01-01';
-  const yearEnd = state.currentDate.substring(0,4) + '-12-31';
-
-  const [entriesRes, summaryRes, yearDataRes] = await Promise.all([
+  const [entriesRes, summaryRes] = await Promise.all([
     callServer('getExpenseEntries', state.currentDate),
-    callServer('getDailySummary', state.currentDate),
-    callServer('getDateRange', { from: yearStart, to: yearEnd }) 
+    callServer('getDailySummary', state.currentDate)
   ]);
-  
+
   if (statOpening) statOpening.classList.remove('opacity-50');
 
   if (entriesRes.success) {
@@ -74,7 +59,7 @@ async function loadDayData() {
 
   updateDashStats();
   loadDiscrepancyWidget();
-  prefetchDenomRecords()
+  if (state.currentDate) checkPreviousDayStatus(state.currentDate);
 }
 
 async function loadDiscrepancyWidget() {
@@ -101,7 +86,7 @@ function filterDiscrepancies() {
     if (selMonth !== 'ALL') {
         const mInt = parseInt(selMonth);
         filtered = filtered.filter(d => {
-            const date = new Date(d.date);
+            const date = new Date(d.date + 'T00:00:00');
             return date.getMonth() === mInt;
         });
     }
@@ -128,15 +113,17 @@ function filterDiscrepancies() {
 
 function renderDiscDetails() {
     const list = document.getElementById('discRows');
-    list.innerHTML = discrepancyData.map(d => `
+    list.innerHTML = discrepancyData.map(d => {
+        const dateObj = new Date(d.date + 'T00:00:00');
+        return `
        <div class="p-3 hover:bg-white flex justify-between items-center transition">
            <div class="flex flex-col">
-              <span class="text-sm font-bold text-gray-700">${new Date(d.date).toLocaleDateString(undefined,{month:'short', day:'numeric', year: 'numeric'})}</span>
-              <span class="text-[10px] text-gray-400 uppercase">${new Date(d.date).toLocaleDateString(undefined,{weekday:'long'})}</span>
+              <span class="text-sm font-bold text-gray-700">${dateObj.toLocaleDateString(undefined,{month:'short', day:'numeric', year: 'numeric'})}</span>
+              <span class="text-[10px] text-gray-400 uppercase">${dateObj.toLocaleDateString(undefined,{weekday:'long'})}</span>
            </div>
            <span class="font-mono font-bold ${d.variance < 0 ? 'text-red-500' : 'text-blue-500'}">${fmt(d.variance)}</span>
        </div>
-    `).join('');
+    `;}).join('');
 }
 
 async function checkPreviousDayStatus(currentDateStr) {
@@ -195,16 +182,9 @@ function auditPreviousDay() {
 }
 
 function updateDashStats() {
-  const openingEl = document.getElementById('openingCash');
-  // Since we removed the inputs, we rely purely on state.summary now
-  // If inputs existed, we'd check them. Since they don't, we fallback to summary or 0.
-  
   const summary = state.summary || {};
   const opening = summary.openingCash || 0;
   const closing = summary.closingCash || 0;
-  
-  // Call helper to check previous day
-  if(state.currentDate) checkPreviousDayStatus(state.currentDate);
 
   const withReceipt = state.entries.filter(e => e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   const noReceipt = state.entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
@@ -244,17 +224,6 @@ function updateDashStats() {
 
   const qsCash = document.getElementById('qs-cash'); if(qsCash) qsCash.textContent = fmt(opening);
   const qsExp = document.getElementById('qs-expenses'); if(qsExp) qsExp.textContent = fmt(totalExp);
-}
-
-async function prefetchDenomRecords() {
-  try {
-    const res = await callServer('getDenominationRecords', state.currentDate);
-    if (res.success) {
-      state.denomRecords = res.data || [];
-    }
-  } catch(e) {
-    console.error('prefetch denom failed', e);
-  }
 }
 
 </script>

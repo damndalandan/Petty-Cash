@@ -16,6 +16,7 @@ const SHEETS = {
 // WEB APP ENTRY POINT
 // ─────────────────────────────────────────────
 function doGet() {
+  initializeSheets();
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Petty Cash System')
@@ -86,7 +87,10 @@ function formatHeaderRow(sheet) {
 // ─────────────────────────────────────────────
 // SHEET INITIALIZATION
 // ─────────────────────────────────────────────
+let _sheetsInitialized = false;
+
 function initializeSheets() {
+  if (_sheetsInitialized) return { success: true };
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
   if (!ss.getSheetByName(SHEETS.ENTRIES)) {
@@ -108,12 +112,12 @@ function initializeSheets() {
     s.appendRow([
       'Record_ID','Date','Type',
       'D_1000','D_500','D_200','D_100','D_50',
-      'D_20','D_10','D_5','D_1',
+      'D_20','D_10','D_5','D_1','D_025',
       'Total','Notes','Created_At'
     ]);
     s.setFrozenRows(1);
     formatHeaderRow(s);
-    s.getRange('M2:M').setNumberFormat('₱#,##0.00');
+    s.getRange('N2:N').setNumberFormat('₱#,##0.00');
   }
 
   if (!ss.getSheetByName(SHEETS.SUMMARY)) {
@@ -121,11 +125,12 @@ function initializeSheets() {
     s.appendRow([
       'Summary_ID','Date','Opening_Cash','Cash_Advance',
       'Total_Exp_With_Receipt','Total_Exp_No_Receipt','Total_Expenses',
+      'Total_Cash_Over','Total_Replenishment',
       'Closing_Cash','Variance','Status','Closed_By','Updated_At'
     ]);
     s.setFrozenRows(1);
     formatHeaderRow(s);
-    s.getRange('C2:I').setNumberFormat('₱#,##0.00');
+    s.getRange('C2:K').setNumberFormat('₱#,##0.00');
   }
 
   // ── PettyCash_Receipts (BIR Purchases Journal) ──────
@@ -150,6 +155,7 @@ function initializeSheets() {
     s.setColumnWidth(6, 140);
   }
 
+  _sheetsInitialized = true;
   return { success: true };
 }
 
@@ -161,7 +167,7 @@ function recalculateDailySummary(date) {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
-    let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0, cashAdvance = 0;
+    let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0, cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0;
 
     for (let i = 1; i < entryData.length; i++) {
       const row   = entryData[i];
@@ -173,8 +179,10 @@ function recalculateDailySummary(date) {
 
       if (type === 'CASH_ADVANCE') {
         cashAdvance += amt;
-      } else if (type === 'CASH_OVER' || type === 'REPLENISHMENT') {
-        // excluded from expense totals
+      } else if (type === 'CASH_OVER') {
+        totalCashOver += amt;
+      } else if (type === 'REPLENISHMENT') {
+        totalReplenishment += amt;
       } else {
         totalExp += amt;
         if (row[6] === 'YES') totalReceipt   += amt;
@@ -212,6 +220,7 @@ function recalculateDailySummary(date) {
     const summaryRow = [
       openingCash, cashAdvance,
       totalReceipt, totalNoReceipt, totalExp,
+      totalCashOver, totalReplenishment,
       closingCash, variance, status,
       existingClosedBy,
       new Date().toISOString()
@@ -220,7 +229,7 @@ function recalculateDailySummary(date) {
     if (targetRow === -1) {
       sumSheet.appendRow([generateId('SUM'), date, ...summaryRow]);
     } else {
-      sumSheet.getRange(targetRow, 3, 1, 10).setValues([summaryRow]);
+      sumSheet.getRange(targetRow, 3, 1, 12).setValues([summaryRow]);
     }
 
     return { success: true };
@@ -235,7 +244,6 @@ function recalculateDailySummary(date) {
 // ─────────────────────────────────────────────
 function saveExpenseEntry(data) {
   try {
-    initializeSheets();
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.ENTRIES);
     const now   = new Date().toISOString();
@@ -342,7 +350,6 @@ function deleteExpenseEntry(entryId) {
 
 function getExpenseEntries(date) {
   try {
-    initializeSheets();
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet     = ss.getSheetByName(SHEETS.ENTRIES);
     const dataRange = sheet.getDataRange().getValues();
@@ -381,7 +388,6 @@ function getExpenseEntries(date) {
 // ─────────────────────────────────────────────
 function saveReceiptRecord(data) {
   try {
-    initializeSheets();
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.RECEIPTS);
     const vat   = computeVAT(data.grossAmount);
@@ -413,7 +419,6 @@ function saveReceiptRecord(data) {
 
 function getReceiptByEntryId(entryId) {
   try {
-    initializeSheets();
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet     = ss.getSheetByName(SHEETS.RECEIPTS);
     const dataRange = sheet.getDataRange().getValues();
@@ -448,7 +453,6 @@ function getReceiptByEntryId(entryId) {
 
 function getReceiptsByDate(date) {
   try {
-    initializeSheets();
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet     = ss.getSheetByName(SHEETS.RECEIPTS);
     const dataRange = sheet.getDataRange().getValues();
@@ -484,7 +488,6 @@ function getReceiptsByDate(date) {
 // ─────────────────────────────────────────────
 function saveDenominationRecord(data) {
   try {
-    initializeSheets();
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
 
@@ -501,10 +504,10 @@ function saveDenominationRecord(data) {
 
     sheet.appendRow([
       recordId, data.date, data.type,
-      denoms['1000']||0, denoms['500']||0, denoms['200']||0,
-      denoms['100'] ||0, denoms['50'] ||0, denoms['20'] ||0,
-      denoms['10']  ||0, denoms['5']  ||0, denoms['1']  ||0,
-      denoms['0.25']  ||0,
+      denoms['1000'] ||0, denoms['500']||0, denoms['200']||0,
+      denoms['100']  ||0, denoms['50'] ||0, denoms['20'] ||0,
+      denoms['10']   ||0, denoms['5']  ||0, denoms['1']  ||0,
+      denoms['0.25'] ||0,
       total, data.notes || '',
       new Date().toISOString()
     ]);
@@ -518,7 +521,6 @@ function saveDenominationRecord(data) {
 
 function getDenominationRecords(date) {
   try {
-    initializeSheets();
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet     = ss.getSheetByName(SHEETS.DENOMINATIONS);
     const dataRange = sheet.getDataRange().getValues();
@@ -532,11 +534,12 @@ function getDenominationRecords(date) {
       records.push({
         id   : row[0], date: rowDate, type: row[2],
         denominations: {
-          '1000':row[3],'500':row[4],'200':row[5],
-          '100' :row[6],'50' :row[7],'20' :row[8],
-          '10'  :row[9],'5'  :row[10],'1' :row[11]
+          '1000':row[3], '500':row[4],  '200':row[5],
+          '100' :row[6], '50' :row[7],  '20' :row[8],
+          '10'  :row[9], '5'  :row[10], '1'  :row[11],
+          '0.25':row[12]
         },
-        total: row[12], notes: row[13], timestamp: row[14]
+        total: row[13], notes: row[14], timestamp: row[15]
       });
     }
     return { success: true, data: records };
@@ -550,7 +553,6 @@ function getDenominationRecords(date) {
 // ─────────────────────────────────────────────
 function getDailySummary(date) {
   try {
-    initializeSheets();
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet     = ss.getSheetByName(SHEETS.SUMMARY);
     const dataRange = sheet.getDataRange().getValues();
@@ -570,11 +572,13 @@ function getDailySummary(date) {
           totalWithReceipt   : row[4],
           totalWithoutReceipt: row[5],
           totalExpenses      : row[6],
-          closingCash        : row[7],
-          variance           : row[8],
-          status             : row[9],
-          closedBy           : row[10],
-          updatedAt          : row[11]
+          totalCashOver      : row[7],
+          totalReplenishment : row[8],
+          closingCash        : row[9],
+          variance           : row[10],
+          status             : row[11],
+          closedBy           : row[12],
+          updatedAt          : row[13]
         }
       };
     }
@@ -640,8 +644,9 @@ function getDateRange(params) {
           id:data[i][0], date:rowDate,
           openingCash:data[i][2], cashAdvance:data[i][3],
           totalWithReceipt:data[i][4], totalWithoutReceipt:data[i][5],
-          totalExpenses:data[i][6], closingCash:data[i][7],
-          variance:data[i][8], status:data[i][9]
+          totalExpenses:data[i][6], totalCashOver:data[i][7],
+          totalReplenishment:data[i][8], closingCash:data[i][9],
+          variance:data[i][10], status:data[i][11]
         });
       }
     }
@@ -692,4 +697,52 @@ function recalculateRange(params) {
   const results = [];
   dates.forEach(d => results.push({ date: d, result: recalculateDailySummary(d) }));
   return { success: true, data: results };
+}
+
+function updateDenominationRecord(data) {
+  try {
+    const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet     = ss.getSheetByName(SHEETS.DENOMINATIONS);
+    const dataRange = sheet.getDataRange().getValues();
+
+    let targetRow = -1;
+    for (let i = 1; i < dataRange.length; i++) {
+      const rowDate = normalizeDate(dataRange[i][1]);
+      const rowType = dataRange[i][2];
+      if (rowDate === data.date && rowType === data.type) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    let denoms = data.denominations || {};
+    if (typeof data.breakdown === 'string') {
+      try { denoms = JSON.parse(data.breakdown); } catch(e) { denoms = {}; }
+    } else if (data.breakdown && typeof data.breakdown === 'object') {
+      denoms = data.breakdown;
+    }
+
+    const total = calculateDenomTotal(denoms);
+    const now   = new Date().toISOString();
+
+    if (targetRow === -1) {
+      // No existing record found, fall back to insert
+      return saveDenominationRecord(data);
+    }
+
+    sheet.getRange(targetRow, 4, 1, 11).setValues([[
+      denoms['1000'] ||0, denoms['500']||0, denoms['200']||0,
+      denoms['100']  ||0, denoms['50'] ||0, denoms['20'] ||0,
+      denoms['10']   ||0, denoms['5']  ||0, denoms['1']  ||0,
+      denoms['0.25'] ||0,
+      total
+    ]]);
+    sheet.getRange(targetRow, 15).setValue(data.notes || '');
+    sheet.getRange(targetRow, 16).setValue(now);
+
+    recalculateDailySummary(data.date);
+    return { success: true, id: dataRange[targetRow - 1][0], total };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
 }

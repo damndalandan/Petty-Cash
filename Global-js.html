@@ -15,7 +15,7 @@ const state = {
   loading        : false
 };
 
-const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1];
+const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
 
 function fmt(n) {
   const num = parseFloat(n) || 0;
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDayData();
 
   navigate('dashboard');
-  setReceipt(false); // DEFAULT: NO receipt
+  updateReceiptIndicator();
 });
 
 function updateDateLabel() {

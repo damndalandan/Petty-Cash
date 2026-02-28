@@ -3,6 +3,7 @@ node_modules/
 
 # Clasp credentials (IMPORTANT - don't share these!)
 .clasp.json
+.clasprc.json
 
 # OS files
 .DS_Store

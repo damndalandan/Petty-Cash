@@ -7,7 +7,7 @@
     const container = document.getElementById('denomGrid');
     if(!container) return;
     
-    const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+    const billTypes = BILLS;
 
     container.innerHTML = billTypes.map(bill => {
       let colorClass = 'text-gray-700'; 
@@ -52,7 +52,7 @@
 
   function calcDenomTotal() {
     let total = 0;
-    const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+    const billTypes = BILLS;
 
     billTypes.forEach(bill => {
       const el = document.getElementById('denom-' + bill);
@@ -76,7 +76,7 @@
   }
 
   function clearDenomForm() {
-    const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+    const billTypes = BILLS;
     billTypes.forEach(bill => {
       const el = document.getElementById('denom-' + bill);
       if(el) el.value = '';
@@ -207,7 +207,7 @@
 
     const breakdown = {};
     let total = 0;
-    const billTypes = (typeof BILLS !== 'undefined') ? BILLS : [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+    const billTypes = BILLS;
 
     billTypes.forEach(bill => {
       const el = document.getElementById('denom-' + bill);
@@ -312,8 +312,9 @@
       const amt = Math.abs(variance);
       if(shortagePanel) {
         shortagePanel.classList.remove('hidden');
-        const label = shortagePanel.querySelector('.variance-amount');
-        if(label) label.textContent = fmt(amt);
+        shortagePanel.querySelectorAll('.variance-amount').forEach(el => {
+          el.textContent = fmt(amt);
+        });
       }
     } else {
       // ── OVERAGE: actual cash is MORE than expected ──
@@ -322,8 +323,9 @@
 
       if(overagePanel) {
         overagePanel.classList.remove('hidden');
-        const label = overagePanel.querySelector('.variance-amount');
-        if(label) label.textContent = fmt(variance);
+        overagePanel.querySelectorAll('.variance-amount').forEach(el => {
+          el.textContent = fmt(variance);
+        });
       }
     }
 
@@ -692,7 +694,7 @@
     const saveBtn = document.querySelector('#editOpeningModal button[onclick="saveEditOpening()"]');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
 
-    const res = await callServer('saveDenominationRecord', {
+    const res = await callServer('updateDenominationRecord', {
       date     : state.currentDate,
       type     : 'START',
       breakdown: JSON.stringify(breakdown),
