@@ -1,33 +1,28 @@
 <!-- DENOMINATIONS: MODERN CARD LAYOUT -->
 <div id="page-denominations" class="page-view hidden space-y-6">
 
-  <!-- Header & Tabs -->
-  <div class="flex flex-col md:flex-row justify-between items-center gap-4 pb-2">
-    <div class="text-center md:text-left">
-      <h1 class="text-3xl font-bold text-gray-800 font-display tracking-tight">Cash Breakdown</h1>
-      <p class="text-sm text-gray-500">Count and verify physical cash</p>
-    </div>
-    <div class="bg-gray-100 p-1.5 rounded-xl flex gap-1 shadow-inner">
-      <button id="btn-tab-start" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all shadow-sm bg-blue-600 text-white flex items-center gap-2" onclick="switchDenomTab('START')">
-        <span>☀️</span> Opening
-      </button>
-      <button id="btn-tab-end" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all text-gray-500 hover:text-gray-700 flex items-center gap-2" onclick="switchDenomTab('END')">
-        <span>🌙</span> Closing
-      </button>
-    </div>
-  </div>
-
   <!-- Main Count Card -->
   <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-colors duration-500 border-t-4 border-blue-500" id="denomCardContainer">
 
-    <!-- Total Bar -->
-    <div class="p-6 md:p-8 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-      <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-        <div class="text-center md:text-left">
-          <div class="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1" id="denomLabel">Opening Total</div>
-          <div class="font-black tracking-tight flex items-baseline justify-center md:justify-start gap-1 text-gray-800">
-            <span class="text-3xl opacity-40">₱</span>
-            <span id="denomTotalDisplay" class="text-5xl md:text-6xl text-gray-400">0.00</span>
+    <!-- Total Bar (with tabs inside) -->
+    <div class="px-6 pt-5 pb-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+      <div class="flex flex-col md:flex-row justify-between items-center gap-3">
+        <div class="flex items-center gap-4">
+          <!-- Tabs moved inside -->
+          <div class="bg-white border border-gray-200 p-1 rounded-xl flex gap-1 shadow-sm">
+            <button id="btn-tab-start" class="px-5 py-2 text-sm font-bold rounded-lg transition-all shadow-sm bg-blue-600 text-white flex items-center gap-1.5" onclick="switchDenomTab('START')">
+              <span>☀️</span> Opening
+            </button>
+            <button id="btn-tab-end" class="px-5 py-2 text-sm font-bold rounded-lg transition-all text-gray-500 hover:text-gray-700 flex items-center gap-1.5" onclick="switchDenomTab('END')">
+              <span>🌙</span> Closing
+            </button>
+          </div>
+          <div>
+            <div class="text-gray-500 text-xs font-bold uppercase tracking-wider mb-0.5" id="denomLabel">Opening Total</div>
+            <div class="font-black tracking-tight flex items-baseline gap-1 text-gray-800">
+              <span class="text-2xl opacity-40">₱</span>
+              <span id="denomTotalDisplay" class="text-4xl md:text-5xl text-gray-400">0.00</span>
+            </div>
           </div>
         </div>
         <div class="flex gap-3">
