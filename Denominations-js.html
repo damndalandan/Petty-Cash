@@ -42,8 +42,8 @@ function autoSwitchDenomTab() {
   const records = state.denomRecords || [];
   const opening = records.find(r => r.type === 'START');
   if (opening) {
-    lockOpeningDisplay(opening.total); // lock and show total
-    switchDenomTab('END');
+    switchDenomTab('END');           // switch first
+    lockOpeningDisplay(opening.total); // then lock — tab is now END so checks work
   } else {
     unlockOpeningDisplay();
     switchDenomTab('START');
@@ -111,7 +111,17 @@ function switchDenomTab(type) {
     if(btnStart) btnStart.classList.add('bg-blue-600', 'text-white', 'shadow-md');
     if(btnEnd)   btnEnd.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
     if(container) container.classList.add('border-blue-500');
-    if(label) label.textContent = "Opening Total";
+
+    // Restore opening total if locked
+    const savedTotal = container?.getAttribute('data-opening-total');
+    if (savedTotal) {
+      if (label) label.textContent = 'Opening Total (Locked)';
+      const totalEl = document.getElementById('denomTotalDisplay');
+      if (totalEl) { totalEl.textContent = fmt(parseFloat(savedTotal)).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
+    } else {
+      if(label) label.textContent = "Opening Total";
+    }
+
     checkOpeningEligibility();
   } else {
     if(btnStart) btnStart.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
@@ -478,9 +488,10 @@ function renderDenomRecords(data) {
 
 function lockOpeningDisplay(total) {
   const container = document.getElementById('denomCardContainer');
-  const label     = document.getElementById('denomLabel');
-  const totalEl   = document.getElementById('denomTotalDisplay');
+  container?.setAttribute('data-opening-total', total);
 
+  const label   = document.getElementById('denomLabel');
+  const totalEl = document.getElementById('denomTotalDisplay');
   if (state.denomTab === 'START') {
     if (label)   label.textContent = 'Opening Total (Locked)';
     if (totalEl) { totalEl.textContent = fmt(total).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
@@ -519,6 +530,13 @@ function lockOpeningDisplay(total) {
       </div>`;
     container?.appendChild(msg);
   }
+
+  const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  billTypes.forEach(bill => {
+    const el = document.getElementById('denom-' + bill);
+    if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
+  });
+
 }
 
 function unlockOpeningDisplay() {
@@ -533,6 +551,12 @@ function unlockOpeningDisplay() {
   if (notes)    notes.closest('.p-6.border-t')?.classList.remove('hidden');
   if (saveBtn)  saveBtn.style.display = '';
   if (clearBtn) clearBtn.style.display = '';
+
+  const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+  billTypes.forEach(bill => {
+    const el = document.getElementById('denom-' + bill);
+    if (el) { el.disabled = false; el.classList.remove('opacity-50', 'cursor-not-allowed'); }
+  });
 }
 
 function editOpeningCount() {
