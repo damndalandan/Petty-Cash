@@ -101,12 +101,12 @@
 
     if(btnStart) btnStart.className = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
     if(btnEnd)   btnEnd.className   = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
-    if(container) container.className = "bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-colors duration-500 border-t-4";
+    if(container) container.className = "rounded-2xl shadow-lg overflow-hidden transition-all duration-500 border-t-4";
 
     if (type === 'START') {
       if(btnStart) btnStart.classList.add('bg-blue-600', 'text-white', 'shadow-md');
       if(btnEnd)   btnEnd.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
-      if(container) container.classList.add('border-blue-500');
+      if(container) container.classList.add('bg-blue-50', 'border-blue-500', 'border', 'border-blue-200');
 
       // Restore opening total if locked
       const savedTotal = container?.getAttribute('data-opening-total');
@@ -126,7 +126,7 @@
     } else {
     if(btnStart) btnStart.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
     if(btnEnd)   btnEnd.classList.add('bg-amber-500', 'text-white', 'shadow-md');
-    if(container) container.classList.add('border-amber-500');
+    if(container) container.classList.add('bg-amber-50', 'border-amber-500', 'border', 'border-amber-200');
     if(label) label.textContent = "Closing Total";
 
     // Always ensure closing form is visible

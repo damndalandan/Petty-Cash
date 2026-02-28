@@ -36,16 +36,16 @@
     <!-- Notes + Actions -->
     <div class="p-5 border-t border-gray-100 bg-white">
       <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
-      <div class="flex gap-3 items-start">
+      <div class="flex gap-3 items-center">
         <div class="relative flex-1">
-          <textarea id="denomNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="2" placeholder="Start typing..."></textarea>
+          <textarea id="denomNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="3" placeholder="Start typing..."></textarea>
           <div class="absolute top-3 left-3 text-gray-400 text-sm">📝</div>
         </div>
-        <div class="flex flex-col gap-2 pt-0.5 shrink-0">
+        <div class="flex gap-2 shrink-0">
+          <button onclick="clearDenomForm()" class="px-4 py-2.5 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap">↺ Clear</button>
           <button onclick="saveDenomination()" class="px-5 py-2.5 bg-gray-900 text-white font-bold rounded-lg shadow hover:bg-gray-800 transform active:scale-95 transition-all text-sm flex items-center gap-2 whitespace-nowrap">
             <span>💾</span> Save Count
           </button>
-          <button onclick="clearDenomForm()" class="px-5 py-2.5 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap text-center">↺ Clear</button>
         </div>
       </div>
     </div>
