@@ -11,8 +11,16 @@ const state = {
   entryTab       : 'all',
   denomTab       : 'START',
   editHasReceipt : false,
-  loading        : false
+  loading        : false,
+  userRole       : null,   // 'Admin' | 'Auditor' | 'Cashier'
+  userName       : null,
+  userEmail      : null
 };
+
+// Role helpers — use these everywhere instead of hardcoding string checks
+function isAdmin()   { return state.userRole === 'Admin'; }
+function isAuditor() { return state.userRole === 'Auditor' || state.userRole === 'Admin'; }
+function isCashier() { return state.userRole === 'Cashier' || state.userRole === 'Admin'; }
 
 const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
 
@@ -52,7 +60,7 @@ function callServer(fn, data) {
 // =============================================
 // INIT
 // =============================================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const today     = new Date();
   const formatted = today.toISOString().split('T')[0];
   state.currentDate = formatted;
@@ -61,12 +69,56 @@ document.addEventListener('DOMContentLoaded', () => {
   if (dateInput) dateInput.value = formatted;
 
   updateDateLabel();
+
+  // Load role first — everything else depends on who is logged in
+  const roleRes = await callServer('getUserRole');
+  if (roleRes.success) {
+    state.userRole  = roleRes.role;
+    state.userName  = roleRes.name;
+    state.userEmail = roleRes.email;
+  }
+
+  applyRoleUI();
   buildDenomGrid();
   loadDayData();
 
   navigate('dashboard');
   updateReceiptIndicator();
 });
+
+function applyRoleUI() {
+  // Show role badge in sidebar
+  const roleEl = document.getElementById('user-role-badge');
+  if (roleEl) {
+    roleEl.textContent = state.userRole || 'Unknown';
+    roleEl.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full ' + (
+      isAdmin()   ? 'bg-purple-100 text-purple-700' :
+      isAuditor() ? 'bg-blue-100 text-blue-700' :
+                    'bg-green-100 text-green-700'
+    );
+  }
+
+  // Show name in sidebar
+  const nameEl = document.getElementById('user-name');
+  if (nameEl && state.userName) nameEl.textContent = state.userName;
+
+  // Hide Opening tab from Cashier
+  applyDenomRoleRestrictions();
+}
+
+function applyDenomRoleRestrictions() {
+  const openingTab = document.getElementById('btn-tab-start');
+  if (!openingTab) return;
+
+  if (!isAuditor()) {
+    // Cashier: disable Opening tab
+    openingTab.disabled = true;
+    openingTab.classList.add('opacity-40', 'cursor-not-allowed');
+    openingTab.title = 'Only Auditors can enter the Opening count';
+    // Force cashier to Closing tab
+    switchDenomTab('END');
+  }
+}
 
 function updateDateLabel() {
   const d     = new Date(state.currentDate + 'T00:00:00');

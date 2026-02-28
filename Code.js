@@ -1056,3 +1056,31 @@ function parseDenomBreakdown(data) {
     return null;
   }
 }
+
+function getUserRole() {
+  try {
+    const email = getUserEmail();
+    if (!email || email === 'unknown') return { success: false, role: null, name: null };
+
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ACCESS);
+    if (!sheet) return { success: false, role: null, name: null };
+
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      const rowEmail  = String(data[i][0] || '').trim().toLowerCase();
+      const rowStatus = String(data[i][3] || '').trim().toUpperCase();
+      if (rowEmail === email.toLowerCase() && rowStatus === 'ACTIVE') {
+        return {
+          success: true,
+          email  : email,
+          name   : String(data[i][1] || ''),
+          role   : String(data[i][2] || 'Cashier').trim()  // Admin, Auditor, Cashier
+        };
+      }
+    }
+    return { success: false, role: null, name: null };
+  } catch(e) {
+    return { success: false, role: null, name: null, message: e.toString() };
+  }
+}

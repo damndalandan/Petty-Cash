@@ -11,11 +11,12 @@ function toggleSidebar() {
   }
 }
 
-// Fetch user email on load
+// Email is now set by applyRoleUI() in Global-js after getUserRole() loads
+// Keep this as a fallback only
 document.addEventListener('DOMContentLoaded', function() {
   google.script.run.withSuccessHandler(function(email) {
     const el = document.getElementById('user-email');
-    if (el) el.textContent = email;
+    if (el && el.textContent === 'Loading...') el.textContent = email;
   }).getUserEmail();
 });
 </script>
