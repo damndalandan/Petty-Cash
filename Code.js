@@ -1,6 +1,6 @@
 // =============================================
 // PETTY CASH SYSTEM — Google Apps Script
-// v3.0 — BIR-compliant, race-safe IDs, full audit trail
+// v4.0 — BIR-compliant, date-based IDs, full audit trail
 // =============================================
 
 const SPREADSHEET_ID = '12RGOYbXlHz70wtVskB_SNRjO1pRuhN9pdwauqzBEI-E';
@@ -10,6 +10,7 @@ const SHEETS = {
   DENOMINATIONS: 'PettyCash_Denominations',
   SUMMARY      : 'PettyCash_Summary',
   RECEIPTS     : 'PettyCash_Receipts',
+  NO_RECEIPTS  : 'PettyCash_NoReceipts',
   ACCESS       : 'PettyCash_Access'
 };
 
@@ -23,12 +24,10 @@ function isAuthorized(email) {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.ACCESS);
 
-    // If the access sheet doesn't exist yet, fail safe — deny access
     if (!sheet) return false;
 
     const data = sheet.getDataRange().getValues();
 
-    // Row 0 is the header, start from row 1
     for (let i = 1; i < data.length; i++) {
       const rowEmail  = String(data[i][0] || '').trim().toLowerCase();
       const rowStatus = String(data[i][3] || '').trim().toUpperCase();
@@ -138,28 +137,65 @@ function normalizeDate(val) {
   return String(val).split('T')[0];
 }
 
-function generateId(prefix) {
-  const ts  = Date.now().toString(36).toUpperCase();
-  const rnd = Math.floor(Math.random() * 65536).toString(36).toUpperCase().padStart(3, '0');
-  return `${prefix}-${ts}-${rnd}`;
+/**
+ * Generates a human-readable, date-based ID with daily incrementing counter.
+ *
+ * Format: PREFIX-MMMDDYY-NN
+ * Example: EXP-JAN0226-01, RCP-FEB1526-03
+ *
+ * @param {string}  prefix     - ID prefix e.g. 'EXP', 'RCP', 'NRC', 'DEN-OC'
+ * @param {string}  date       - ISO date string 'YYYY-MM-DD'
+ * @param {Sheet}   sheet      - The Apps Script Sheet object to scan for existing IDs
+ * @returns {string}
+ */
+function generateId(prefix, date, sheet) {
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN',
+                  'JUL','AUG','SEP','OCT','NOV','DEC'];
+
+  // Parse the date
+  const dateObj = new Date(date + 'T00:00:00');
+  const mon     = MONTHS[dateObj.getMonth()];
+  const dd      = String(dateObj.getDate()).padStart(2, '0');
+  const yy      = String(dateObj.getFullYear()).slice(-2);
+
+  // Build the date segment: MMMDDYY  e.g. JAN0226
+  const dateSeg = `${mon}${dd}${yy}`;
+  // The prefix portion to match: e.g. "EXP-JAN0226-"
+  const matchPrefix = `${prefix}-${dateSeg}-`;
+
+  // Scan the sheet's first column for existing IDs on this date with this prefix
+  let maxIncrement = 0;
+
+  if (sheet) {
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      const ids = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      ids.forEach(([id]) => {
+        if (typeof id === 'string' && id.startsWith(matchPrefix)) {
+          const suffix = id.slice(matchPrefix.length);
+          const num    = parseInt(suffix, 10);
+          if (!isNaN(num) && num > maxIncrement) maxIncrement = num;
+        }
+      });
+    }
+  }
+
+  const nextNum = String(maxIncrement + 1).padStart(2, '0');
+  return `${prefix}-${dateSeg}-${nextNum}`;
 }
 
 /**
  * Compute Philippine VAT breakdown from a gross (VAT-inclusive) amount.
  * VAT rate: 12%
- * Net of VAT (Vatable Sales) = Gross / 1.12
- * VAT Amount = Gross - (Gross / 1.12)
- * Net of VAT removed from output per business requirement.
  */
 function computeVAT(grossAmount) {
-  const gross      = parseFloat(grossAmount) || 0;
+  const gross        = parseFloat(grossAmount) || 0;
   const vatableSales = gross / 1.12;
   const vatAmount    = gross - vatableSales;
   return {
     grossAmount  : parseFloat(gross.toFixed(2)),
-    vatableSales : parseFloat(vatableSales.toFixed(2)),  // Less: VAT line
-    vatAmount    : parseFloat(vatAmount.toFixed(2))      // VAT Amount (12%)
-    // netOfVat removed
+    vatableSales : parseFloat(vatableSales.toFixed(2)),
+    vatAmount    : parseFloat(vatAmount.toFixed(2))
   };
 }
 
@@ -223,11 +259,6 @@ function initializeSheets() {
   }
 
   // ── PettyCash_Receipts (BIR Purchases Journal) ──────
-  // Net_Of_VAT column removed — only Gross, Vatable_Sales (Less VAT), VAT_Amount
-  // 1:Receipt_ID  2:Entry_ID  3:Date  4:Supplier_Name
-  // 5:Address  6:TIN  7:Receipt_No
-  // 8:Gross_Amount  9:Vatable_Sales  10:VAT_Amount
-  // 11:Created_By  12:Created_At
   if (!ss.getSheetByName(SHEETS.RECEIPTS)) {
     const s = ss.insertSheet(SHEETS.RECEIPTS);
     s.appendRow([
@@ -244,6 +275,26 @@ function initializeSheets() {
     s.setColumnWidth(6, 140);
   }
 
+  // ── PettyCash_NoReceipts ──────────────────────────────
+  if (!ss.getSheetByName(SHEETS.NO_RECEIPTS)) {
+    const s = ss.insertSheet(SHEETS.NO_RECEIPTS);
+    s.appendRow([
+      'NR_ID','Entry_ID','Date','Description',
+      'Amount','Requested_By','Created_By','Created_At'
+    ]);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.getRange('E2:E').setNumberFormat('₱#,##0.00');
+    s.setColumnWidth(1, 160);
+    s.setColumnWidth(2, 160);
+    s.setColumnWidth(3, 120);
+    s.setColumnWidth(4, 260);
+    s.setColumnWidth(5, 120);
+    s.setColumnWidth(6, 160);
+    s.setColumnWidth(7, 200);
+    s.setColumnWidth(8, 180);
+  }
+
   if (!ss.getSheetByName(SHEETS.ACCESS)) {
     const s = ss.insertSheet(SHEETS.ACCESS);
     s.appendRow(['Email', 'Name', 'Role', 'Status', 'Added_At', 'Notes']);
@@ -256,12 +307,10 @@ function initializeSheets() {
     s.setColumnWidth(5, 180);
     s.setColumnWidth(6, 240);
 
-    // Column header notes for guidance
     s.getRange('A1').setNote('Required. Full Google account email e.g. juan@gmail.com');
     s.getRange('C1').setNote('Role label e.g. Admin, Cashier, Viewer — for reference only');
     s.getRange('D1').setNote('ACTIVE or INACTIVE — only ACTIVE accounts can log in');
 
-    // Add a sample row so the format is clear
     s.appendRow([
       'example@gmail.com',
       'Juan Dela Cruz',
@@ -271,10 +320,7 @@ function initializeSheets() {
       'Sample row — set Status to ACTIVE to enable access'
     ]);
 
-    // Style the sample row so it looks like a placeholder
     s.getRange(2, 1, 1, 6).setFontColor('#9ca3af').setFontStyle('italic');
-
-    // Color-code the Status column for clarity
     s.getRange('D2:D').setHorizontalAlignment('center');
   }
 
@@ -289,7 +335,8 @@ function recalculateDailySummary(date) {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
-    let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0, cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0;
+    let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0,
+        cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0;
 
     for (let i = 1; i < entryData.length; i++) {
       const row   = entryData[i];
@@ -349,7 +396,8 @@ function recalculateDailySummary(date) {
     ];
 
     if (targetRow === -1) {
-      sumSheet.appendRow([generateId('SUM'), date, ...summaryRow]);
+      const sumId = generateId('SUM', date, sumSheet);
+      sumSheet.appendRow([sumId, date, ...summaryRow]);
     } else {
       sumSheet.getRange(targetRow, 3, 1, 12).setValues([summaryRow]);
     }
@@ -366,12 +414,12 @@ function recalculateDailySummary(date) {
 // ─────────────────────────────────────────────
 function saveExpenseEntry(data) {
   try {
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
-    const now   = new Date().toISOString();
-    const id    = generateId('EXP');
+    const ss         = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const now        = new Date().toISOString();
+    const id         = generateId('EXP', data.date, entrySheet);
 
-    sheet.appendRow([
+    entrySheet.appendRow([
       id,
       data.date,
       data.type        || 'EXPENSE',
@@ -387,6 +435,17 @@ function saveExpenseEntry(data) {
       now,
       ''
     ]);
+
+    // ── Auto-log to PettyCash_NoReceipts if no receipt and type is EXPENSE ──
+    if (!data.hasReceipt && (data.type === 'EXPENSE' || !data.type)) {
+      saveNoReceiptRecord({
+        entryId    : id,
+        date       : data.date,
+        description: data.description || '',
+        amount     : parseFloat(data.amount) || 0,
+        requestedBy: data.requestedBy || ''
+      });
+    }
 
     recalculateDailySummary(data.date);
     return { success: true, id };
@@ -433,6 +492,11 @@ function updateExpenseEntry(payload) {
       ]]);
       sheet.getRange(row, 13).setValue(now);
 
+      // ── Sync NoReceipts sheet on update ──
+      // If receipt status changed TO no-receipt, add a record if not already there
+      // If changed TO has-receipt, remove from NoReceipts
+      syncNoReceiptOnUpdate(payload, dataRange[i]);
+
       recalculateDailySummary(payload.date);
       if (oldDate && oldDate !== payload.date) recalculateDailySummary(oldDate);
 
@@ -441,6 +505,60 @@ function updateExpenseEntry(payload) {
     return { success: false, message: 'Entry not found' };
   } catch(e) {
     return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * Keeps PettyCash_NoReceipts in sync when an entry is edited.
+ * - Was receipted → now no receipt:  add a NRC row
+ * - Was no receipt → now receipted:  soft-delete the NRC row (mark RECEIPTED)
+ * - Still no receipt + fields changed: update the NRC row
+ */
+function syncNoReceiptOnUpdate(newPayload, oldRow) {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const nrSheet = ss.getSheetByName(SHEETS.NO_RECEIPTS);
+    if (!nrSheet) return;
+
+    const wasReceipted = oldRow[6] === 'YES';
+    const nowReceipted = !!newPayload.hasReceipt;
+    const entryId      = newPayload.id;
+    const isExpense    = (newPayload.type === 'EXPENSE' || !newPayload.type);
+
+    if (!isExpense) return; // CASH_OVER / REPLENISHMENT / CASH_ADVANCE don't go in NoReceipts
+
+    const nrData  = nrSheet.getDataRange().getValues();
+
+    // Find existing NRC row for this entry
+    let existingRow = -1;
+    for (let i = 1; i < nrData.length; i++) {
+      if (nrData[i][1] === entryId) { existingRow = i + 1; break; }
+    }
+
+    if (!wasReceipted && nowReceipted) {
+      // Receipt was added — mark NRC row as RECEIPTED (update description col as note)
+      if (existingRow > -1) {
+        nrSheet.getRange(existingRow, 4).setValue('[RECEIPTED] ' + (nrData[existingRow - 1][3] || ''));
+      }
+    } else if (wasReceipted && !nowReceipted) {
+      // Receipt was removed — create a new NRC row
+      saveNoReceiptRecord({
+        entryId    : entryId,
+        date       : newPayload.date,
+        description: newPayload.description || '',
+        amount     : parseFloat(newPayload.amount) || 0,
+        requestedBy: newPayload.requestedBy || ''
+      });
+    } else if (!wasReceipted && !nowReceipted && existingRow > -1) {
+      // Still no receipt but fields may have changed — update the row
+      nrSheet.getRange(existingRow, 4, 1, 3).setValues([[
+        newPayload.description || '',
+        parseFloat(newPayload.amount) || 0,
+        newPayload.requestedBy || ''
+      ]]);
+    }
+  } catch(e) {
+    console.error('syncNoReceiptOnUpdate error:', e);
   }
 }
 
@@ -460,6 +578,9 @@ function deleteExpenseEntry(entryId) {
       sheet.getRange(row, 11).setValue('DELETED');
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 14).setValue(`${userEmail} @ ${now}`);
+
+      // Mark corresponding NRC row as DELETED
+      markNoReceiptDeleted(entryId);
 
       recalculateDailySummary(date);
       return { success: true };
@@ -505,20 +626,107 @@ function getExpenseEntries(date) {
 }
 
 // ─────────────────────────────────────────────
+// NO RECEIPTS — PettyCash_NoReceipts
+// Columns: NR_ID | Entry_ID | Date | Description | Amount | Requested_By | Created_By | Created_At
+// ─────────────────────────────────────────────
+
+function saveNoReceiptRecord(data) {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const nrSheet = ss.getSheetByName(SHEETS.NO_RECEIPTS);
+    const user    = getUserEmail();
+    const now     = new Date().toISOString();
+    const nrId    = generateId('NRC', data.date, nrSheet);
+
+    nrSheet.appendRow([
+      nrId,                    // NR_ID
+      data.entryId  || '',     // Entry_ID (FK → PettyCash_Entries)
+      data.date,               // Date
+      data.description || '',  // Description
+      parseFloat(data.amount) || 0, // Amount
+      data.requestedBy || '',  // Requested_By
+      user,                    // Created_By
+      now                      // Created_At
+    ]);
+
+    return { success: true, id: nrId };
+  } catch(e) {
+    console.error('saveNoReceiptRecord error:', e);
+    return { success: false, message: e.toString() };
+  }
+}
+
+function markNoReceiptDeleted(entryId) {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const nrSheet = ss.getSheetByName(SHEETS.NO_RECEIPTS);
+    if (!nrSheet) return;
+
+    const data = nrSheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][1] === entryId) {
+        // Prefix description with [DELETED] as a soft marker
+        const existing = data[i][3] || '';
+        if (!existing.startsWith('[DELETED]')) {
+          nrSheet.getRange(i + 1, 4).setValue('[DELETED] ' + existing);
+        }
+        break;
+      }
+    }
+  } catch(e) {
+    console.error('markNoReceiptDeleted error:', e);
+  }
+}
+
+function getNoReceiptsByDate(date) {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const nrSheet = ss.getSheetByName(SHEETS.NO_RECEIPTS);
+    if (!nrSheet) return { success: true, data: [] };
+
+    const data    = nrSheet.getDataRange().getValues();
+    const records = [];
+
+    for (let i = 1; i < data.length; i++) {
+      const row     = data[i];
+      const rowDate = normalizeDate(row[2]);
+      if (rowDate !== date) continue;
+
+      // Exclude soft-deleted rows
+      const desc = String(row[3] || '');
+      if (desc.startsWith('[DELETED]')) continue;
+
+      records.push({
+        nrId       : row[0],
+        entryId    : row[1],
+        date       : rowDate,
+        description: desc,
+        amount     : row[4],
+        requestedBy: row[5],
+        createdBy  : row[6],
+        createdAt  : row[7]
+      });
+    }
+    return { success: true, data: records };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+// ─────────────────────────────────────────────
 // BIR RECEIPTS — Purchases Journal
-// Net_Of_VAT column removed from sheet schema
 // ─────────────────────────────────────────────
 function saveReceiptRecord(data) {
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.RECEIPTS);
     const vat   = computeVAT(data.grossAmount);
-    const id    = generateId('RCP');
+    const id    = generateId('RCP', data.date, sheet);
     const user  = getUserEmail();
     const now   = new Date().toISOString();
 
     sheet.appendRow([
-      id,                    // Receipt_ID (PK)
+      id,                    // Receipt_ID
       data.entryId  || '',   // Entry_ID (FK)
       data.date,             // Date
       data.supplierName,     // Supplier_Name
@@ -528,7 +736,6 @@ function saveReceiptRecord(data) {
       vat.grossAmount,       // Gross_Amount
       vat.vatableSales,      // Vatable_Sales (Less: VAT)
       vat.vatAmount,         // VAT_Amount (12%)
-      // Net_Of_VAT removed
       user,                  // Created_By
       now                    // Created_At
     ]);
@@ -559,9 +766,8 @@ function getReceiptByEntryId(entryId) {
           tin         : row[5],
           receiptNo   : row[6],
           grossAmount : row[7],
-          vatableSales: row[8],  // Less: VAT
-          vatAmount   : row[9],  // VAT Amount (12%)
-          // netOfVat removed (was row[10])
+          vatableSales: row[8],
+          vatAmount   : row[9],
           createdBy   : row[10],
           createdAt   : row[11]
         }
@@ -596,7 +802,6 @@ function getReceiptsByDate(date) {
         grossAmount : row[7],
         vatableSales: row[8],
         vatAmount   : row[9]
-        // netOfVat removed
       });
     }
     return { success: true, data: records };
@@ -616,9 +821,14 @@ function saveDenominationRecord(data) {
     const denoms = parseDenomBreakdown(data);
     if (!denoms) return { success: false, message: 'Invalid denomination data — could not parse breakdown.' };
 
-    const total    = calculateDenomTotal(denoms);
-    const now      = new Date().toISOString();
+    const total     = calculateDenomTotal(denoms);
+    const now       = new Date().toISOString();
     const dataRange = sheet.getDataRange().getValues();
+
+    // Determine prefix based on type
+    const prefix = data.type === 'START' ? 'DEN-OC'
+                 : data.type === 'END'   ? 'DEN-CC'
+                 : 'DEN';
 
     // Check if a record already exists for this date + type
     let targetRow = -1;
@@ -639,13 +849,10 @@ function saveDenominationRecord(data) {
 
     let recordId;
     if (targetRow !== -1) {
-      // Update existing row in place
       recordId = dataRange[targetRow - 1][0];
       sheet.getRange(targetRow, 4, 1, 13).setValues([rowValues]);
     } else {
-      // Insert new row
-      const prefix = data.type === 'START' ? 'DEN-OC' : data.type === 'END' ? 'DEN-CC' : 'DEN';
-      recordId = generateId(prefix);
+      recordId = generateId(prefix, data.date, sheet);
       sheet.appendRow([
         recordId, data.date, data.type,
         ...rowValues
@@ -811,7 +1018,6 @@ function updateDenominationRecord(data) {
     const now   = new Date().toISOString();
 
     if (targetRow === -1) {
-      // No existing record found, fall back to insert
       return saveDenominationRecord(data);
     }
 
@@ -834,20 +1040,16 @@ function updateDenominationRecord(data) {
 
 function parseDenomBreakdown(data) {
   try {
-    // Priority 1: already a parsed object under 'denominations'
     if (data.denominations && typeof data.denominations === 'object') {
       return data.denominations;
     }
-    // Priority 2: breakdown is already a plain object
     if (data.breakdown && typeof data.breakdown === 'object') {
       return data.breakdown;
     }
-    // Priority 3: breakdown is a JSON string — parse it
     if (typeof data.breakdown === 'string' && data.breakdown.trim() !== '') {
       const parsed = JSON.parse(data.breakdown);
       if (typeof parsed === 'object' && parsed !== null) return parsed;
     }
-    // Nothing valid found
     return null;
   } catch(e) {
     console.error('parseDenomBreakdown failed:', e);
