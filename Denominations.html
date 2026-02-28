@@ -1,127 +1,190 @@
 <!-- DENOMINATIONS: MODERN CARD LAYOUT -->
 <div id="page-denominations" class="page-view hidden space-y-6">
-  
+
   <!-- Header & Tabs -->
   <div class="flex flex-col md:flex-row justify-between items-center gap-4 pb-2">
     <div class="text-center md:text-left">
-       <h1 class="text-3xl font-bold text-gray-800 font-display tracking-tight">Cash Breakdown</h1>
-       <p class="text-sm text-gray-500">Count and verify physical cash</p>
+      <h1 class="text-3xl font-bold text-gray-800 font-display tracking-tight">Cash Breakdown</h1>
+      <p class="text-sm text-gray-500">Count and verify physical cash</p>
     </div>
-    
-    <!-- Modern Segmented Control -->
     <div class="bg-gray-100 p-1.5 rounded-xl flex gap-1 shadow-inner">
-       <button id="btn-tab-start" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all shadow-sm bg-blue-600 text-white flex items-center gap-2" onclick="switchDenomTab('START')">
-         <span>☀️</span> Opening
-       </button>
-       <button id="btn-tab-end" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all text-gray-500 hover:text-gray-700 flex items-center gap-2" onclick="switchDenomTab('END')">
-         <span>🌙</span> Closing
-       </button>
+      <button id="btn-tab-start" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all shadow-sm bg-blue-600 text-white flex items-center gap-2" onclick="switchDenomTab('START')">
+        <span>☀️</span> Opening
+      </button>
+      <button id="btn-tab-end" class="px-6 py-2.5 text-sm font-bold rounded-lg transition-all text-gray-500 hover:text-gray-700 flex items-center gap-2" onclick="switchDenomTab('END')">
+        <span>🌙</span> Closing
+      </button>
     </div>
   </div>
 
-  <!-- Main Content Area -->
+  <!-- Main Count Card -->
   <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-colors duration-500 border-t-4 border-blue-500" id="denomCardContainer">
-     
-     <!-- Status Bar / Total Display -->
-     <div class="p-6 md:p-8 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
-           <div class="text-center md:text-left">
-             <div class="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1" id="denomLabel">Current Total</div>
-             <div class="font-black tracking-tight flex items-baseline justify-center md:justify-start gap-1 text-gray-800">
-               <span class="text-3xl opacity-40">₱</span>
-               <span id="denomTotalDisplay" class="text-5xl md:text-6xl">0.00</span>
-             </div>
-           </div>
-           
-           <div class="flex gap-3">
-              <button onclick="clearDenomForm()" class="px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm shadow-sm">
-                ↺ Clear
-              </button>
-              <button onclick="saveDenomination()" class="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg shadow-lg hover:bg-gray-800 transform active:scale-95 transition-all text-sm flex items-center gap-2">
-                <span>💾</span> Save Count
-              </button>
-           </div>
+
+    <!-- Total Bar -->
+    <div class="p-6 md:p-8 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+      <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="text-center md:text-left">
+          <div class="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1" id="denomLabel">Opening Total</div>
+          <div class="font-black tracking-tight flex items-baseline justify-center md:justify-start gap-1 text-gray-800">
+            <span class="text-3xl opacity-40">₱</span>
+            <span id="denomTotalDisplay" class="text-5xl md:text-6xl text-gray-400">0.00</span>
+          </div>
         </div>
-     </div>
-
-     <!-- Card Grid -->
-     <div class="p-6 bg-gray-50/30">
-        <input type="hidden" id="denomType" value="START">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:flex xl:flex-nowrap xl:overflow-x-auto gap-3 pb-2" id="denomGrid">
-           <!-- JS Injected Cards -->
+        <div class="flex gap-3">
+          <button onclick="clearDenomForm()" class="px-4 py-2 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm shadow-sm">↺ Clear</button>
+          <button onclick="saveDenomination()" class="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg shadow-lg hover:bg-gray-800 transform active:scale-95 transition-all text-sm flex items-center gap-2">
+            <span>💾</span> Save Count
+          </button>
         </div>
-     </div>
-
-     <!-- Footer Notes -->
-     <div class="p-6 border-t border-gray-100 bg-white">
-        <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
-        <div class="relative">
-          <textarea id="denomNotes" class="w-full p-4 pl-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="2" placeholder="Start typing..."></textarea>
-          <div class="absolute top-4 left-3 text-gray-400">📝</div>
-        </div>
-     </div>
-  </div>
-
-  <!-- FIX: Added missing savedDenomsContainer — loadDenominations() writes here to show saved records -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-     <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-        <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">Saved Records for This Day</h3>
-        <button onclick="loadDenominations()" class="text-gray-400 hover:text-blue-600 transition text-sm">↺ Refresh</button>
-     </div>
-     <div id="savedDenomsContainer" class="p-4 space-y-3">
-        <div class="text-center py-6 text-gray-400 text-sm">Loading records...</div>
-     </div>
-  </div>
-
-  <!-- CLOSING CONFIRM MODAL -->
-  <div id="closingModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden transform transition-all scale-100">
-         
-         <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
-            <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl">🌙</div>
-            <h3 class="text-lg font-bold text-gray-800">Review Closing</h3>
-            <p class="text-xs text-gray-500">Confirm cash count against expected amount</p>
-         </div>
-
-         <div class="p-6 space-y-4">
-            
-            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-               <span class="text-sm text-gray-500">Expected Cash</span>
-               <span class="font-mono font-bold text-gray-700" id="modExpected">₱0.00</span>
-            </div>
-
-            <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-amber-200 bg-amber-50">
-               <span class="text-sm text-amber-700 font-bold">Actual Count</span>
-               <span class="font-mono font-bold text-amber-700 text-lg" id="modActual">₱0.00</span>
-            </div>
-
-            <div class="border-t border-dashed border-gray-300 my-2"></div>
-
-            <div class="flex justify-between items-center">
-               <span class="text-sm font-bold text-gray-500 uppercase tracking-wider">Variance</span>
-               <div class="text-right">
-                  <span class="font-mono font-black text-2xl" id="modVariance">₱0.00</span>
-                  <div class="text-[10px] text-gray-400 uppercase tracking-widest mt-1" id="modStatus">BALANCED</div>
-               </div>
-            </div>
-
-            <!-- Auto Adjust Option -->
-            <div id="autoAdjustContainer" class="hidden mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
-               <input type="checkbox" id="chkAutoAdjust" class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
-               <div>
-                  <label for="chkAutoAdjust" class="block text-sm font-bold text-blue-800">Auto-Create Adjustment Entry</label>
-                  <p class="text-xs text-blue-600 mt-0.5">Create a miscellaneous entry to balance the variance.</p>
-               </div>
-            </div>
-
-         </div>
-
-         <div class="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
-             <button onclick="closeClosingModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
-             <button onclick="confirmClosingSave()" class="flex-1 py-3 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-lg transition flex justify-center items-center gap-2">
-                <span>✓</span> Confirm &amp; Save
-             </button>
-         </div>
       </div>
+    </div>
+
+    <!-- Bill Grid -->
+    <div class="p-6 bg-gray-50/30">
+      <input type="hidden" id="denomType" value="START">
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 xl:flex xl:flex-nowrap xl:overflow-x-auto gap-3 pb-2" id="denomGrid">
+        <!-- JS Injected -->
+      </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="p-6 border-t border-gray-100 bg-white">
+      <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
+      <div class="relative">
+        <textarea id="denomNotes" class="w-full p-4 pl-10 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="2" placeholder="Start typing..."></textarea>
+        <div class="absolute top-4 left-3 text-gray-400">📝</div>
+      </div>
+    </div>
   </div>
+
+  <!-- Saved Records -->
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+    <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+      <h3 class="text-sm font-bold text-gray-500 uppercase tracking-wider">Saved Records for This Day</h3>
+      <button onclick="loadDenominations()" class="text-gray-400 hover:text-blue-600 transition text-sm">↺ Refresh</button>
+    </div>
+    <div id="savedDenomsContainer" class="p-4 space-y-3">
+      <div class="text-center py-6 text-gray-400 text-sm">Loading records...</div>
+    </div>
+  </div>
+
+
+  <!-- =============================================
+       CLOSING CONFIRM MODAL
+       ============================================= -->
+  <div id="closingModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+
+      <!-- Modal Header -->
+      <div class="bg-gray-50 p-6 border-b border-gray-100 text-center">
+        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl">🌙</div>
+        <h3 class="text-lg font-bold text-gray-800">Review Closing Count</h3>
+        <p class="text-xs text-gray-500">Confirm cash count against expected balance</p>
+      </div>
+
+      <!-- Summary Row -->
+      <div class="p-6 space-y-3">
+
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <span class="text-sm text-gray-500 font-medium">Expected Cash</span>
+          <span class="font-mono font-bold text-gray-700 text-base" id="modExpected">₱0.00</span>
+        </div>
+
+        <div class="flex justify-between items-center p-3 rounded-lg border border-amber-200 bg-amber-50">
+          <span class="text-sm text-amber-700 font-bold">Actual Count</span>
+          <span class="font-mono font-bold text-amber-700 text-lg" id="modActual">₱0.00</span>
+        </div>
+
+        <div class="border-t border-dashed border-gray-200 pt-3 flex justify-between items-center">
+          <span class="text-sm font-bold text-gray-500 uppercase tracking-wider">Variance</span>
+          <div class="text-right">
+            <span class="font-mono font-black text-2xl" id="modVariance">₱0.00</span>
+            <div class="text-xs font-bold uppercase tracking-widest mt-0.5" id="modStatus">BALANCED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SHORTAGE PANEL ── shown when variance < 0 -->
+      <div id="shortagePanel" class="hidden mx-6 mb-4 rounded-xl border border-red-200 bg-red-50 overflow-hidden">
+        <div class="px-4 py-3 bg-red-100 border-b border-red-200 flex items-center gap-2">
+          <span class="text-red-600 text-lg">⚠️</span>
+          <div>
+            <div class="text-sm font-bold text-red-800">Cash Shortage Detected</div>
+            <div class="text-xs text-red-600">The physical count is <span class="variance-amount font-bold">₱0.00</span> short</div>
+          </div>
+        </div>
+        <div class="p-4 space-y-3">
+
+          <!-- Option A: Record shortage -->
+          <label class="flex items-start gap-3 cursor-pointer group">
+            <input type="checkbox" id="chkCreateShortage" class="mt-0.5 w-4 h-4 text-red-600 rounded border-gray-300 focus:ring-red-500">
+            <div>
+              <div class="text-sm font-bold text-red-800 group-hover:text-red-900">Record Shortage Entry</div>
+              <div class="text-xs text-red-600 mt-0.5">
+                Creates an expense entry of <span class="variance-amount font-bold">₱0.00</span> under "Miscellaneous" so the books balance.
+                Use this when cash is simply missing (unreceipted spend, counting error, etc.)
+              </div>
+            </div>
+          </label>
+
+          <div class="border-t border-red-200"></div>
+
+          <!-- Option B: Request replenishment -->
+          <label class="flex items-start gap-3 cursor-pointer group">
+            <input type="checkbox" id="chkReplenish" class="mt-0.5 w-4 h-4 text-orange-500 rounded border-gray-300 focus:ring-orange-400">
+            <div>
+              <div class="text-sm font-bold text-orange-800 group-hover:text-orange-900">Request Replenishment</div>
+              <div class="text-xs text-orange-600 mt-0.5">
+                Logs a replenishment request for <span class="variance-amount font-bold">₱0.00</span> to top up the petty cash fund.
+                Use this when the fund is genuinely running low.
+              </div>
+            </div>
+          </label>
+
+        </div>
+      </div>
+
+      <!-- ── OVERAGE PANEL ── shown when variance > 0 -->
+      <div id="overagePanel" class="hidden mx-6 mb-4 rounded-xl border border-blue-200 bg-blue-50 overflow-hidden">
+        <div class="px-4 py-3 bg-blue-100 border-b border-blue-200 flex items-center gap-2">
+          <span class="text-blue-600 text-lg">💰</span>
+          <div>
+            <div class="text-sm font-bold text-blue-800">Cash Overage Detected</div>
+            <div class="text-xs text-blue-600">The physical count is <span class="variance-amount font-bold">₱0.00</span> over expected</div>
+          </div>
+        </div>
+        <div class="p-4 space-y-3">
+
+          <!-- Option: Record overage -->
+          <label class="flex items-start gap-3 cursor-pointer group">
+            <input type="checkbox" id="chkCreateOverage" class="mt-0.5 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+            <div>
+              <div class="text-sm font-bold text-blue-800 group-hover:text-blue-900">Record Cash Overage Entry</div>
+              <div class="text-xs text-blue-600 mt-0.5">
+                Creates a <strong>CASH_OVER</strong> entry of <span class="variance-amount font-bold">₱0.00</span>.
+                This acknowledges extra cash found in the fund. It will be reported separately from expenses
+                and should be investigated or returned to the main fund.
+              </div>
+            </div>
+          </label>
+
+          <div class="p-3 bg-white rounded-lg border border-blue-100 text-xs text-gray-500">
+            💡 <strong>What to do with overage:</strong> Common causes are change counted twice, misposted receipts, or unreported returned change.
+            Recording it ensures your closing balance reflects reality and creates an audit trail.
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Footer Buttons -->
+      <div class="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+        <button onclick="closeClosingModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
+        <button onclick="confirmClosingSave()" class="flex-1 py-3 text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-lg transition flex justify-center items-center gap-2">
+          <span>✓</span> Confirm &amp; Save
+        </button>
+      </div>
+
+    </div>
+  </div>
+
 </div>

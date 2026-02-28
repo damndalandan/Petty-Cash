@@ -1,4 +1,4 @@
-    <!-- REPORT PAGE -->
+<!-- REPORT PAGE -->
     <div id="page-report" class="page-view hidden h-[calc(100vh-3rem)] flex flex-col md:flex-row gap-6 p-4 md:p-6 overflow-hidden">
       
       <!-- Left Pane: Daily Summaries List -->
@@ -8,15 +8,12 @@
              <h2 class="font-bold text-gray-700 font-display">Daily Reports</h2>
              <button onclick="loadReportsList()" class="text-blue-600 hover:bg-blue-100 p-1.5 rounded transition" title="Refresh">↻</button>
            </div>
-           
            <div class="flex gap-2">
               <select id="reportMonth" onchange="loadReportsList()" class="flex-1 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
               <select id="reportYear" onchange="loadReportsList()" class="w-24 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
            </div>
          </div>
-
          <div id="reportsList" class="flex-1 overflow-y-auto p-2 space-y-1 bg-gray-50/50">
-            <!-- Dynamic Items -->
             <div class="text-center py-10 text-gray-400 text-sm">Select dates...</div>
          </div>
       </div>
@@ -33,7 +30,7 @@
             <!-- Header -->
             <div class="p-6 border-b border-gray-200 bg-white flex justify-between items-start">
                <div>
-                  <h2 class="text-2xl font-bold text-gray-800 font-display" id="detailDate">October 24, 2023</h2>
+                  <h2 class="text-2xl font-bold text-gray-800 font-display" id="detailDate">—</h2>
                   <div class="flex gap-4 mt-2 text-sm">
                      <div><span class="text-gray-500 block text-[10px] uppercase">Opening</span><span class="font-mono font-bold" id="d-opening">₱0.00</span></div>
                      <div><span class="text-gray-500 block text-[10px] uppercase">Expenses</span><span class="font-mono font-bold text-red-600" id="d-expenses">₱0.00</span></div>
@@ -46,12 +43,14 @@
                </div>
             </div>
 
-            <!-- Tabs -->
-            <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-2 gap-1" id="detailTabs">
-               <button onclick="setDetailFilter('all')" id="tab-all" class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600">All</button>
-               <button onclick="setDetailFilter('receipt')" id="tab-receipt" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">With Receipt</button>
-               <button onclick="setDetailFilter('noreceipt')" id="tab-noreceipt" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">No Receipt</button>
-               <button onclick="setDetailFilter('advance')" id="tab-advance" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">Cash Advance</button>
+            <!-- Tabs — includes OVERAGE and REPLENISHMENT tabs -->
+            <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-2 gap-1 overflow-x-auto" id="detailTabs">
+               <button onclick="setDetailFilter('all')"       id="tab-all"       class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 whitespace-nowrap">All</button>
+               <button onclick="setDetailFilter('receipt')"   id="tab-receipt"   class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">With Receipt</button>
+               <button onclick="setDetailFilter('noreceipt')" id="tab-noreceipt" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">No Receipt</button>
+               <button onclick="setDetailFilter('advance')"   id="tab-advance"   class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">Cash Advance</button>
+               <button onclick="setDetailFilter('over')"      id="tab-over"      class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">💰 Overage</button>
+               <button onclick="setDetailFilter('replenish')" id="tab-replenish" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">🔄 Replenish</button>
             </div>
 
             <!-- List -->
@@ -61,16 +60,14 @@
                     <tr>
                       <th class="px-6 py-3">Category / Desc</th>
                       <th class="px-6 py-3 text-right">Amount</th>
-                      <th class="px-6 py-3 text-center">Receipt</th>
+                      <th class="px-6 py-3 text-center">Type</th>
                     </tr>
                   </thead>
-                  <tbody id="detailListBody" class="divide-y divide-gray-100">
-                     <!-- Items -->
-                  </tbody>
+                  <tbody id="detailListBody" class="divide-y divide-gray-100"></tbody>
                </table>
             </div>
 
-            <!-- Footer Footer (Totals) -->
+            <!-- Footer Totals -->
             <div class="p-4 border-t border-gray-200 bg-gray-50 text-right">
                <span class="text-xs text-gray-500 mr-2 uppercase">Displayed Total</span>
                <span class="font-bold font-mono text-lg text-gray-800" id="detailDisplayedTotal">₱0.00</span>

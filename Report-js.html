@@ -3,268 +3,232 @@
 // REPORT
 // =============================================
 
-// --- NEW REPORT LOGIC ---
-
 let currentReportMonthData = { entries: [], summaries: [] };
 let selectedReportDate = null;
 let currentDetailFilter = 'all';
 
 function initReportPage() {
-    populateReportSelectors();
-    loadReportsList();
+  populateReportSelectors();
+  loadReportsList();
 }
 
 function populateReportSelectors() {
-    const m = document.getElementById('reportMonth');
-    const y = document.getElementById('reportYear');
-    if(m.options.length > 0) return;
+  const m = document.getElementById('reportMonth');
+  const y = document.getElementById('reportYear');
+  if (m.options.length > 0) return; // already populated
 
-    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-    months.forEach((name, i) => {
-        m.add(new Option(name, i));
-    });
-    
-    const currYear = new Date().getFullYear();
-    for(let i=currYear; i>=2025; i--) {
-        y.add(new Option(i, i));
-    }
-    
-    // Set current
-    const now = new Date();
-    m.value = now.getMonth();
-    y.value = now.getFullYear();
+  const months = ["January","February","March","April","May","June",
+                  "July","August","September","October","November","December"];
+  months.forEach((name, i) => m.add(new Option(name, i)));
+
+  const currYear = new Date().getFullYear();
+  for (let i = currYear; i >= 2025; i--) y.add(new Option(i, i));
+
+  const now = new Date();
+  m.value = now.getMonth();
+  y.value = now.getFullYear();
 }
 
 async function loadReportsList() {
-    resetReportDetailView(); // Reset detail view on refresh/load
+  resetReportDetailView();
 
-    const m = parseInt(document.getElementById('reportMonth').value);
-    const y = parseInt(document.getElementById('reportYear').value);
-    
-    // Calculate start/end of month
-    const fromDt = new Date(y, m, 1);
-    const toDt = new Date(y, m + 1, 0); // Last day of month
-    
-    const fromStr = fromDt.toISOString().split('T')[0];
-    const toStr = toDt.toISOString().split('T')[0];
-    
-    const listEl = document.getElementById('reportsList');
-    listEl.innerHTML = '<div class="text-center py-10"><div class="loader inline-block"></div></div>';
-    
-    const res = await callServer('generateReportData', { from: fromStr, to: toStr });
-    
-    if(res.success) {
-        currentReportMonthData = res.data; // { entries: [], summaries: [] }
-        renderReportsList(y, m);
-    } else {
-        listEl.innerHTML = '<div class="text-center py-10 text-red-400">Error loading data</div>';
-    }
+  const m    = parseInt(document.getElementById('reportMonth').value);
+  const y    = parseInt(document.getElementById('reportYear').value);
+  const from = new Date(y, m, 1);
+  const to   = new Date(y, m + 1, 0);
+
+  const fromStr = from.toISOString().split('T')[0];
+  const toStr   = to.toISOString().split('T')[0];
+
+  const listEl = document.getElementById('reportsList');
+  listEl.innerHTML = '<div class="text-center py-10"><div class="loader inline-block"></div></div>';
+
+  const res = await callServer('generateReportData', { from: fromStr, to: toStr });
+
+  if (res.success) {
+    currentReportMonthData = res.data;
+    renderReportsList(y, m);
+  } else {
+    listEl.innerHTML = '<div class="text-center py-10 text-red-400">Error loading data</div>';
+  }
 }
 
 function renderReportsList(year, month) {
-    const listEl = document.getElementById('reportsList');
-    listEl.innerHTML = '';
-    
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const today = new Date();
-    // Reset hours to compare dates only
-    today.setHours(0,0,0,0);
-    
-    // Map summaries for quick access
-    const sumMap = {};
-    if(currentReportMonthData.summaries) {
-        currentReportMonthData.summaries.forEach(s => {
-             const d = new Date(s.date);
-             const key = d.getDate(); // 1-31
-             sumMap[key] = s;
-        });
+  const listEl     = document.getElementById('reportsList');
+  const daysInMonth= new Date(year, month + 1, 0).getDate();
+  const today      = new Date(); today.setHours(0, 0, 0, 0);
+
+  // Index summaries by date string
+  const sumMap = {};
+  (currentReportMonthData.summaries || []).forEach(s => { sumMap[s.date] = s; });
+
+  // Index entry totals by date string
+  const entMap = {};
+  (currentReportMonthData.entries || []).forEach(e => {
+    if (e.type === 'EXPENSE') { // only real expenses for the list display
+      entMap[e.date] = (entMap[e.date] || 0) + (parseFloat(e.amount) || 0);
     }
+  });
 
-    // Map entries to calculate totals if summary missing
-    const entMap = {};
-    currentReportMonthData.entries.forEach(e => {
-        const d = new Date(e.date);
-        const key = d.getDate();
-        if(!entMap[key]) entMap[key] = 0;
-        entMap[key] += e.amount;
-    });
-    
-    let html = '';
-    
-    for(let day = daysInMonth; day >= 1; day--) {
-        const dateObj = new Date(year, month, day);
-        dateObj.setHours(0,0,0,0);
+  let html = '';
 
-        if(dateObj > today) continue; // Skip future
-        
-        const summary = sumMap[day];
-        const entryTotal = entMap[day] || 0;
-        
-        const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
-        
-        const totalExp = summary ? summary.expenses : entryTotal;
-        const variance = summary ? (summary.variance || 0) : 0; 
-        
-        let statusDot = 'bg-gray-300';
-        let statusText = 'No Data';
-        let statusClass = 'text-gray-400';
-        let mainText = 'No petty cash audit';
-        let expText = '';
+  for (let day = daysInMonth; day >= 1; day--) {
+    // FIX: append T00:00:00 so Date() parses in LOCAL time, not UTC
+    // Without this, "2026-01-15" parsed as UTC midnight can show as Jan 14 in UTC+8
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const dateObj = new Date(dateStr + 'T00:00:00');
+    if (dateObj > today) continue;
 
-        if (summary || entryTotal > 0) {
-            mainText = '₱' + fmt(totalExp).replace('₱','');
-            expText = 'Exp: ' + fmt(totalExp);
+    const summary    = sumMap[dateStr];
+    const entryTotal = entMap[dateStr] || 0;
+    const dayName    = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
 
-            if (summary) {
-                if (Math.abs(variance || 0) > 1.00) {
-                     statusDot = 'bg-red-500';
-                     statusText = 'Variance';
-                     statusClass = 'text-red-500 font-bold';
-                } else {
-                     statusDot = 'bg-green-500';
-                     statusText = 'Balanced';
-                     statusClass = 'text-green-600';
-                }
-            } else {
-                 statusDot = 'bg-blue-300';
-                 statusText = 'Open';
-                 statusClass = 'text-blue-500'; // Has entries but no closed summary
-            }
+    const totalExp = summary ? summary.expenses : entryTotal;
+    const variance = summary ? (summary.variance || 0) : 0;
+
+    let statusDot   = 'bg-gray-300';
+    let statusText  = 'No Data';
+    let statusClass = 'text-gray-400';
+    let expText     = 'No petty cash audit';
+
+    if (summary || entryTotal > 0) {
+      expText = 'Exp: ' + fmt(totalExp);
+      if (summary) {
+        if (Math.abs(variance) > 1.00) {
+          statusDot   = 'bg-red-500';
+          statusText  = 'Variance';
+          statusClass = 'text-red-500 font-bold';
+        } else {
+          statusDot   = 'bg-green-500';
+          statusText  = 'Balanced';
+          statusClass = 'text-green-600';
         }
-        
-        html += `
-          <div onclick="showReportDetail('${dateStr}')" class="group flex items-center gap-3 p-3 hover:bg-white cursor-pointer rounded transition border border-transparent hover:border-gray-200 hover:shadow-sm border-b border-gray-100 last:border-0">
-             <div class="flex flex-col items-center min-w-[3rem]">
-                <span class="text-xs font-bold text-gray-400 uppercase">${dayName}</span>
-                <span class="text-lg font-bold text-gray-700 leading-none">${day}</span>
-             </div>
-             <div class="h-8 w-0.5 bg-gray-200 mx-1"></div>
-             <div class="flex-1 min-w-0">
-               <div class="flex items-center gap-2">
-                  <div class="w-1.5 h-1.5 rounded-full ${statusDot}"></div>
-                  <h4 class="text-sm font-semibold text-gray-800 truncate">${dateObj.toLocaleDateString('en-US', {month:'short', day:'numeric'})}</h4>
-               </div>
-               <p class="text-xs text-gray-500 font-mono">${(summary || entryTotal > 0) ? expText : 'No petty cash audit'}</p>
-             </div>
-             <div class="text-[10px] uppercase ${statusClass}">
-               ${statusText}
-             </div>
+      } else {
+        statusDot   = 'bg-blue-300';
+        statusText  = 'Open';
+        statusClass = 'text-blue-500';
+      }
+    }
+
+    html += `
+      <div onclick="showReportDetail('${dateStr}')" class="group flex items-center gap-3 p-3 hover:bg-white cursor-pointer rounded transition border border-transparent hover:border-gray-200 hover:shadow-sm border-b border-gray-100 last:border-0">
+        <div class="flex flex-col items-center min-w-[3rem]">
+          <span class="text-xs font-bold text-gray-400 uppercase">${dayName}</span>
+          <span class="text-lg font-bold text-gray-700 leading-none">${day}</span>
+        </div>
+        <div class="h-8 w-0.5 bg-gray-200 mx-1"></div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2">
+            <div class="w-1.5 h-1.5 rounded-full ${statusDot}"></div>
+            <h4 class="text-sm font-semibold text-gray-800 truncate">${dateObj.toLocaleDateString('en-US', {month:'short', day:'numeric'})}</h4>
           </div>
-        `;
-    }
-    
-    if (html === '') {
-        html = '<div class="text-center py-10 text-gray-400 text-sm">No records found for this month</div>';
-    }
-    
-    listEl.innerHTML = html;
+          <p class="text-xs text-gray-500 font-mono">${expText}</p>
+        </div>
+        <div class="text-[10px] uppercase ${statusClass}">${statusText}</div>
+      </div>`;
+  }
+
+  if (!html) {
+    html = '<div class="text-center py-10 text-gray-400 text-sm">No records found for this month</div>';
+  }
+  listEl.innerHTML = html;
 }
 
 function showReportDetail(dateStr) {
-    selectedReportDate = dateStr;
-    const dateObj = new Date(dateStr);
-    
-    document.getElementById('reportDetailEmpty').classList.add('hidden');
-    document.getElementById('reportDetailContent').classList.remove('hidden');
-    
-    document.getElementById('detailDate').textContent = dateObj.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-    
-    // Find Data
-    const summary = currentReportMonthData.summaries.find(s => {
-       const d = new Date(s.date);
-       return d.toISOString().split('T')[0] === dateStr || s.date === dateStr;
-    });
-    
-    if(summary) {
-        document.getElementById('d-opening').textContent = fmt(summary.opening);
-        document.getElementById('d-expenses').textContent = fmt(summary.expenses);
-        document.getElementById('d-closing').textContent = fmt(summary.closing);
-        
-        const v = summary.variance || 0;
-        const elV = document.getElementById('d-variance');
-        elV.textContent = fmt(v);
-        
-        // Color code variance
-        if(v < -0.01) elV.className = "text-xl font-mono font-bold text-red-600";
-        else if(v > 0.01) elV.className = "text-xl font-mono font-bold text-blue-600";
-        else elV.className = "text-xl font-mono font-bold text-gray-400";
+  selectedReportDate = dateStr;
+  // FIX: use T00:00:00 for local-time parsing
+  const dateObj = new Date(dateStr + 'T00:00:00');
 
-    } else {
-        document.getElementById('d-opening').textContent = '---';
-        document.getElementById('d-expenses').textContent = '---';
-        document.getElementById('d-closing').textContent = '---';
-        document.getElementById('d-variance').textContent = '---';
-    }
-    
-    setDetailFilter('all');
+  document.getElementById('reportDetailEmpty').classList.add('hidden');
+  document.getElementById('reportDetailContent').classList.remove('hidden');
+  document.getElementById('detailDate').textContent = dateObj.toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  const summary = (currentReportMonthData.summaries || []).find(s => s.date === dateStr);
+
+  if (summary) {
+    document.getElementById('d-opening').textContent  = fmt(summary.opening);
+    document.getElementById('d-expenses').textContent = fmt(summary.expenses);
+    document.getElementById('d-closing').textContent  = fmt(summary.closing);
+
+    const v   = summary.variance || 0;
+    const elV = document.getElementById('d-variance');
+    elV.textContent = fmt(v);
+    elV.className   = 'text-xl font-mono font-bold ' +
+      (v < -0.01 ? 'text-red-600' : v > 0.01 ? 'text-blue-600' : 'text-gray-400');
+  } else {
+    ['d-opening','d-expenses','d-closing','d-variance'].forEach(id => {
+      document.getElementById(id).textContent = '---';
+    });
+  }
+
+  setDetailFilter('all');
 }
 
 function setDetailFilter(filter) {
-    currentDetailFilter = filter;
-    ['all', 'receipt', 'noreceipt', 'advance'].forEach(t => {
-        const el = document.getElementById('tab-' + t);
-        if(t === filter) {
-             el.className = "px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 transition";
-        } else {
-             el.className = "px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition";
-        }
-    });
-    renderDetailList();
+  currentDetailFilter = filter;
+  ['all','receipt','noreceipt','advance','over','replenish'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (!el) return;
+    el.className = t === filter
+      ? "px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 transition"
+      : "px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition";
+  });
+  renderDetailList();
 }
 
 function resetReportDetailView() {
-    selectedReportDate = null;
-    document.getElementById('reportDetailContent').classList.add('hidden');
-    document.getElementById('reportDetailEmpty').classList.remove('hidden');
+  selectedReportDate = null;
+  document.getElementById('reportDetailContent').classList.add('hidden');
+  document.getElementById('reportDetailEmpty').classList.remove('hidden');
 }
 
 function renderDetailList() {
-    if(!selectedReportDate) return;
-    
-    let entries = currentReportMonthData.entries.filter(e => {
-        const d = new Date(e.date);
-        const eStr = d.toISOString().split('T')[0];
-        return eStr === selectedReportDate || e.date === selectedReportDate;
-    });
-    
-    if(currentDetailFilter === 'receipt') entries = entries.filter(e => e.hasReceipt && e.type === 'EXPENSE');
-    if(currentDetailFilter === 'noreceipt') entries = entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
-    if(currentDetailFilter === 'advance') entries = entries.filter(e => e.type === 'CASH_ADVANCE');
-    
-    const tbody = document.getElementById('detailListBody');
-    if(entries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-8 text-center text-gray-400 italic">No entries found</td></tr>';
-        document.getElementById('detailDisplayedTotal').textContent = fmt(0);
-        return;
-    }
-    
-    let total = 0;
-    tbody.innerHTML = entries.map(e => {
-        total += (e.amount || 0);
-        let receiptHtml = '';
-        if(e.type === 'CASH_ADVANCE') {
-            receiptHtml = '<span class="text-blue-600 text-xs font-bold bg-blue-100 px-2 py-1 rounded">ADVANCE</span>';
-        } else {
-            receiptHtml = e.hasReceipt ? 
-                '<span class="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">YES</span>' : 
-                '<span class="text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded">NO</span>';
-        }
+  if (!selectedReportDate) return;
 
-        return `
-         <tr class="hover:bg-gray-50">
-            <td class="px-6 py-3">
-               <div class="font-medium text-gray-900">${e.description}</div>
-               <div class="text-xs text-gray-500">${e.category || (e.type === 'CASH_ADVANCE' ? 'Cash Advance' : 'Expense')}</div>
-            </td>
-            <td class="px-6 py-3 text-right font-mono text-gray-700">${fmt(e.amount)}</td>
-            <td class="px-6 py-3 text-center">
-               ${receiptHtml}
-            </td>
-         </tr>
-        `;
-    }).join('');
-    
-    document.getElementById('detailDisplayedTotal').textContent = fmt(total);
+  let entries = (currentReportMonthData.entries || []).filter(e => e.date === selectedReportDate);
+
+  if (currentDetailFilter === 'receipt')    entries = entries.filter(e => e.hasReceipt && e.type === 'EXPENSE');
+  if (currentDetailFilter === 'noreceipt')  entries = entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
+  if (currentDetailFilter === 'advance')    entries = entries.filter(e => e.type === 'CASH_ADVANCE');
+  if (currentDetailFilter === 'over')       entries = entries.filter(e => e.type === 'CASH_OVER');
+  if (currentDetailFilter === 'replenish')  entries = entries.filter(e => e.type === 'REPLENISHMENT');
+
+  const tbody = document.getElementById('detailListBody');
+  if (entries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-8 text-center text-gray-400 italic">No entries found</td></tr>';
+    document.getElementById('detailDisplayedTotal').textContent = fmt(0);
+    return;
+  }
+
+  let total = 0;
+  tbody.innerHTML = entries.map(e => {
+    total += (parseFloat(e.amount) || 0);
+
+    let receiptHtml;
+    if (e.type === 'CASH_ADVANCE')
+      receiptHtml = '<span class="text-blue-600 text-xs font-bold bg-blue-100 px-2 py-1 rounded">ADVANCE</span>';
+    else if (e.type === 'CASH_OVER')
+      receiptHtml = '<span class="text-emerald-600 text-xs font-bold bg-emerald-100 px-2 py-1 rounded">OVERAGE</span>';
+    else if (e.type === 'REPLENISHMENT')
+      receiptHtml = '<span class="text-purple-600 text-xs font-bold bg-purple-100 px-2 py-1 rounded">REPLENISH</span>';
+    else
+      receiptHtml = e.hasReceipt
+        ? '<span class="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">YES</span>'
+        : '<span class="text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded">NO</span>';
+
+    return `
+      <tr class="hover:bg-gray-50">
+        <td class="px-6 py-3">
+          <div class="font-medium text-gray-900">${e.description}</div>
+          <div class="text-xs text-gray-500">${e.category || e.type}</div>
+        </td>
+        <td class="px-6 py-3 text-right font-mono text-gray-700">${fmt(e.amount)}</td>
+        <td class="px-6 py-3 text-center">${receiptHtml}</td>
+      </tr>`;
+  }).join('');
+
+  document.getElementById('detailDisplayedTotal').textContent = fmt(total);
 }
 </script>
