@@ -9,24 +9,116 @@ const SHEETS = {
   ENTRIES      : 'PettyCash_Entries',
   DENOMINATIONS: 'PettyCash_Denominations',
   SUMMARY      : 'PettyCash_Summary',
-  RECEIPTS     : 'PettyCash_Receipts'   // BIR Purchases Journal
+  RECEIPTS     : 'PettyCash_Receipts',
+  ACCESS       : 'PettyCash_Access'
 };
 
 // ─────────────────────────────────────────────
 // WEB APP ENTRY POINT
 // ─────────────────────────────────────────────
+function isAuthorized(email) {
+  if (!email || email === 'unknown') return false;
+
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ACCESS);
+
+    // If the access sheet doesn't exist yet, fail safe — deny access
+    if (!sheet) return false;
+
+    const data = sheet.getDataRange().getValues();
+
+    // Row 0 is the header, start from row 1
+    for (let i = 1; i < data.length; i++) {
+      const rowEmail  = String(data[i][0] || '').trim().toLowerCase();
+      const rowStatus = String(data[i][3] || '').trim().toUpperCase();
+
+      if (rowEmail === email.toLowerCase() && rowStatus === 'ACTIVE') {
+        return true;
+      }
+    }
+
+    return false;
+  } catch(e) {
+    console.error('isAuthorized error:', e);
+    return false;
+  }
+}
+
+function getUserEmail() {
+  try { return Session.getActiveUser().getEmail() || 'unknown'; }
+  catch(e) { return 'unknown'; }
+}
+
 function doGet() {
+  const email = getUserEmail();
+
+  if (!isAuthorized(email)) {
+    return HtmlService.createHtmlOutput(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>Access Denied — Petty Cash</title>
+          <style>
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body {
+              font-family: 'Segoe UI', sans-serif;
+              background: #f3f4f6;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              min-height: 100vh;
+              padding: 1rem;
+            }
+            .card {
+              background: white;
+              border-radius: 1rem;
+              padding: 2.5rem;
+              max-width: 420px;
+              width: 100%;
+              text-align: center;
+              box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+              border-top: 4px solid #ef4444;
+            }
+            .icon { font-size: 3rem; margin-bottom: 1rem; }
+            h1 { font-size: 1.25rem; font-weight: 700; color: #1f2937; margin-bottom: 0.5rem; }
+            p { font-size: 0.875rem; color: #6b7280; line-height: 1.6; margin-bottom: 0.5rem; }
+            .email {
+              display: inline-block;
+              margin-top: 0.75rem;
+              padding: 0.4rem 0.75rem;
+              background: #fef2f2;
+              border: 1px solid #fecaca;
+              border-radius: 0.5rem;
+              font-family: monospace;
+              font-size: 0.8rem;
+              color: #dc2626;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">🚫</div>
+            <h1>Access Denied</h1>
+            <p>You don't have permission to access the Petty Cash System.</p>
+            <p>Please contact your administrator to request access.</p>
+            ${email !== 'unknown' ? `<div class="email">${email}</div>` : ''}
+          </div>
+        </body>
+      </html>
+    `)
+    .setTitle('Access Denied — Petty Cash')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   initializeSheets();
   return HtmlService.createTemplateFromFile('Index')
     .evaluate()
     .setTitle('Petty Cash System')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
-}
-
-function getUserEmail() {
-  try { return Session.getActiveUser().getEmail() || 'unknown'; }
-  catch(e) { return 'unknown'; }
 }
 
 function include(filename) {
@@ -87,10 +179,7 @@ function formatHeaderRow(sheet) {
 // ─────────────────────────────────────────────
 // SHEET INITIALIZATION
 // ─────────────────────────────────────────────
-let _sheetsInitialized = false;
-
 function initializeSheets() {
-  if (_sheetsInitialized) return { success: true };
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
   if (!ss.getSheetByName(SHEETS.ENTRIES)) {
@@ -155,7 +244,40 @@ function initializeSheets() {
     s.setColumnWidth(6, 140);
   }
 
-  _sheetsInitialized = true;
+  if (!ss.getSheetByName(SHEETS.ACCESS)) {
+    const s = ss.insertSheet(SHEETS.ACCESS);
+    s.appendRow(['Email', 'Name', 'Role', 'Status', 'Added_At', 'Notes']);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.setColumnWidth(1, 260);
+    s.setColumnWidth(2, 180);
+    s.setColumnWidth(3, 120);
+    s.setColumnWidth(4, 100);
+    s.setColumnWidth(5, 180);
+    s.setColumnWidth(6, 240);
+
+    // Column header notes for guidance
+    s.getRange('A1').setNote('Required. Full Google account email e.g. juan@gmail.com');
+    s.getRange('C1').setNote('Role label e.g. Admin, Cashier, Viewer — for reference only');
+    s.getRange('D1').setNote('ACTIVE or INACTIVE — only ACTIVE accounts can log in');
+
+    // Add a sample row so the format is clear
+    s.appendRow([
+      'example@gmail.com',
+      'Juan Dela Cruz',
+      'Cashier',
+      'INACTIVE',
+      new Date().toISOString(),
+      'Sample row — set Status to ACTIVE to enable access'
+    ]);
+
+    // Style the sample row so it looks like a placeholder
+    s.getRange(2, 1, 1, 6).setFontColor('#9ca3af').setFontStyle('italic');
+
+    // Color-code the Status column for clarity
+    s.getRange('D2:D').setHorizontalAlignment('center');
+  }
+
   return { success: true };
 }
 
@@ -212,7 +334,7 @@ function recalculateDailySummary(date) {
     for (let i = 1; i < sumData.length; i++) {
       if (normalizeDate(sumData[i][1]) === date) {
         targetRow = i + 1;
-        existingClosedBy = sumData[i][10] || '';
+        existingClosedBy = sumData[i][12] || '';
         break;
       }
     }
@@ -491,26 +613,44 @@ function saveDenominationRecord(data) {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
 
-    let denoms = data.denominations || {};
-    if (typeof data.breakdown === 'string') {
-      try { denoms = JSON.parse(data.breakdown); } catch(e) { denoms = {}; }
-    } else if (data.breakdown && typeof data.breakdown === 'object') {
-      denoms = data.breakdown;
-    }
+    const denoms = parseDenomBreakdown(data);
+    if (!denoms) return { success: false, message: 'Invalid denomination data — could not parse breakdown.' };
 
     const total    = calculateDenomTotal(denoms);
-    const prefix   = data.type === 'START' ? 'DEN-OC' : data.type === 'END' ? 'DEN-CC' : 'DEN';
-    const recordId = generateId(prefix);
+    const now      = new Date().toISOString();
+    const dataRange = sheet.getDataRange().getValues();
 
-    sheet.appendRow([
-      recordId, data.date, data.type,
+    // Check if a record already exists for this date + type
+    let targetRow = -1;
+    for (let i = 1; i < dataRange.length; i++) {
+      if (normalizeDate(dataRange[i][1]) === data.date && dataRange[i][2] === data.type) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    const rowValues = [
       denoms['1000'] ||0, denoms['500']||0, denoms['200']||0,
       denoms['100']  ||0, denoms['50'] ||0, denoms['20'] ||0,
       denoms['10']   ||0, denoms['5']  ||0, denoms['1']  ||0,
       denoms['0.25'] ||0,
-      total, data.notes || '',
-      new Date().toISOString()
-    ]);
+      total, data.notes || '', now
+    ];
+
+    let recordId;
+    if (targetRow !== -1) {
+      // Update existing row in place
+      recordId = dataRange[targetRow - 1][0];
+      sheet.getRange(targetRow, 4, 1, 13).setValues([rowValues]);
+    } else {
+      // Insert new row
+      const prefix = data.type === 'START' ? 'DEN-OC' : data.type === 'END' ? 'DEN-CC' : 'DEN';
+      recordId = generateId(prefix);
+      sheet.appendRow([
+        recordId, data.date, data.type,
+        ...rowValues
+      ]);
+    }
 
     recalculateDailySummary(data.date);
     return { success: true, id: recordId, total };
@@ -618,41 +758,13 @@ function generateReportData(params) {
       if (sDate < params.from || sDate > params.to) continue;
       summaries.push({
         date:sDate, opening:sRow[2], cashAdvance:sRow[3],
-        expenses:sRow[6], closing:sRow[7], variance:sRow[8], status:sRow[9]
+        expenses:sRow[6], closing:sRow[9], variance:sRow[10], status:sRow[11]
       });
     }
 
     return { success: true, data: { entries, summaries } };
   } catch(e) {
     return { success: false, message: e.toString() };
-  }
-}
-
-function getDateRange(params) {
-  try {
-    const startDate = params.from || '';
-    const endDate   = params.to   || '';
-    initializeSheets();
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const data  = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
-    const results = [];
-
-    for (let i = 1; i < data.length; i++) {
-      const rowDate = normalizeDate(data[i][1]);
-      if (rowDate >= startDate && rowDate <= endDate) {
-        results.push({
-          id:data[i][0], date:rowDate,
-          openingCash:data[i][2], cashAdvance:data[i][3],
-          totalWithReceipt:data[i][4], totalWithoutReceipt:data[i][5],
-          totalExpenses:data[i][6], totalCashOver:data[i][7],
-          totalReplenishment:data[i][8], closingCash:data[i][9],
-          variance:data[i][10], status:data[i][11]
-        });
-      }
-    }
-    return { success: true, data: results };
-  } catch(e) {
-    return { success: false, message: e.toString(), data: [] };
   }
 }
 
@@ -663,9 +775,9 @@ function findUnclosedPastDate(beforeDate) {
     const unclosed = [];
 
     for (let i = 1; i < data.length; i++) {
-      if (data[i].length < 10) continue;
+      if (data[i].length < 12) continue;
       const rDate = normalizeDate(data[i][1]);
-      if (rDate < beforeDate && data[i][9] === 'OPEN') unclosed.push(rDate);
+      if (rDate < beforeDate && data[i][11] === 'OPEN') unclosed.push(rDate);
     }
 
     if (!unclosed.length) return { success: true, date: null };
@@ -674,29 +786,6 @@ function findUnclosedPastDate(beforeDate) {
   } catch(e) {
     return { success: false, message: e.toString() };
   }
-}
-
-function getCategories() {
-  return {
-    success: true,
-    data: [
-      'Office Supplies','Transportation','Meals & Entertainment',
-      'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
-    ]
-  };
-}
-
-function recalculateRange(params) {
-  const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
-  const dates     = new Set();
-  for (let i = 1; i < entryData.length; i++) {
-    const d = normalizeDate(entryData[i][1]);
-    if (d >= params.from && d <= params.to) dates.add(d);
-  }
-  const results = [];
-  dates.forEach(d => results.push({ date: d, result: recalculateDailySummary(d) }));
-  return { success: true, data: results };
 }
 
 function updateDenominationRecord(data) {
@@ -715,12 +804,8 @@ function updateDenominationRecord(data) {
       }
     }
 
-    let denoms = data.denominations || {};
-    if (typeof data.breakdown === 'string') {
-      try { denoms = JSON.parse(data.breakdown); } catch(e) { denoms = {}; }
-    } else if (data.breakdown && typeof data.breakdown === 'object') {
-      denoms = data.breakdown;
-    }
+    const denoms = parseDenomBreakdown(data);
+    if (!denoms) return { success: false, message: 'Invalid denomination data — could not parse breakdown.' };
 
     const total = calculateDenomTotal(denoms);
     const now   = new Date().toISOString();
@@ -744,5 +829,28 @@ function updateDenominationRecord(data) {
     return { success: true, id: dataRange[targetRow - 1][0], total };
   } catch(e) {
     return { success: false, message: e.toString() };
+  }
+}
+
+function parseDenomBreakdown(data) {
+  try {
+    // Priority 1: already a parsed object under 'denominations'
+    if (data.denominations && typeof data.denominations === 'object') {
+      return data.denominations;
+    }
+    // Priority 2: breakdown is already a plain object
+    if (data.breakdown && typeof data.breakdown === 'object') {
+      return data.breakdown;
+    }
+    // Priority 3: breakdown is a JSON string — parse it
+    if (typeof data.breakdown === 'string' && data.breakdown.trim() !== '') {
+      const parsed = JSON.parse(data.breakdown);
+      if (typeof parsed === 'object' && parsed !== null) return parsed;
+    }
+    // Nothing valid found
+    return null;
+  } catch(e) {
+    console.error('parseDenomBreakdown failed:', e);
+    return null;
   }
 }

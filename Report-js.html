@@ -180,8 +180,41 @@ function setDetailFilter(filter) {
 
 function resetReportDetailView() {
   selectedReportDate = null;
+  currentDetailFilter = 'all';
+
+  // Hide detail panel and show empty state
   document.getElementById('reportDetailContent').classList.add('hidden');
   document.getElementById('reportDetailEmpty').classList.remove('hidden');
+
+  // Clear all summary fields so stale data never shows on re-open
+  ['d-opening','d-expenses','d-closing','d-variance'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.textContent = '---';
+      el.className = el.className.replace(/text-(red|blue|green|gray)-\d+/g, 'text-gray-400');
+    }
+  });
+
+  // Clear detail table body
+  const tbody = document.getElementById('detailListBody');
+  if (tbody) tbody.innerHTML = '';
+
+  // Reset displayed total
+  const totalEl = document.getElementById('detailDisplayedTotal');
+  if (totalEl) totalEl.textContent = '₱0.00';
+
+  // Reset detail date label
+  const dateEl = document.getElementById('detailDate');
+  if (dateEl) dateEl.textContent = '—';
+
+  // Reset tab highlight back to 'all'
+  ['all','receipt','noreceipt','advance','over','replenish'].forEach(t => {
+    const el = document.getElementById('tab-' + t);
+    if (!el) return;
+    el.className = t === 'all'
+      ? 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 transition whitespace-nowrap'
+      : 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition whitespace-nowrap';
+  });
 }
 
 function renderDetailList() {
@@ -204,7 +237,7 @@ function renderDetailList() {
 
   let total = 0;
   tbody.innerHTML = entries.map(e => {
-    total += (parseFloat(e.amount) || 0);
+    if (e.type === 'EXPENSE') total += (parseFloat(e.amount) || 0);
 
     let receiptHtml;
     if (e.type === 'CASH_ADVANCE')

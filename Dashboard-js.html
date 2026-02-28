@@ -127,36 +127,24 @@ function renderDiscDetails() {
 }
 
 async function checkPreviousDayStatus(currentDateStr) {
-    // Check for any unclosed dates strictly before current date
     const res = await callServer('findUnclosedPastDate', currentDateStr);
-    
-    const warningEl = document.getElementById('prevDayWarning');
-    const prevDateLabel = document.getElementById('prevDayDate');
-    const auditParams = document.getElementById('auditDateParams');
-    const warningTitle = warningEl ? warningEl.querySelector('h3') : null;
-    const warningText = warningEl ? warningEl.querySelector('p:nth-of-type(1)') : null; // First p tag
 
-    if(!warningEl) return;
+    const warningEl    = document.getElementById('prevDayWarning');
+    const auditParams  = document.getElementById('auditDateParams');
+    const warningTitle = document.getElementById('prevDayWarningTitle');
+    const prevDateLabel = document.getElementById('prevDayDate');
+
+    if (!warningEl) return;
 
     if (res.success && res.date) {
         const targetDate = res.date;
-        
+
         warningEl.classList.remove('hidden');
         warningEl.dataset.targetDate = targetDate;
-        
-        if(auditParams) {
-             auditParams.value = targetDate;
-             auditParams.dataset.touched = "true";
-        }
-        
-        if(prevDateLabel) prevDateLabel.textContent = targetDate;
-        if(warningTitle) warningTitle.textContent = "Unclosed Past Audit";
-        
-        // Ensure text is correct for potentially older dates
-        // InnerHTML replacement might wipe the span
-        if(warningText) {
-             warningText.innerHTML = `The petty cash for <span id="prevDayDate" class="font-mono font-bold">${targetDate}</span> hasn't been closed.`;
-        }
+
+        if (auditParams)    auditParams.value       = targetDate;
+        if (warningTitle)   warningTitle.textContent = 'Unclosed Past Audit';
+        if (prevDateLabel)  prevDateLabel.textContent = targetDate;
 
     } else {
         warningEl.classList.add('hidden');
@@ -193,30 +181,19 @@ function updateDashStats() {
   const so = document.getElementById('stat-opening'); if(so) so.textContent = fmt(opening);
   const se = document.getElementById('stat-expenses'); if(se) se.textContent = fmt(totalExp);
   const sc = document.getElementById('stat-closing'); if(sc) sc.textContent = fmt(closing);
-  
-  // Calculate Expected: Opening - Total Outflows (Expenses + CashAdvance)
-  // Check if CashAdvance is available in summary
-  const cashAdv = summary.cashAdvance || 0;
-  // If cash advance is handled as an entry with type 'CASH_ADVANCE', we might need to sum it from entries if summary isn't up to date or we want live entry data
-  // But recalculateDailySummary updates summary.cashAdvance. 
-  // Wait, totalExp in summary DOES NOT include cashAdvance based on Code.js logic:
-  // if (type === 'CASH_ADVANCE') cashAdvance += amt; else totalExp += amt;
-  // So Total Outflows = totalExp + cashAdv.
-  
-  // Note: we are calculating totalExp live from state.entries above (withReceipt + noReceipt).
-  // We should also calculate cashAdv live from state.entries to be consistent.
-  const liveCashAdv = state.entries.filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-  
-  // Actually, let's use the live calculation for everything if possible to feel responsive
-  const totalOutflows = totalExp + liveCashAdv;
-  const expectedInfo = opening - totalOutflows;
-  
-  const sexp = document.getElementById('stat-expected'); 
-  if(sexp) {
-      sexp.textContent = fmt(expectedInfo);
-      // Optional: Add color if negative?
-      if(expectedInfo < 0) sexp.classList.add('text-red-500');
-      else sexp.classList.remove('text-red-500');
+
+  // Compute expected live from entries so it stays responsive before summary is saved
+  const liveCashAdv = state.entries
+    .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED')
+    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+
+  const expectedInfo = opening - (totalExp + liveCashAdv);
+
+  const sexp = document.getElementById('stat-expected');
+  if (sexp) {
+    sexp.textContent = fmt(expectedInfo);
+    if (expectedInfo < 0) sexp.classList.add('text-red-500');
+    else sexp.classList.remove('text-red-500');
   }
 
   const sr = document.getElementById('stat-receipt'); if(sr) sr.textContent = fmt(withReceipt);
