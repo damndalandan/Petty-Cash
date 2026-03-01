@@ -470,7 +470,7 @@ function recalculateDailySummary(date) {
     for (let i = 1; i < denomData.length; i++) {
       if (normalizeDate(denomData[i][1]) !== date) continue;
       const type  = denomData[i][2];
-      const total = parseFloat(denomData[i][12]) || 0;
+      const total = parseFloat(denomData[i][13]) || 0; // col 14 = Total (0-indexed: 13)
       if (type === 'START') openingCash = total;
       if (type === 'END')   { closingCash = total; hasClosing = true; }
     }
@@ -1102,6 +1102,44 @@ function getDailySummary(date) {
         }
       };
     }
+
+    // No Summary row yet — fall back to Denominations sheet directly
+    // This happens when only an opening has been saved but no entries yet
+    const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+    const denomData  = denomSheet.getDataRange().getValues();
+    let openingCash  = 0;
+    let hasOpening   = false;
+
+    for (let i = 1; i < denomData.length; i++) {
+      if (normalizeDate(denomData[i][1]) !== date) continue;
+      if (denomData[i][2] === 'START') {
+        openingCash = parseFloat(denomData[i][13]) || 0;
+        hasOpening  = true;
+      }
+    }
+
+    if (hasOpening) {
+      return {
+        success: true,
+        data: {
+          id                 : null,
+          date               : date,
+          openingCash        : openingCash,
+          cashAdvance        : 0,
+          totalWithReceipt   : 0,
+          totalWithoutReceipt: 0,
+          totalExpenses      : 0,
+          totalCashOver      : 0,
+          totalReplenishment : 0,
+          closingCash        : 0,
+          variance           : 0,
+          status             : 'OPEN',
+          closedBy           : '',
+          updatedAt          : ''
+        }
+      };
+    }
+
     return { success: true, data: null };
   } catch(e) {
     return { success: false, message: e.toString(), data: null };
