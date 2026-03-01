@@ -355,12 +355,6 @@
       }
     }
 
-    // ── Reset filing checkboxes ──
-    ['chkFiledReceipts','chkFiledNoReceipts','chkFiledReport'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.checked = false;
-    });
-
     modal.classList.remove('hidden');
   }
 

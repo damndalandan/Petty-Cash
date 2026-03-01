@@ -12,7 +12,8 @@ const SHEETS = {
   RECEIPTS     : 'PettyCash_Receipts',
   NO_RECEIPTS  : 'PettyCash_NoReceipts',
   ACCESS       : 'PettyCash_Access',
-  AUDIT_LOG    : 'PettyCash_AuditLog'
+  AUDIT_LOG    : 'PettyCash_AuditLog',
+  FILING       : 'PettyCash_FilingChecklist'
 };
 
 // ─────────────────────────────────────────────
@@ -1614,5 +1615,103 @@ function getUserRole() {
     return { success: false, role: null, name: null };
   } catch(e) {
     return { success: false, role: null, name: null, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// FILING CHECKLIST
+// Columns: Filing_ID | Date | Filed_Receipts | Filed_No_Receipts | Filed_Report | Notes | Submitted_By | Submitted_At
+// ─────────────────────────────────────────────
+
+function saveFilingChecklist(data) {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let sheet   = ss.getSheetByName(SHEETS.FILING);
+
+    // Auto-create sheet if missing
+    if (!sheet) {
+      sheet = ss.insertSheet(SHEETS.FILING);
+      sheet.appendRow([
+        'Filing_ID','Date','Filed_Receipts','Filed_No_Receipts',
+        'Filed_Report','Notes','Submitted_By','Submitted_At'
+      ]);
+      sheet.setFrozenRows(1);
+      formatHeaderRow(sheet);
+    }
+
+    const user = getUserEmail();
+    const now  = new Date().toISOString();
+    const rows = sheet.getDataRange().getValues();
+
+    // Check if a record already exists for this date — update if so
+    for (let i = 1; i < rows.length; i++) {
+      if (normalizeDate(rows[i][1]) === data.date) {
+        sheet.getRange(i + 1, 3, 1, 6).setValues([[
+          data.filedReceipts    ? 'YES' : 'NO',
+          data.filedNoReceipts  ? 'YES' : 'NO',
+          data.filedReport      ? 'YES' : 'NO',
+          data.notes || '',
+          user,
+          now
+        ]]);
+        writeAuditLog('FILING_UPDATED', `Filing checklist updated for ${data.date}`, '', data.date);
+        return { success: true, updated: true };
+      }
+    }
+
+    // New record
+    const id = generateId('FIL', data.date, sheet);
+    sheet.appendRow([
+      id,
+      data.date,
+      data.filedReceipts   ? 'YES' : 'NO',
+      data.filedNoReceipts ? 'YES' : 'NO',
+      data.filedReport     ? 'YES' : 'NO',
+      data.notes || '',
+      user,
+      now
+    ]);
+
+    writeAuditLog('FILING_SUBMITTED', `Filing checklist submitted for ${data.date}`, id, data.date);
+    return { success: true, updated: false };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function getFilingChecklists(params) {
+  // params: { from, to }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.FILING);
+    if (!sheet) return { success: true, data: [] };
+
+    const rows    = sheet.getDataRange().getValues();
+    const records = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row     = rows[i];
+      const rowDate = normalizeDate(row[1]);
+
+      if (params?.from && rowDate < params.from) continue;
+      if (params?.to   && rowDate > params.to)   continue;
+
+      records.push({
+        id              : row[0],
+        date            : rowDate,
+        filedReceipts   : row[2] === 'YES',
+        filedNoReceipts : row[3] === 'YES',
+        filedReport     : row[4] === 'YES',
+        notes           : row[5] || '',
+        submittedBy     : row[6] || '',
+        submittedAt     : row[7] || '',
+        fullyFiled      : row[2] === 'YES' && row[3] === 'YES' && row[4] === 'YES'
+      });
+    }
+
+    records.sort((a, b) => b.date > a.date ? 1 : -1);
+    return { success: true, data: records };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
   }
 }

@@ -118,37 +118,14 @@
           </div>
         </div>
 
-        <!-- Filing Checklist -->
-        <div>
-          <p class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">📂 Filing Checklist</p>
-          <p class="text-xs text-gray-500 mb-3">Confirm that the following physical documents have been filed or kept in the appropriate folders before closing the day.</p>
-          <div id="closingFileChecklist" class="space-y-2">
-            <!-- Rendered by JS -->
+        <!-- Filing reminder -->
+        <div class="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+          <span class="text-xl">📂</span>
+          <div class="flex-1">
+            <div class="text-sm font-bold text-amber-800">Remember to file your documents</div>
+            <div class="text-xs text-amber-600 mt-0.5">Submit your filing checklist after closing via the <strong>Filing Checklist</strong> page.</div>
           </div>
-          <!-- Static general checklist items -->
-          <div class="mt-3 space-y-2">
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-              <input type="checkbox" id="chkFiledReceipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
-              <div>
-                <div class="text-sm font-bold text-gray-700">Official Receipts Filed</div>
-                <div class="text-xs text-gray-500 mt-0.5">All official receipts (OR) have been placed in the receipts folder.</div>
-              </div>
-            </label>
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-              <input type="checkbox" id="chkFiledNoReceipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
-              <div>
-                <div class="text-sm font-bold text-gray-700">No-Receipt Forms Filed</div>
-                <div class="text-xs text-gray-500 mt-0.5">All no-receipt acknowledgment slips have been signed and filed.</div>
-              </div>
-            </label>
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-              <input type="checkbox" id="chkFiledReport" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
-              <div>
-                <div class="text-sm font-bold text-gray-700">Daily Report Printed / Saved</div>
-                <div class="text-xs text-gray-500 mt-0.5">The daily summary report has been printed or saved for records.</div>
-              </div>
-            </label>
-          </div>
+          <button onclick="closeClosingModal(); navigate('filing');" class="text-xs font-bold text-amber-700 hover:text-amber-900 underline whitespace-nowrap">Go →</button>
         </div>
 
         <!-- ── SHORTAGE PANEL ── -->
@@ -211,5 +188,5 @@
       </div>
     </div>
   </div>
-  
+
 </div>
