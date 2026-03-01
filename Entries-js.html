@@ -154,9 +154,7 @@ function renderEntries() {
       : '';
 
     const receiptCell = isCarried
-      ? `<button onclick="navigate('advances')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition">
-           Liquidate →
-         </button>`
+      ? '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">Advance</span>'
       : isSpecial
         ? entryTypeBadge(e.type)
         : e.hasReceipt
@@ -165,7 +163,7 @@ function renderEntries() {
 
     // Carried-forward rows: no edit/delete (they belong to a previous date)
     const actionCell = isCarried
-      ? '<td class="px-4 py-3"></td>'
+      ? '<td class="px-4 py-3 text-right"><button onclick="navigate(\'advances\')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white transition">Liquidate →</button></td>'
       : '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
           + (!isSpecial ? '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-600 hover:text-blue-900 mx-1 text-base">✏️</button>' : '')
           + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-500 hover:text-red-700 mx-1 text-base">🗑️</button>'
