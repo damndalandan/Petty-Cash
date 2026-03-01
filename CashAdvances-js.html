@@ -179,13 +179,27 @@ function openLiquidationModal(id, action) {
 
   document.getElementById('liqAdvanceAmt').textContent = fmt(liqAdvanceAmount);
 
-  const entriesSection = document.getElementById('liqEntriesSection');
+  const twoCol    = document.getElementById('liqTwoCol');
+  const singleCol = document.getElementById('liqSingleCol');
+  const inner     = document.getElementById('liqModalInner');
+
   if (action === 'submit') {
-    entriesSection.classList.remove('hidden');
+    twoCol.classList.remove('hidden');
+    twoCol.classList.add('grid');
+    singleCol.classList.add('hidden');
+    inner.classList.remove('max-w-md');
+    inner.classList.add('max-w-4xl');
     addLiqEntry();
     renderLiqEntries();
   } else {
-    entriesSection.classList.add('hidden');
+    twoCol.classList.add('hidden');
+    twoCol.classList.remove('grid');
+    singleCol.classList.remove('hidden');
+    inner.classList.remove('max-w-4xl');
+    inner.classList.add('max-w-md');
+    // Mirror advance details to single col
+    document.getElementById('liqAdvanceDetailsSingle').innerHTML =
+      document.getElementById('liqAdvanceDetails').innerHTML;
   }
 
   document.getElementById('liquidationModal').classList.remove('hidden');
@@ -300,7 +314,8 @@ function renderLiqEntries() {
 async function confirmLiquidationAction() {
   const id     = document.getElementById('liqAdvanceId').value;
   const action = document.getElementById('liqAction').value;
-  const note   = document.getElementById('liqNote').value.trim();
+  const noteEls = document.querySelectorAll('#liqNote');
+  const note    = Array.from(noteEls).find(el => el.offsetParent !== null)?.value.trim() || '';
 
   if (action === 'submit') {
     const valid = liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0);

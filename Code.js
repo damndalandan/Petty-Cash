@@ -1402,43 +1402,56 @@ function getAllCashAdvances() {
 
 function submitLiquidation(data) {
   try {
-    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet   = ss.getSheetByName(SHEETS.ENTRIES);
-    const rows    = sheet.getDataRange().getValues();
-    const now     = new Date().toISOString();
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const rows  = sheet.getDataRange().getValues();
+    const now   = new Date().toISOString();
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.id) continue;
-      const row        = i + 1;
+      const row         = i + 1;
       const advanceDate = normalizeDate(rows[i][1]);
+      const requestedBy = rows[i][8] || '';
 
+      // 1. Mark the advance as pending
       sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + (data.note || ''));
 
-      // Save each liquidation entry as a regular expense entry linked to the advance date
+      // 2. Save each line item entry + receipt if present
       if (data.entries && data.entries.length) {
         data.entries.forEach(entry => {
-          saveExpenseEntry({
+          // Save to PettyCash_Entries (also auto-saves to PettyCash_NoReceipts if no receipt)
+          const entryResult = saveExpenseEntry({
             date       : advanceDate,
             type       : 'EXPENSE',
-            category   : entry.category || 'Miscellaneous',
-            description: entry.desc || '',
+            category   : entry.category   || 'Miscellaneous',
+            description: entry.desc       || '',
             amount     : parseFloat(entry.amount) || 0,
             hasReceipt : !!entry.hasReceipt,
-            referenceNo: data.id, // link back to cash advance ID
-            requestedBy: rows[i][8] || '',
+            referenceNo: data.id,   // links back to the cash advance
+            requestedBy: requestedBy,
             approvedBy : ''
           });
+
+          // Save to PettyCash_Receipts if receipt was attached
+          if (entry.hasReceipt && entry.receipt && entryResult.id) {
+            saveReceiptRecord({
+              ...entry.receipt,
+              entryId: entryResult.id,
+              date   : advanceDate
+            });
+          }
         });
       }
 
       writeAuditLog(
         'LIQUIDATION_SUBMITTED',
-        `Liquidation submitted for advance ${data.id}. ${data.entries ? data.entries.length : 0} entries. Notes: ${data.note || '—'}`,
+        `Liquidation submitted for advance ${data.id}. ${(data.entries || []).length} entries. Notes: ${data.note || '—'}`,
         data.id,
         advanceDate
       );
+
       return { success: true };
     }
     return { success: false, message: 'Advance not found' };
