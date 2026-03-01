@@ -36,19 +36,10 @@
          <input type="number" id="editAmount" class="w-full p-2 border border-gray-300 rounded text-sm font-mono" step="0.01">
       </div>
       <div>
-         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Ref No</label>
-         <input type="text" id="editRef" class="w-full p-2 border border-gray-300 rounded text-sm">
-      </div>
-      <div>
-         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Receipt?</label>
-         <div class="flex rounded-md shadow-sm" role="group">
-           <button type="button" id="edit-rcpt-yes" onclick="setEditReceipt(true)" class="flex-1 px-4 py-2 text-sm font-medium border rounded-l-md">
-             ✅ YES
-           </button>
-           <button type="button" id="edit-rcpt-no" onclick="setEditReceipt(false)" class="flex-1 px-4 py-2 text-sm font-medium border rounded-r-md">
-             ⚠️ NO
-           </button>
-         </div>
+         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Receipt</label>
+         <button type="button" id="editReceiptBtn" onclick="openEditReceiptModal()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition">
+           🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>
+         </button>
       </div>
     </div>
     <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">

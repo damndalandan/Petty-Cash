@@ -1401,26 +1401,43 @@ function getAllCashAdvances() {
 }
 
 function submitLiquidation(data) {
-  // Called by Cashier — marks advance as LIQUIDATION_PENDING
-  // data: { id, note }
   try {
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
-    const rows  = sheet.getDataRange().getValues();
-    const now   = new Date().toISOString();
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet   = ss.getSheetByName(SHEETS.ENTRIES);
+    const rows    = sheet.getDataRange().getValues();
+    const now     = new Date().toISOString();
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.id) continue;
-      const row = i + 1;
+      const row        = i + 1;
+      const advanceDate = normalizeDate(rows[i][1]);
+
       sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + (data.note || ''));
 
+      // Save each liquidation entry as a regular expense entry linked to the advance date
+      if (data.entries && data.entries.length) {
+        data.entries.forEach(entry => {
+          saveExpenseEntry({
+            date       : advanceDate,
+            type       : 'EXPENSE',
+            category   : entry.category || 'Miscellaneous',
+            description: entry.desc || '',
+            amount     : parseFloat(entry.amount) || 0,
+            hasReceipt : !!entry.hasReceipt,
+            referenceNo: data.id, // link back to cash advance ID
+            requestedBy: rows[i][8] || '',
+            approvedBy : ''
+          });
+        });
+      }
+
       writeAuditLog(
         'LIQUIDATION_SUBMITTED',
-        `Cashier submitted liquidation for advance ${data.id}. Notes: ${data.note || '—'}`,
+        `Liquidation submitted for advance ${data.id}. ${data.entries ? data.entries.length : 0} entries. Notes: ${data.note || '—'}`,
         data.id,
-        normalizeDate(rows[i][1])
+        advanceDate
       );
       return { success: true };
     }

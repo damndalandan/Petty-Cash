@@ -371,10 +371,16 @@ async function saveReceiptModal() {
   };
 
   if (_rCtx.mode === 'new') {
-    _pendingReceipt = receiptData;
-    updateReceiptIndicator();
-    closeReceiptModal();
-    toast('Receipt attached — save entry to finalize', 'success');
+    if (typeof _rCtx.onAttach === 'function') {
+      _rCtx.onAttach(receiptData);
+      closeReceiptModal();
+      toast('Receipt attached ✓', 'success');
+    } else {
+      _pendingReceipt = receiptData;
+      updateReceiptIndicator();
+      closeReceiptModal();
+      toast('Receipt attached — save entry to finalize', 'success');
+    }
     return;
   }
 
@@ -410,7 +416,8 @@ function openEditModal(id) {
   document.getElementById('editDesc').value     = entry.description;
   document.getElementById('editAmount').value   = entry.amount;
 
-  setEditReceipt(entry.hasReceipt);
+  state.editHasReceipt = entry.hasReceipt;
+  updateEditReceiptBtn(entry.hasReceipt);
   document.getElementById('editModal').classList.remove('hidden');
 }
 
@@ -418,17 +425,31 @@ function closeEditModal() {
   document.getElementById('editModal').classList.add('hidden');
 }
 
-function setEditReceipt(val) {
-  state.editHasReceipt = val;
-  const yesBtn = document.getElementById('edit-rcpt-yes');
-  const noBtn  = document.getElementById('edit-rcpt-no');
-  if (!yesBtn || !noBtn) return;
-  if (val) {
-    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-white bg-green-600 border border-green-600 rounded-l-md";
-    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-r-md";
+function updateEditReceiptBtn(hasReceipt) {
+  const btn = document.getElementById('editReceiptBtn');
+  if (!btn) return;
+  if (hasReceipt) {
+    btn.innerHTML = '✏️ Edit Official Receipt';
+    btn.className = 'w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-green-400 rounded-lg text-sm font-medium text-green-600 bg-green-50 hover:bg-green-100 transition';
   } else {
-    yesBtn.className = "flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-l-md";
-    noBtn.className  = "flex-1 px-4 py-2 text-sm font-medium text-white bg-yellow-500 border border-yellow-500 rounded-r-md";
+    btn.innerHTML = '🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>';
+    btn.className = 'w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition';
+  }
+}
+
+async function openEditReceiptModal() {
+  const id = document.getElementById('editEntryId').value;
+  if (!id) return;
+  const entry = state.entries.find(e => e.id === id);
+  if (state.editHasReceipt) {
+    const res = await callServer('getReceiptByEntryId', id);
+    if (res.success && res.data) {
+      openReceiptModal({ mode: 'view', receiptData: res.data });
+    } else {
+      openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0 });
+    }
+  } else {
+    openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0 });
   }
 }
 

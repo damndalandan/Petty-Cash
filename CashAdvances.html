@@ -30,37 +30,69 @@
     <div class="text-center py-10 text-gray-400 text-sm">Loading...</div>
   </div>
 
-  <!-- Liquidation Modal -->
-  <div id="liquidationModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-    <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-      <div class="bg-gradient-to-r from-blue-700 to-blue-600 p-5 flex justify-between items-center">
-        <div>
-          <h3 class="text-white font-bold text-lg" id="liqModalTitle">Submit Liquidation</h3>
-          <p class="text-blue-100 text-xs mt-0.5" id="liqModalSubtitle">Provide receipt or breakdown details</p>
-        </div>
-        <button onclick="closeLiquidationModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+<!-- Liquidation Modal -->
+<div id="liquidationModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+  <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+
+    <div class="bg-gradient-to-r from-blue-700 to-blue-600 p-5 flex justify-between items-center shrink-0">
+      <div>
+        <h3 class="text-white font-bold text-lg" id="liqModalTitle">Submit Liquidation</h3>
+        <p class="text-blue-100 text-xs mt-0.5" id="liqModalSubtitle">Add expense entries to liquidate this advance</p>
       </div>
-      <div class="p-6 space-y-4">
-        <input type="hidden" id="liqAdvanceId">
-        <input type="hidden" id="liqAction">
-        <div class="bg-gray-50 rounded-xl p-3 border border-gray-200 text-sm">
-          <div class="text-gray-500 text-xs uppercase font-bold mb-1">Advance Details</div>
-          <div id="liqAdvanceDetails" class="text-gray-800 font-medium"></div>
+      <button onclick="closeLiquidationModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+
+    <div class="overflow-y-auto flex-1 p-5 space-y-4">
+      <input type="hidden" id="liqAdvanceId">
+      <input type="hidden" id="liqAction">
+
+      <!-- Advance summary -->
+      <div class="bg-blue-50 rounded-xl p-3 border border-blue-200 text-sm">
+        <div class="text-blue-500 text-xs uppercase font-bold mb-1">Advance Details</div>
+        <div id="liqAdvanceDetails" class="text-gray-800 font-medium"></div>
+      </div>
+
+      <!-- Entries section (submit only) -->
+      <div id="liqEntriesSection">
+        <div class="flex justify-between items-center mb-2">
+          <span class="text-xs font-bold text-gray-500 uppercase">Expense Entries</span>
+          <button onclick="addLiqEntry()" class="text-xs font-bold text-blue-600 hover:text-blue-800 px-2 py-1 rounded-lg hover:bg-blue-50 transition">+ Add Entry</button>
         </div>
-        <div>
-          <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Notes / Breakdown</label>
-          <textarea id="liqNote" rows="3" placeholder="Enter receipt details, breakdown, or reason..."
-            class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none bg-gray-50"></textarea>
+        <div id="liqEntriesList" class="space-y-3"></div>
+
+        <!-- Totals -->
+        <div class="mt-3 pt-3 border-t border-gray-200 space-y-1 text-sm">
+          <div class="flex justify-between text-gray-500">
+            <span>Advance Amount</span>
+            <span class="font-mono font-bold" id="liqAdvanceAmt">₱0.00</span>
+          </div>
+          <div class="flex justify-between text-gray-500">
+            <span>Total Liquidated</span>
+            <span class="font-mono font-bold text-blue-700" id="liqTotalAmt">₱0.00</span>
+          </div>
+          <div class="flex justify-between font-bold border-t pt-1 mt-1">
+            <span id="liqBalanceLabel">Balance</span>
+            <span class="font-mono" id="liqBalanceAmt">₱0.00</span>
+          </div>
         </div>
       </div>
-      <div class="p-4 bg-gray-50 border-t flex gap-3">
-        <button onclick="closeLiquidationModal()" class="flex-1 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
-        <button onclick="confirmLiquidationAction()" id="liqConfirmBtn"
-          class="flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition">
-          Confirm
-        </button>
+
+      <!-- Notes -->
+      <div>
+        <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Notes <span id="liqNoteHint" class="text-gray-400 font-normal normal-case">(optional)</span></label>
+        <textarea id="liqNote" rows="2" placeholder="Enter summary or reason..."
+          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none bg-gray-50"></textarea>
       </div>
     </div>
+
+    <div class="p-4 bg-gray-50 border-t flex gap-3 shrink-0">
+      <button onclick="closeLiquidationModal()" class="flex-1 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
+      <button onclick="confirmLiquidationAction()" id="liqConfirmBtn"
+        class="flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition">
+        Confirm
+      </button>
+    </div>
   </div>
+</div>
 
 </div>

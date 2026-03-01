@@ -140,34 +140,34 @@ function renderAdvances() {
   }).join('');
 }
 
+// ─── Liquidation state ───
+let liqEntries = [];
+let liqAdvanceAmount = 0;
+
+const LIQ_CATEGORIES = [
+  'Office Supplies','Transportation','Meals & Entertainment',
+  'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
+];
+
 function openLiquidationModal(id, action) {
   const advance = allAdvances.find(a => a.id === id);
   if (!advance) return;
+
+  liqEntries = [];
+  liqAdvanceAmount = parseFloat(advance.amount) || 0;
 
   document.getElementById('liqAdvanceId').value = id;
   document.getElementById('liqAction').value    = action;
   document.getElementById('liqNote').value      = '';
 
-  const titles = {
-    submit : 'Submit Liquidation',
-    approve: 'Approve Liquidation',
-    reject : 'Reject Liquidation'
-  };
-  const subtitles = {
-    submit : 'Provide receipt or breakdown details',
-    approve: 'Confirm this advance has been properly liquidated',
-    reject : 'Send back to outstanding — state the reason'
-  };
-  const btnColors = {
-    submit : 'bg-blue-600 hover:bg-blue-700',
-    approve: 'bg-green-600 hover:bg-green-700',
-    reject : 'bg-red-500 hover:bg-red-600'
-  };
+  const titles    = { submit: 'Submit Liquidation', approve: 'Approve Liquidation', reject: 'Reject Liquidation' };
+  const subtitles = { submit: 'Add expense entries to liquidate this advance', approve: 'Confirm this advance has been properly liquidated', reject: 'Send back to outstanding — state the reason' };
+  const btnColors = { submit: 'bg-blue-600 hover:bg-blue-700', approve: 'bg-green-600 hover:bg-green-700', reject: 'bg-red-500 hover:bg-red-600' };
 
   document.getElementById('liqModalTitle').textContent    = titles[action];
   document.getElementById('liqModalSubtitle').textContent = subtitles[action];
-  document.getElementById('liqConfirmBtn').className =
-    `flex-1 py-2.5 text-sm font-bold text-white ${btnColors[action]} rounded-xl shadow transition`;
+  document.getElementById('liqConfirmBtn').className      = `flex-1 py-2.5 text-sm font-bold text-white ${btnColors[action]} rounded-xl shadow transition`;
+  document.getElementById('liqNoteHint').textContent      = action === 'submit' ? '(optional)' : '(required)';
 
   document.getElementById('liqAdvanceDetails').innerHTML = `
     <div class="flex justify-between items-center">
@@ -177,11 +177,124 @@ function openLiquidationModal(id, action) {
     <div class="text-xs text-gray-500 mt-1">👤 ${advance.requestedBy || '—'} · 📅 ${advance.date} · ${advance.daysOutstanding} days outstanding</div>
   `;
 
+  document.getElementById('liqAdvanceAmt').textContent = fmt(liqAdvanceAmount);
+
+  const entriesSection = document.getElementById('liqEntriesSection');
+  if (action === 'submit') {
+    entriesSection.classList.remove('hidden');
+    addLiqEntry();
+    renderLiqEntries();
+  } else {
+    entriesSection.classList.add('hidden');
+  }
+
   document.getElementById('liquidationModal').classList.remove('hidden');
 }
 
 function closeLiquidationModal() {
   document.getElementById('liquidationModal').classList.add('hidden');
+  liqEntries = [];
+}
+
+function addLiqEntry() {
+  liqEntries.push({ desc: '', category: 'Miscellaneous', amount: '', receipt: null });
+  renderLiqEntries();
+}
+
+function removeLiqEntry(idx) {
+  liqEntries.splice(idx, 1);
+  renderLiqEntries();
+}
+
+function updateLiqEntry(idx, field, value) {
+  liqEntries[idx][field] = value;
+  if (field === 'amount') updateLiqTotals();
+}
+
+function attachLiqReceipt(idx) {
+  // Open the shared receipt modal; on save, store receipt data on the entry
+  openReceiptModal({
+    mode: 'new',
+    onAttach: (receiptData) => {
+      liqEntries[idx].receipt = receiptData;
+      renderLiqEntries();
+    }
+  });
+}
+
+function removeLiqReceipt(idx) {
+  liqEntries[idx].receipt = null;
+  renderLiqEntries();
+}
+
+function updateLiqTotals() {
+  const total   = liqEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+  const balance = liqAdvanceAmount - total;
+
+  document.getElementById('liqTotalAmt').textContent = fmt(total);
+
+  const labelEl   = document.getElementById('liqBalanceLabel');
+  const amountEl  = document.getElementById('liqBalanceAmt');
+
+  if (balance > 0.005) {
+    labelEl.textContent  = 'Change to Return';
+    amountEl.textContent = fmt(balance);
+    amountEl.className   = 'font-mono text-amber-600';
+  } else if (balance < -0.005) {
+    labelEl.textContent  = 'Over by';
+    amountEl.textContent = fmt(Math.abs(balance));
+    amountEl.className   = 'font-mono text-red-600';
+  } else {
+    labelEl.textContent  = '✓ Fully Liquidated';
+    amountEl.textContent = '';
+    amountEl.className   = 'font-mono text-green-600';
+  }
+}
+
+function renderLiqEntries() {
+  const container = document.getElementById('liqEntriesList');
+  if (!liqEntries.length) {
+    container.innerHTML = `<div class="text-center py-4 text-gray-400 text-xs border-2 border-dashed border-gray-200 rounded-xl">No entries yet — click "+ Add Entry"</div>`;
+    updateLiqTotals();
+    return;
+  }
+
+  container.innerHTML = liqEntries.map((e, i) => {
+    const catOptions = LIQ_CATEGORIES.map(c =>
+      `<option value="${c}" ${e.category === c ? 'selected' : ''}>${c}</option>`
+    ).join('');
+
+    const receiptBtn = e.receipt
+      ? `<div class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+           <span class="text-green-600 text-sm">🧾</span>
+           <span class="text-xs font-medium text-green-700 flex-1">${e.receipt.supplierName || 'Receipt'} · ${fmt(e.receipt.grossAmount)}</span>
+           <button onclick="removeLiqReceipt(${i})" class="text-xs text-red-400 hover:text-red-600 font-medium">✕</button>
+         </div>`
+      : `<button onclick="attachLiqReceipt(${i})"
+           class="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition">
+           🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>
+         </button>`;
+
+    return `
+      <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
+        <div class="flex gap-2">
+          <select onchange="updateLiqEntry(${i}, 'category', this.value)"
+            class="flex-1 p-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none">
+            ${catOptions}
+          </select>
+          <button onclick="removeLiqEntry(${i})" class="text-red-400 hover:text-red-600 text-lg leading-none px-1 shrink-0">×</button>
+        </div>
+        <input type="text" placeholder="Description" value="${e.desc}"
+          oninput="updateLiqEntry(${i}, 'desc', this.value)"
+          class="w-full p-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none">
+        <input type="number" placeholder="0.00" value="${e.amount}" step="0.01"
+          oninput="updateLiqEntry(${i}, 'amount', this.value)"
+          class="w-full p-1.5 border border-gray-200 rounded-lg text-xs font-mono bg-white focus:ring-1 focus:ring-blue-400 outline-none">
+        ${receiptBtn}
+      </div>`;
+  }).join('');
+
+  updateLiqTotals();
 }
 
 async function confirmLiquidationAction() {
@@ -189,32 +302,37 @@ async function confirmLiquidationAction() {
   const action = document.getElementById('liqAction').value;
   const note   = document.getElementById('liqNote').value.trim();
 
-  if (!note && action === 'submit') {
-    toast('Please provide liquidation details or breakdown', 'warning');
-    return;
+  if (action === 'submit') {
+    const valid = liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0);
+    if (!valid.length) { toast('Add at least one entry with a description and amount', 'warning'); return; }
+  } else {
+    if (!note) { toast('Please provide a note', 'warning'); return; }
   }
 
   const btn = document.getElementById('liqConfirmBtn');
-  btn.disabled    = true;
-  btn.textContent = 'Saving...';
+  btn.disabled = true; btn.textContent = 'Saving...';
 
-  const fnMap = {
-    submit : 'submitLiquidation',
-    approve: 'approveLiquidation',
-    reject : 'rejectLiquidation'
+  const fnMap = { submit: 'submitLiquidation', approve: 'approveLiquidation', reject: 'rejectLiquidation' };
+
+  const payload = {
+    id,
+    note,
+    entries: action === 'submit'
+      ? liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0).map(e => ({
+          category  : e.category,
+          desc      : e.desc,
+          amount    : parseFloat(e.amount),
+          hasReceipt: !!e.receipt,
+          receipt   : e.receipt || null
+        }))
+      : []
   };
 
-  const res = await callServer(fnMap[action], { id, note });
-
-  btn.disabled = false;
-  btn.textContent = 'Confirm';
+  const res = await callServer(fnMap[action], payload);
+  btn.disabled = false; btn.textContent = 'Confirm';
 
   if (res.success) {
-    const msgs = {
-      submit : 'Liquidation submitted for review ✓',
-      approve: 'Advance approved and liquidated ✓',
-      reject : 'Advance sent back to outstanding'
-    };
+    const msgs = { submit: 'Liquidation submitted ✓', approve: 'Advance liquidated ✓', reject: 'Sent back to outstanding' };
     toast(msgs[action], 'success');
     closeLiquidationModal();
     loadAdvances();
@@ -222,4 +340,5 @@ async function confirmLiquidationAction() {
     toast(res.message || 'Action failed', 'error');
   }
 }
+
 </script>
