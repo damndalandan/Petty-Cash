@@ -1138,7 +1138,9 @@ function generateReportData(params) {
       if (sDate < params.from || sDate > params.to) continue;
       summaries.push({
         date:sDate, opening:sRow[2], cashAdvance:sRow[3],
-        expenses:sRow[6], closing:sRow[9], variance:sRow[10], status:sRow[11]
+        totalWithReceipt:sRow[4], totalWithoutReceipt:sRow[5],
+        expenses:sRow[6], cashOver:sRow[7], replenishment:sRow[8],
+        closing:sRow[9], variance:sRow[10], status:sRow[11]
       });
     }
 
@@ -1187,7 +1189,6 @@ function auditApproveDay(data) {
       sheet.getRange(row, 12).setValue('CLOSED');
       sheet.getRange(row, 13).setValue(email);
       sheet.getRange(row, 14).setValue(now);
-      if (data.notes) sheet.getRange(row, 15).setValue('[AUDIT] ' + data.notes);
 
       writeAuditLog(
         'DAY_APPROVED',

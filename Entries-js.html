@@ -436,6 +436,7 @@ async function updateEntry() {
   const id = document.getElementById('editEntryId').value;
   if (!id) { toast('No entry selected', 'error'); return; }
 
+  const entry = state.entries.find(e => e.id === id);
   const payload = {
     id,
     date       : state.currentDate,
@@ -444,9 +445,9 @@ async function updateEntry() {
     description: document.getElementById('editDesc').value,
     amount     : parseFloat(document.getElementById('editAmount').value),
     hasReceipt : state.editHasReceipt,
-    referenceNo: '',
-    requestedBy: '',
-    approvedBy : ''
+    referenceNo: entry ? (entry.referenceNo || '') : '',
+    requestedBy: entry ? (entry.requestedBy || '') : '',
+    approvedBy : entry ? (entry.approvedBy  || '') : ''
   };
 
   const btn = document.querySelector('#editModal button[onclick="updateEntry()"]');

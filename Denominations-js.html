@@ -262,9 +262,11 @@
       .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-    // Cash overs already recorded should be counted as reducing the box outflow
-    // (they were already stored as positive CASH_OVER entries — excluded from expected calc)
-    const expected = opening - (expenses + cashAdvance);
+    const replenishment = state.entries
+      .filter(e => e.type === 'REPLENISHMENT' && e.status !== 'DELETED')
+      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+
+    const expected = (opening + replenishment) - (expenses + cashAdvance);
     // Variance: positive = overage (more cash than expected), negative = shortage
     const variance = actual - expected;
 

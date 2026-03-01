@@ -237,7 +237,9 @@ function renderDetailList() {
 
   let total = 0;
   tbody.innerHTML = entries.map(e => {
-    if (e.type === 'EXPENSE') total += (parseFloat(e.amount) || 0);
+    if (['EXPENSE','CASH_OVER','REPLENISHMENT','CASH_ADVANCE'].includes(e.type)) {
+      total += (parseFloat(e.amount) || 0);
+    }
 
     let receiptHtml;
     if (e.type === 'CASH_ADVANCE')
