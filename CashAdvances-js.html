@@ -158,7 +158,9 @@ function openLiquidationModal(id, action) {
 
   document.getElementById('liqAdvanceId').value = id;
   document.getElementById('liqAction').value    = action;
-  document.getElementById('liqNote').value      = '';
+
+  // Clear all liqNote fields
+  document.querySelectorAll('#liqNote').forEach(el => el.value = '');
 
   const titles    = { submit: 'Submit Liquidation', approve: 'Approve Liquidation', reject: 'Reject Liquidation' };
   const subtitles = { submit: 'Add expense entries to liquidate this advance', approve: 'Confirm this advance has been properly liquidated', reject: 'Send back to outstanding — state the reason' };
@@ -167,9 +169,8 @@ function openLiquidationModal(id, action) {
   document.getElementById('liqModalTitle').textContent    = titles[action];
   document.getElementById('liqModalSubtitle').textContent = subtitles[action];
   document.getElementById('liqConfirmBtn').className      = `flex-1 py-2.5 text-sm font-bold text-white ${btnColors[action]} rounded-xl shadow transition`;
-  document.getElementById('liqNoteHint').textContent      = action === 'submit' ? '(optional)' : '(required)';
 
-  document.getElementById('liqAdvanceDetails').innerHTML = `
+  const advanceDetailsHTML = `
     <div class="flex justify-between items-center">
       <span>${advance.description || 'Cash Advance'}</span>
       <span class="font-black font-mono text-blue-700">${fmt(advance.amount)}</span>
@@ -177,29 +178,47 @@ function openLiquidationModal(id, action) {
     <div class="text-xs text-gray-500 mt-1">👤 ${advance.requestedBy || '—'} · 📅 ${advance.date} · ${advance.daysOutstanding} days outstanding</div>
   `;
 
-  document.getElementById('liqAdvanceAmt').textContent = fmt(liqAdvanceAmount);
+  // Set advance details in whichever element exists
+  const detailEl = document.getElementById('liqAdvanceDetails');
+  const detailElSingle = document.getElementById('liqAdvanceDetailsSingle');
+  if (detailEl) detailEl.innerHTML = advanceDetailsHTML;
+  if (detailElSingle) detailElSingle.innerHTML = advanceDetailsHTML;
 
+  // Two-col vs single-col layout (new HTML)
   const twoCol    = document.getElementById('liqTwoCol');
   const singleCol = document.getElementById('liqSingleCol');
   const inner     = document.getElementById('liqModalInner');
 
-  if (action === 'submit') {
-    twoCol.classList.remove('hidden');
-    twoCol.classList.add('grid');
-    singleCol.classList.add('hidden');
-    inner.classList.remove('max-w-md');
-    inner.classList.add('max-w-4xl');
-    addLiqEntry();
-    renderLiqEntries();
+  if (twoCol && singleCol) {
+    if (action === 'submit') {
+      twoCol.classList.remove('hidden');
+      twoCol.classList.add('grid');
+      singleCol.classList.add('hidden');
+      if (inner) { inner.classList.remove('max-w-md'); inner.classList.add('max-w-4xl'); }
+      const advAmt = document.getElementById('liqAdvanceAmt');
+      if (advAmt) advAmt.textContent = fmt(liqAdvanceAmount);
+      addLiqEntry();
+      renderLiqEntries();
+    } else {
+      twoCol.classList.add('hidden');
+      twoCol.classList.remove('grid');
+      singleCol.classList.remove('hidden');
+      if (inner) { inner.classList.remove('max-w-4xl'); inner.classList.add('max-w-md'); }
+    }
   } else {
-    twoCol.classList.add('hidden');
-    twoCol.classList.remove('grid');
-    singleCol.classList.remove('hidden');
-    inner.classList.remove('max-w-4xl');
-    inner.classList.add('max-w-md');
-    // Mirror advance details to single col
-    document.getElementById('liqAdvanceDetailsSingle').innerHTML =
-      document.getElementById('liqAdvanceDetails').innerHTML;
+    // Fallback: old HTML — show/hide liqEntriesSection if it exists
+    const entriesSection = document.getElementById('liqEntriesSection');
+    if (entriesSection) {
+      if (action === 'submit') {
+        entriesSection.classList.remove('hidden');
+        const advAmt = document.getElementById('liqAdvanceAmt');
+        if (advAmt) advAmt.textContent = fmt(liqAdvanceAmount);
+        addLiqEntry();
+        renderLiqEntries();
+      } else {
+        entriesSection.classList.add('hidden');
+      }
+    }
   }
 
   document.getElementById('liquidationModal').classList.remove('hidden');
