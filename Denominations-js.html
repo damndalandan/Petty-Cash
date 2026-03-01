@@ -327,6 +327,40 @@
       }
     }
 
+    // ── Populate entries summary list ──
+    const entriesListEl = document.getElementById('closingEntriesList');
+    if (entriesListEl) {
+      const dayEntries = state.entries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
+      if (!dayEntries.length) {
+        entriesListEl.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400 text-center italic">No entries for today</div>';
+      } else {
+        entriesListEl.innerHTML = dayEntries.map(e => {
+          const hasReceipt = e.hasReceipt;
+          const typeLabel  = e.type === 'CASH_ADVANCE' ? '💳' : e.type === 'REPLENISHMENT' ? '🔄' : '💸';
+          const rcptBadge  = e.type === 'EXPENSE'
+            ? (hasReceipt
+                ? '<span class="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">🧾 OR</span>'
+                : '<span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">⚠️ No Receipt</span>')
+            : '';
+          return `
+            <div class="flex items-center justify-between px-4 py-2.5 text-sm gap-2">
+              <div class="flex items-center gap-2 flex-1 min-w-0">
+                <span>${typeLabel}</span>
+                <span class="truncate text-gray-700 font-medium">${e.description || '—'}</span>
+                ${rcptBadge}
+              </div>
+              <span class="font-mono text-gray-600 shrink-0">${fmt(e.amount)}</span>
+            </div>`;
+        }).join('');
+      }
+    }
+
+    // ── Reset filing checkboxes ──
+    ['chkFiledReceipts','chkFiledNoReceipts','chkFiledReport'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.checked = false;
+    });
+
     modal.classList.remove('hidden');
   }
 
