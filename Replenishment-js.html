@@ -1,0 +1,104 @@
+<script>
+// =============================================
+// REPLENISHMENT PAGE LOGIC
+// =============================================
+
+function clearReplenishForm() {
+  ['replenishDesc','replenishAmount','replenishBy'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  const src = document.getElementById('replenishSource');
+  if (src) src.selectedIndex = 0;
+}
+
+async function loadReplenishments() {
+  const dateLabel = document.getElementById('replenish-date-label');
+  if (dateLabel) {
+    const d = new Date(state.currentDate + 'T00:00:00');
+    dateLabel.textContent = d.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  const res = await callServer('getExpenseEntries', state.currentDate);
+  if (!res.success) return;
+
+  const records = (res.data || []).filter(e => e.type === 'REPLENISHMENT' && !e.carriedForward);
+  const total   = records.reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+
+  const totalEl = document.getElementById('replenish-total');
+  if (totalEl) totalEl.textContent = fmt(total);
+
+  const tbody = document.getElementById('replenishBody');
+  if (!tbody) return;
+
+  if (!records.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="px-4 py-8 text-center text-gray-400 text-sm italic">No replenishments for this date</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = records.map(e => `
+    <tr class="hover:bg-gray-50 transition group">
+      <td class="px-4 py-3">
+        <div class="font-medium text-gray-800">${e.description || '—'}</div>
+        <div class="text-xs text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
+          <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700">${e.category || 'Replenishment'}</span>
+          ${e.requestedBy ? '<span>Released by: <strong>' + e.requestedBy + '</strong></span>' : ''}
+          <span class="font-mono">${e.date}</span>
+        </div>
+      </td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-purple-700">${fmt(e.amount)}</td>
+      <td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">
+        <button onclick="deleteReplenishment('${e.id}')" class="text-red-400 hover:text-red-600 text-base" title="Delete">🗑️</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function saveReplenishment() {
+  const desc   = document.getElementById('replenishDesc').value.trim();
+  const amt    = parseFloat(document.getElementById('replenishAmount').value);
+  const source = document.getElementById('replenishSource').value;
+  const by     = document.getElementById('replenishBy').value.trim();
+
+  if (!desc)        { toast('Please enter a description', 'warning'); return; }
+  if (!amt || amt <= 0) { toast('Please enter a valid amount', 'warning'); return; }
+
+  const btn = document.getElementById('saveReplenishBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+
+  const res = await callServer('saveReplenishmentEntry', {
+    date       : state.currentDate,
+    type       : 'REPLENISHMENT',
+    category   : source,
+    description: desc,
+    amount     : amt,
+    hasReceipt : false,
+    referenceNo: '',
+    requestedBy: by,
+    approvedBy : ''
+  });
+
+  btn.disabled = false; btn.innerHTML = '💾 Save Replenishment';
+
+  if (res.success) {
+    toast('Fund added to petty cash ✓', 'success');
+    clearReplenishForm();
+    loadReplenishments();
+    loadDayData();
+  } else {
+    toast(res.message || 'Save failed', 'error');
+  }
+}
+
+async function deleteReplenishment(id) {
+  if (!confirm('Remove this replenishment entry? This will reduce the day\'s cash balance.')) return;
+  const res = await callServer('deleteExpenseEntry', id);
+  if (res.success) {
+    toast('Replenishment removed', 'warning');
+    loadReplenishments();
+    loadDayData();
+  } else {
+    toast('Delete failed', 'error');
+  }
+}
+</script>

@@ -44,13 +44,13 @@
     </div>
 
     <!-- Body -->
-    <div class="overflow-y-auto flex-1">
+    <div class="flex-1 overflow-hidden">
 
       <!-- SUBMIT: two-column layout -->
-      <div id="liqTwoCol" class="hidden grid-cols-2 divide-x divide-gray-100" style="height: calc(90vh - 140px);">
+      <div id="liqTwoCol" class="hidden grid-cols-2 divide-x divide-gray-100" style="height: calc(90vh - 130px); min-height: 0;">
 
         <!-- LEFT: Entries -->
-        <div class="p-5 space-y-4 overflow-y-auto h-full">
+        <div class="p-5 space-y-4 overflow-y-auto" style="height: 100%;">
           <div class="bg-blue-50 rounded-xl p-3 border border-blue-200 text-sm">
             <div class="text-blue-500 text-xs uppercase font-bold mb-1">Advance Details</div>
             <div id="liqAdvanceDetails" class="text-gray-800 font-medium"></div>
