@@ -247,11 +247,24 @@ async function deleteEntry(id) {
 }
 
 async function viewReceipt(entryId) {
+  const entry = state.entries.find(e => e.id === entryId);
+
+  // No receipt yet — open modal instantly, no server call needed
+  if (!entry || !entry.hasReceipt) {
+    openReceiptModal({
+      mode       : 'attach',
+      entryId    : entryId,
+      grossAmount: entry ? entry.amount : 0
+    });
+    return;
+  }
+
+  // Has receipt — fetch existing data to view/edit
   const res = await callServer('getReceiptByEntryId', entryId);
   if (res.success && res.data) {
     openReceiptModal({ mode: 'view', receiptData: res.data });
   } else {
-    const entry = state.entries.find(e => e.id === entryId);
+    // Receipt flag set but no record found — fall back to attach mode
     openReceiptModal({
       mode       : 'attach',
       entryId    : entryId,
