@@ -240,7 +240,7 @@ async function loadDayStatusBanner() {
   actionEl.innerHTML = '';
   if (res.status === 'PENDING_AUDIT' && isAuditor()) {
     actionEl.innerHTML = `
-      <button onclick="navigate('denominations')"
+      <button onclick="navigate('auditreview')"
         class="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition">
         Review & Approve →
       </button>`;
