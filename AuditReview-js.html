@@ -1,0 +1,377 @@
+<script>
+// =============================================
+// AUDIT REVIEW PAGE LOGIC
+// =============================================
+
+const AUDIT_BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+let auditEntryReviews = {}; // { entryId: { status: 'verified'|'flagged', note: '' } }
+let auditDenomValues  = {}; // { bill: qty }
+
+async function loadAuditReviewPage() {
+  // Date label
+  const labelEl = document.getElementById('auditReviewDateLabel');
+  if (labelEl) {
+    const d = new Date(state.currentDate + 'T00:00:00');
+    labelEl.textContent = d.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  }
+
+  auditEntryReviews = {};
+  auditDenomValues  = {};
+
+  buildAuditDenomGrid();
+
+  // Load day data for expected cash
+  const summaryRes = await callServer('getDailySummary', state.currentDate);
+  if (summaryRes.success && summaryRes.data) {
+    state.summary = summaryRes.data;
+  }
+  updateAuditVariance();
+
+  // Load existing denomination END count if already saved
+  const denomRes = await callServer('getDenominations', state.currentDate);
+  if (denomRes.success && denomRes.data) {
+    const endRecord = denomRes.data.find(d => d.type === 'END');
+    if (endRecord && endRecord.breakdown) {
+      try {
+        const breakdown = typeof endRecord.breakdown === 'string'
+          ? JSON.parse(endRecord.breakdown) : endRecord.breakdown;
+        Object.keys(breakdown).forEach(bill => {
+          auditDenomValues[bill] = breakdown[bill];
+          const input = document.getElementById('auditDenom-' + bill);
+          if (input) input.value = breakdown[bill];
+        });
+        updateAuditDenomTotal();
+      } catch(e) {}
+    }
+  }
+
+  // Load entries
+  const entriesRes = await callServer('getExpenseEntries', state.currentDate);
+  const entries = (entriesRes.success ? entriesRes.data || [] : [])
+    .filter(e => e.status !== 'DELETED' && !e.carriedForward);
+
+  renderAuditEntries(entries);
+  updateAuditProgress(entries);
+  updateAuditStatusBanner();
+}
+
+// ── Build compact denomination grid ──
+function buildAuditDenomGrid() {
+  const grid = document.getElementById('auditDenomGrid');
+  if (!grid) return;
+
+  grid.innerHTML = AUDIT_BILLS.map(bill => {
+    const label = bill >= 1 ? '₱' + bill : '₱' + bill.toFixed(2);
+    return `
+      <div class="flex items-center gap-1.5">
+        <span class="text-[10px] font-bold text-gray-500 w-10 shrink-0">${label}</span>
+        <input type="number" min="0" id="auditDenom-${bill}"
+          oninput="auditDenomValues['${bill}'] = parseFloat(this.value)||0; updateAuditDenomTotal()"
+          class="w-full text-xs text-center border border-gray-200 rounded-lg py-1.5 px-1 outline-none focus:ring-2 focus:ring-gray-400 bg-gray-50"
+          placeholder="0">
+      </div>`;
+  }).join('');
+}
+
+function updateAuditDenomTotal() {
+  let total = 0;
+  AUDIT_BILLS.forEach(bill => {
+    total += (parseFloat(auditDenomValues[bill]) || 0) * bill;
+  });
+  const totalEl = document.getElementById('auditDenomTotal');
+  if (totalEl) totalEl.textContent = fmt(total);
+  updateAuditVariance(total);
+}
+
+function updateAuditVariance(actualCash) {
+  const summary  = state.summary;
+  if (!summary) return;
+
+  const opening       = parseFloat(summary.openingCash       || 0);
+  const expenses      = parseFloat(summary.totalExpenses     || 0);
+  const cashAdvance   = parseFloat(summary.cashAdvance       || 0);
+  const replenishment = parseFloat(summary.totalReplenishment|| 0);
+  const cashOver      = parseFloat(summary.totalCashOver     || 0);
+  const expected      = (opening + replenishment + cashOver) - (expenses + cashAdvance);
+
+  const expEl = document.getElementById('auditExpectedCash');
+  if (expEl) expEl.textContent = fmt(expected);
+
+  if (actualCash === undefined) return;
+
+  const variance = actualCash - expected;
+  const varEl    = document.getElementById('auditVarianceDisplay');
+  const alertEl  = document.getElementById('auditVarianceAlert');
+
+  if (varEl) {
+    varEl.textContent  = (variance >= 0 ? '+' : '') + fmt(variance);
+    varEl.className    = 'font-mono text-xs font-bold ' + (
+      Math.abs(variance) < 0.01 ? 'text-green-600' :
+      variance > 0 ? 'text-blue-600' : 'text-red-600'
+    );
+  }
+
+  if (alertEl) {
+    if (variance < -0.01) {
+      alertEl.className   = 'mt-2 text-xs rounded-lg px-3 py-2 font-medium bg-red-50 border border-red-200 text-red-700';
+      alertEl.textContent = '⚠️ Cash short ' + fmt(Math.abs(variance)) + ' — cashier must add adjustment.';
+      alertEl.classList.remove('hidden');
+    } else if (variance > 0.01) {
+      alertEl.className   = 'mt-2 text-xs rounded-lg px-3 py-2 font-medium bg-blue-50 border border-blue-200 text-blue-700';
+      alertEl.textContent = '💙 Cash over ' + fmt(variance) + ' — note required on approval.';
+      alertEl.classList.remove('hidden');
+    } else {
+      alertEl.classList.add('hidden');
+    }
+  }
+}
+
+// ── Render entries with verify/flag controls ──
+function renderAuditEntries(entries) {
+  const container = document.getElementById('auditEntryList');
+  if (!container) return;
+
+  if (!entries.length) {
+    container.innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm italic">No entries for this day.</div>';
+    return;
+  }
+
+  const typeColors = {
+    EXPENSE      : 'bg-gray-100 text-gray-600',
+    CASH_ADVANCE : 'bg-purple-100 text-purple-700',
+    REPLENISHMENT: 'bg-green-100 text-green-700',
+    CASH_OVER    : 'bg-blue-100 text-blue-700'
+  };
+
+  container.innerHTML = entries.map(e => {
+    const typeBadge = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[e.type] || 'bg-gray-100 text-gray-600'}">${e.type.replace('_',' ')}</span>`;
+    const receiptBadge = e.hasReceipt
+      ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200">🧾 Receipt</span>'
+      : '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">⚠️ No Receipt</span>';
+
+    return `
+      <div id="auditEntry-${e.id}" class="px-4 py-3 transition hover:bg-gray-50">
+        <div class="flex items-start justify-between gap-3">
+          <!-- Entry info -->
+          <div class="flex-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-1.5 mb-1">
+              ${typeBadge}
+              ${receiptBadge}
+              <span class="text-[10px] text-gray-400 font-mono">${e.referenceNo || ''}</span>
+            </div>
+            <div class="text-sm font-semibold text-gray-800 truncate">${e.description}</div>
+            <div class="text-xs text-gray-500 mt-0.5">${e.category}${e.requestedBy ? ' · ' + e.requestedBy : ''}</div>
+          </div>
+          <!-- Amount -->
+          <div class="text-right shrink-0">
+            <div class="font-mono font-bold text-gray-800">${fmt(e.amount)}</div>
+          </div>
+        </div>
+
+        <!-- Audit controls -->
+        <div class="mt-2.5 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div class="flex gap-2">
+            <button onclick="markEntry('${e.id}', 'verified')"
+              id="auditBtn-verified-${e.id}"
+              class="audit-btn px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white hover:bg-green-50 hover:border-green-400 hover:text-green-700 transition">
+              ✅ Verified
+            </button>
+            <button onclick="markEntry('${e.id}', 'flagged')"
+              id="auditBtn-flagged-${e.id}"
+              class="audit-btn px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 bg-white hover:bg-red-50 hover:border-red-400 hover:text-red-700 transition">
+              ❌ Flagged
+            </button>
+          </div>
+          <input type="text" id="auditNote-${e.id}"
+            placeholder="Auditor note (required if flagged)..."
+            class="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-400 bg-gray-50 hidden"
+            oninput="auditEntryReviews['${e.id}'] && (auditEntryReviews['${e.id}'].note = this.value)">
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Mark entry as verified or flagged ──
+function markEntry(id, status) {
+  auditEntryReviews[id] = auditEntryReviews[id] || { status: '', note: '' };
+  auditEntryReviews[id].status = status;
+
+  // Update verified button
+  const verifiedBtn = document.getElementById('auditBtn-verified-' + id);
+  const flaggedBtn  = document.getElementById('auditBtn-flagged-'  + id);
+  const noteInput   = document.getElementById('auditNote-' + id);
+  const entryRow    = document.getElementById('auditEntry-' + id);
+
+  if (status === 'verified') {
+    verifiedBtn?.classList.add('bg-green-100', 'border-green-400', 'text-green-700');
+    verifiedBtn?.classList.remove('bg-white', 'border-gray-200');
+    flaggedBtn?.classList.remove('bg-red-100', 'border-red-400', 'text-red-700');
+    flaggedBtn?.classList.add('bg-white', 'border-gray-200');
+    noteInput?.classList.add('hidden');
+    entryRow?.classList.remove('bg-red-50');
+    entryRow?.classList.add('bg-green-50');
+  } else {
+    flaggedBtn?.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+    flaggedBtn?.classList.remove('bg-white', 'border-gray-200');
+    verifiedBtn?.classList.remove('bg-green-100', 'border-green-400', 'text-green-700');
+    verifiedBtn?.classList.add('bg-white', 'border-gray-200');
+    noteInput?.classList.remove('hidden');
+    entryRow?.classList.add('bg-red-50');
+    entryRow?.classList.remove('bg-green-50');
+  }
+
+  // Re-evaluate progress
+  const entries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  updateAuditProgress(entries);
+}
+
+// ── Update progress bar and button states ──
+function updateAuditProgress(entries) {
+  const total    = entries.length;
+  const reviewed = entries.filter(e => auditEntryReviews[e.id]?.status).length;
+  const flagged  = entries.filter(e => auditEntryReviews[e.id]?.status === 'flagged').length;
+  const allDone  = reviewed === total && total > 0;
+
+  const progressEl = document.getElementById('auditProgressBar');
+  if (progressEl) {
+    const pct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
+    progressEl.innerHTML = `
+      <div class="flex justify-between text-xs text-gray-500 mb-1">
+        <span>${reviewed} of ${total} reviewed</span>
+        <span>${pct}%</span>
+      </div>
+      <div class="w-full bg-gray-100 rounded-full h-1.5">
+        <div class="h-1.5 rounded-full transition-all ${flagged > 0 ? 'bg-red-400' : 'bg-green-400'}"
+          style="width:${pct}%"></div>
+      </div>
+      ${flagged > 0 ? `<div class="text-xs text-red-600 mt-1 font-medium">⚠️ ${flagged} entr${flagged > 1 ? 'ies' : 'y'} flagged</div>` : ''}`;
+  }
+
+  const approveBtn  = document.getElementById('auditApproveBtn');
+  const sendBackBtn = document.getElementById('auditSendBackBtn');
+
+  if (!allDone) {
+    if (approveBtn)  { approveBtn.disabled  = true; }
+    if (sendBackBtn) { sendBackBtn.disabled = true; }
+    return;
+  }
+
+  if (flagged > 0) {
+    // Has flagged entries — only Send Back is available
+    if (approveBtn)  { approveBtn.disabled  = true; }
+    if (sendBackBtn) { sendBackBtn.disabled = false; }
+  } else {
+    // All verified — only Approve is available
+    if (approveBtn)  { approveBtn.disabled  = false; }
+    if (sendBackBtn) { sendBackBtn.disabled = true; }
+  }
+}
+
+function updateAuditStatusBanner() {
+  const banner = document.getElementById('auditReviewStatusBanner');
+  if (!banner) return;
+  const status = state.summary?.status;
+  if (status === 'PENDING_AUDIT') {
+    banner.className = 'flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-800 text-sm font-medium';
+    banner.innerHTML = '🔍 This day is pending your audit. Review all entries below, count the physical cash, then approve or send back.';
+    banner.classList.remove('hidden');
+  } else if (status === 'FLAGGED') {
+    banner.className = 'flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 border border-red-300 text-red-800 text-sm font-medium';
+    banner.innerHTML = '🚩 This day was flagged and sent back to the cashier. Waiting for corrections.';
+    banner.classList.remove('hidden');
+  } else if (status === 'CLOSED') {
+    banner.className = 'flex items-center gap-3 px-4 py-3 rounded-xl bg-blue-50 border border-blue-300 text-blue-800 text-sm font-medium';
+    banner.innerHTML = '🔒 This day has been approved and closed.';
+    banner.classList.remove('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+// ── Save denomination count ──
+async function saveAuditDenomCount() {
+  let total = 0;
+  const breakdown = {};
+  AUDIT_BILLS.forEach(bill => {
+    const qty = parseFloat(auditDenomValues[bill]) || 0;
+    if (qty > 0) breakdown[bill] = qty;
+    total += qty * bill;
+  });
+
+  const res = await callServer('saveDenominationRecord', {
+    date     : state.currentDate,
+    type     : 'END',
+    breakdown: JSON.stringify(breakdown),
+    total    : total,
+    notes    : ''
+  });
+
+  if (res.success) {
+    toast('Cash count saved ✓', 'success');
+    updateAuditVariance(total);
+  } else {
+    toast(res.message || 'Failed to save count', 'error');
+  }
+}
+
+// ── Approve or Send Back ──
+async function confirmAuditDecision(decision) {
+  const note     = document.getElementById('auditDecisionNote')?.value?.trim() || '';
+  const entries  = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  const flagged  = entries.filter(e => auditEntryReviews[e.id]?.status === 'flagged');
+
+  // Variance check for overage — require note
+  const summary     = state.summary;
+  const opening     = parseFloat(summary?.openingCash        || 0);
+  const expenses    = parseFloat(summary?.totalExpenses      || 0);
+  const cashAdv     = parseFloat(summary?.cashAdvance        || 0);
+  const replenish   = parseFloat(summary?.totalReplenishment || 0);
+  const cashOver    = parseFloat(summary?.totalCashOver      || 0);
+  const expected    = (opening + replenish + cashOver) - (expenses + cashAdv);
+
+  let actualCash = 0;
+  AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
+  const variance = actualCash - expected;
+
+  if (decision === 'approve') {
+    if (variance > 0.01 && !note) {
+      toast('Please add an explanation note for the cash overage.', 'warning');
+      document.getElementById('auditDecisionNote')?.focus();
+      return;
+    }
+    if (!confirm('Approve and close this day? This action cannot be undone.')) return;
+
+    const res = await callServer('auditApproveDay', { date: state.currentDate, notes: note });
+    if (res.success) {
+      toast('Day approved and closed ✓', 'success');
+      loadAuditReviewPage();
+      loadDayData();
+    } else {
+      toast(res.message || 'Failed to approve', 'error');
+    }
+
+  } else {
+    // Send back — build flagged entry payload
+    if (!confirm(`Send back to cashier with ${flagged.length} flagged entr${flagged.length > 1 ? 'ies' : 'y'}? The cashier will be notified to correct them.`)) return;
+
+    const flaggedPayload = flagged.map(e => ({
+      id  : e.id,
+      note: auditEntryReviews[e.id]?.note || ''
+    }));
+
+    const res = await callServer('flagDay', {
+      date         : state.currentDate,
+      note         : note,
+      flaggedEntries: flaggedPayload
+    });
+
+    if (res.success) {
+      toast('Day sent back to cashier 🚩', 'warning');
+      loadAuditReviewPage();
+      loadDayData();
+    } else {
+      toast(res.message || 'Failed to send back', 'error');
+    }
+  }
+}
+</script>

@@ -131,54 +131,52 @@ function renderEntries() {
   }
 
   tbody.innerHTML = filtered.map(e => {
-    const isSpecial      = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
-    const isCarried      = !!e.carriedForward;
+    const isSpecial   = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
+    const isCarried   = !!e.carriedForward;
+    const isFlagged   = e.status === 'FLAGGED';
 
-    const rowBg = isCarried
-      ? 'bg-orange-50/60'
-      : e.type === 'CASH_OVER'    ? 'bg-emerald-50/40'
+    const rowBg = isFlagged
+      ? 'bg-red-50 border-l-4 border-red-400'
+      : isCarried      ? 'bg-orange-50/60'
+      : e.type === 'CASH_OVER'     ? 'bg-emerald-50/40'
       : e.type === 'REPLENISHMENT' ? 'bg-purple-50/40'
       : e.type === 'CASH_ADVANCE'  ? 'bg-blue-50/40'
       : '';
 
-    // Carried-forward badge + days outstanding
     const carriedBadge = isCarried
-      ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-700 border border-orange-200">
-           📅 Carried · ${e.daysOutstanding}d · from ${e.originalDate}
-         </span>`
+      ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
       : '';
 
-    // Pending liquidation badge
-    const pendingBadge = e.status === 'LIQUIDATION_PENDING'
-      ? '<span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-700">Pending Review</span>'
+    const flaggedBadge = isFlagged
+      ? '<div class="mt-1 text-xs text-red-600 font-bold">🚩 Flagged by Auditor' + (e.auditNote ? ': ' + e.auditNote : '') + ' — Please correct this entry.</div>'
       : '';
 
-    const receiptCell = isCarried
-      ? '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700">Advance</span>'
-      : isSpecial
-        ? entryTypeBadge(e.type)
-        : e.hasReceipt
-          ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 hover:bg-green-200 transition">🧾 View</button>'
-          : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">No Receipt</span>';
+    const receiptCell = e.hasReceipt
+      ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-green-600 hover:text-green-800 text-xs font-bold">🧾 View</button>'
+      : (isCashier()
+          ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-gray-400 hover:text-gray-600 text-xs">+ Attach</button>'
+          : '<span class="text-gray-300 text-xs">—</span>');
 
-    // Carried-forward rows: no edit/delete (they belong to a previous date)
-    const actionCell = isCarried
-      ? '<td class="px-4 py-3 text-right"><button onclick="navigate(\'advances\')" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white transition">Liquidate →</button></td>'
-      : '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
-          + (!isSpecial ? '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-600 hover:text-blue-900 mx-1 text-base">✏️</button>' : '')
-          + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-500 hover:text-red-700 mx-1 text-base">🗑️</button>'
-          + '</td>';
+    const actionCell = isCashier() && !isCarried
+      ? '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
+          + '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-sm mr-2" title="Edit">✏️</button>'
+          + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-400 hover:text-red-600 text-sm" title="Delete">🗑️</button>'
+        + '</td>'
+      : '<td></td>';
 
-    return '<tr class="hover:bg-gray-50 transition group ' + rowBg + '">'
+    return '<tr class="group hover:bg-gray-50 transition ' + rowBg + '">'
       + '<td class="px-4 py-3">'
-        + '<div class="font-medium text-gray-900 flex items-center gap-2 flex-wrap">'
-          + e.description + ' ' + entryTypeBadge(e.type) + pendingBadge
-        + '</div>'
-        + '<div class="flex items-center gap-2 mt-1 flex-wrap">'
-          + '<span class="text-xs text-gray-500">' + (e.category || '')
-            + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
+        + '<div class="flex items-center gap-1 flex-wrap">'
+          + entryTypeBadge(e.type)
+          + '<span class="text-sm ' + (isSpecial || isCarried ? 'font-bold text-orange-800' : 'text-gray-800') + '">'
+            + e.description
           + '</span>'
           + carriedBadge
+        + '</div>'
+        + flaggedBadge
+        + '<div class="text-xs text-gray-400 mt-0.5">'
+          + e.category
+          + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
         + '</div>'
       + '</td>'
       + '<td class="px-4 py-3 text-right font-mono ' + (isSpecial || isCarried ? 'text-orange-700' : 'text-gray-700') + '">'

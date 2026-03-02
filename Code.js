@@ -626,6 +626,12 @@ function updateExpenseEntry(payload) {
       // If changed TO has-receipt, remove from NoReceipts
       syncNoReceiptOnUpdate(payload, dataRange[i]);
 
+      // If cashier is correcting a flagged entry, reset its status to ACTIVE
+      if (dataRange[i][10] === 'FLAGGED') {
+        sheet.getRange(row, 11).setValue('ACTIVE');
+        sheet.getRange(row, 15).setValue('');
+      }
+
       recalculateDailySummary(payload.date);
       if (oldDate && oldDate !== payload.date) recalculateDailySummary(oldDate);
 
@@ -776,23 +782,23 @@ function getExpenseEntries(date) {
         );
 
         entries.push({
-          id              : row[0],
-          date            : date,          // appears on today's view
-          type            : type,
-          category        : row[3],
-          description     : row[4],
-          amount          : row[5],
-          hasReceipt      : false,
-          referenceNo     : row[7],
-          requestedBy     : row[8],
-          approvedBy      : row[9],
-          status          : status,
-          createdAt       : row[11],
-          updatedAt       : row[12],
-          carriedForward  : true,
-          originalDate    : issuedDate,
-          daysOutstanding : daysOut
-        });
+        id              : row[0],
+        date            : rowDate,
+        type            : type,
+        category        : row[3],
+        description     : row[4],
+        amount          : row[5],
+        hasReceipt      : row[6] === 'YES',
+        referenceNo     : row[7],
+        requestedBy     : row[8],
+        approvedBy      : row[9],
+        status          : status,
+        createdAt       : row[11],
+        updatedAt       : row[12],
+        auditNote       : String(row[14] || '').replace('[AUDITOR FLAG] ', ''),
+        carriedForward  : false,
+        originalDate    : rowDate
+      });
       }
     }
 
@@ -1829,7 +1835,7 @@ function getClosedDaysForFiling() {
 }
 
 function flagDay(data) {
-  // data: { date, note }
+  // data: { date, note, flaggedEntries: [{id, note}] }
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.SUMMARY);
@@ -1844,9 +1850,23 @@ function flagDay(data) {
       sheet.getRange(row, 13).setValue(email);
       sheet.getRange(row, 14).setValue(now);
 
+      // Tag each flagged entry with auditor note in col 15 (notes/remarks)
+      if (data.flaggedEntries && data.flaggedEntries.length) {
+        const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+        const entryRows  = entrySheet.getDataRange().getValues();
+        data.flaggedEntries.forEach(fe => {
+          for (let j = 1; j < entryRows.length; j++) {
+            if (entryRows[j][0] !== fe.id) continue;
+            entrySheet.getRange(j + 1, 11).setValue('FLAGGED');
+            entrySheet.getRange(j + 1, 15).setValue('[AUDITOR FLAG] ' + (fe.note || ''));
+            break;
+          }
+        });
+      }
+
       writeAuditLog(
         'DAY_FLAGGED',
-        `Auditor flagged day for recount. Note: ${data.note || '—'}`,
+        `Auditor flagged day. ${(data.flaggedEntries||[]).length} entries flagged. Note: ${data.note || '—'}`,
         '',
         data.date
       );

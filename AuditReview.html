@@ -1,0 +1,83 @@
+<!-- AUDIT REVIEW PAGE — Auditor only -->
+<div id="page-auditreview" class="page-view hidden space-y-6">
+
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Audit Review</h1>
+      <p class="text-sm text-gray-500 mt-1">Review entries and count cash for <span id="auditReviewDateLabel" class="font-medium text-gray-700"></span></p>
+    </div>
+    <button onclick="loadAuditReviewPage()" class="mt-3 md:mt-0 text-sm text-blue-600 hover:text-blue-800 font-medium transition">↺ Refresh</button>
+  </div>
+
+  <!-- Status banner -->
+  <div id="auditReviewStatusBanner" class="hidden"></div>
+
+  <div class="grid lg:grid-cols-3 gap-6">
+
+    <!-- LEFT: Compact denomination count -->
+    <div class="lg:col-span-1 space-y-4">
+
+      <!-- Denomination Card -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <h2 class="text-sm font-bold text-gray-700">💵 Physical Cash Count</h2>
+          <span id="auditDenomTotal" class="font-mono font-bold text-gray-800 text-sm">₱0.00</span>
+        </div>
+        <div class="p-3">
+          <div class="grid grid-cols-2 gap-2" id="auditDenomGrid">
+            <!-- Populated by JS -->
+          </div>
+          <div class="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+            <span class="text-xs text-gray-500">Expected</span>
+            <span id="auditExpectedCash" class="font-mono text-xs font-bold text-gray-600">₱0.00</span>
+          </div>
+          <div class="flex items-center justify-between mt-1">
+            <span class="text-xs text-gray-500">Variance</span>
+            <span id="auditVarianceDisplay" class="font-mono text-xs font-bold">₱0.00</span>
+          </div>
+          <!-- Variance alert -->
+          <div id="auditVarianceAlert" class="hidden mt-2 text-xs rounded-lg px-3 py-2 font-medium"></div>
+          <button onclick="saveAuditDenomCount()"
+            class="mt-3 w-full bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 rounded-lg transition">
+            💾 Save Cash Count
+          </button>
+        </div>
+      </div>
+
+      <!-- Approve / Send Back -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
+        <h2 class="text-sm font-bold text-gray-700">📋 Audit Decision</h2>
+        <div id="auditProgressBar" class="text-xs text-gray-500">Mark all entries to proceed.</div>
+        <textarea id="auditDecisionNote" rows="2" placeholder="Audit notes (optional)..."
+          class="w-full text-xs p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-400 resize-none bg-gray-50"></textarea>
+        <button id="auditApproveBtn" onclick="confirmAuditDecision('approve')" disabled
+          class="w-full bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-lg transition">
+          ✓ Approve & Close Day
+        </button>
+        <button id="auditSendBackBtn" onclick="confirmAuditDecision('sendback')" disabled
+          class="w-full bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-lg transition">
+          🚩 Send Back to Cashier
+        </button>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: Entry review list -->
+    <div class="lg:col-span-2">
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+          <h2 class="text-sm font-bold text-gray-700">🧾 Entries to Review</h2>
+          <div class="flex items-center gap-3 text-xs text-gray-500">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-400"></span> Verified</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400"></span> Flagged</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-gray-300"></span> Pending</span>
+          </div>
+        </div>
+        <div id="auditEntryList" class="divide-y divide-gray-100">
+          <div class="px-4 py-8 text-center text-gray-400 text-sm animate-pulse">Loading entries...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

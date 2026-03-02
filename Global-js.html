@@ -104,7 +104,15 @@ function applyRoleUI() {
 
   // Show Audit Log for Auditor and Admin
   const navAuditLog = document.getElementById('nav-auditlog');
-  if (navAuditLog && isAuditor()) navAuditLog.classList.remove('hidden');
+  if (navAuditLog && (isAuditor() || isAdmin())) navAuditLog.classList.remove('hidden');
+
+  // Show Audit Review for Auditor only
+  const navAuditReview = document.getElementById('nav-auditreview');
+  if (navAuditReview && isAuditor()) navAuditReview.classList.remove('hidden');
+
+  // Hide Filing Checklist from Auditor
+  const navFiling = document.getElementById('nav-filing');
+  if (navFiling && isAuditor()) navFiling.classList.add('hidden');
 
   // Hide Opening tab from Cashier
   applyDenomRoleRestrictions();
@@ -161,6 +169,7 @@ function navigate(page) {
   if (page === 'replenishment') loadReplenishments();
   if (page === 'filing')        loadFilingPage();
   if (page === 'auditlog')      loadAuditLog();
+  if (page === 'auditreview')   loadAuditReviewPage();
 
   // Close mobile sidebar
   const sb = document.getElementById('sidebar');

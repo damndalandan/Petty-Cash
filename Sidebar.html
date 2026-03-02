@@ -51,7 +51,7 @@
       <span>Replenishment</span>
     </button>
 
-    <button onclick="navigate('filing')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="filing">
+    <button onclick="navigate('filing')" id="nav-filing" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="filing">
       <span class="mr-3 text-lg">📂</span>
       <span>Filing Checklist</span>
       <span id="filing-badge" class="hidden ml-auto bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
@@ -62,6 +62,13 @@
     <button onclick="navigate('report')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="report">
       <span class="mr-3 text-lg">📋</span>
       <span>Daily Report</span>
+    </button>
+
+    <button onclick="navigate('auditreview')" id="nav-auditreview"
+      class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 group" data-page="auditreview">
+      <span class="mr-3 text-lg">🔍</span>
+      <span>Audit Review</span>
+      <span id="audit-review-badge" class="hidden ml-auto bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
     </button>
 
     <button onclick="navigate('auditlog')" id="nav-auditlog"
