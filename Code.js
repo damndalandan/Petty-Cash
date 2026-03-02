@@ -1188,17 +1188,47 @@ function generateReportData(params) {
     }
 
     const summaries = [];
+    const summaryDates = new Set();
     const sumData   = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
     for (let j = 1; j < sumData.length; j++) {
       const sRow  = sumData[j];
       const sDate = normalizeDate(sRow[1]);
       if (sDate < params.from || sDate > params.to) continue;
+      summaryDates.add(sDate);
       summaries.push({
         date:sDate, opening:sRow[2], cashAdvance:sRow[3],
         totalWithReceipt:sRow[4], totalWithoutReceipt:sRow[5],
         expenses:sRow[6], cashOver:sRow[7], replenishment:sRow[8],
         closing:sRow[9], variance:sRow[10], status:sRow[11]
       });
+    }
+
+    // ── Fallback: include OPEN days that have a denomination START record
+    // but no SUMMARY row yet (opening saved, no entries recorded yet)
+    const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+    if (denomSheet) {
+      const denomData = denomSheet.getDataRange().getValues();
+      for (let k = 1; k < denomData.length; k++) {
+        const dRow  = denomData[k];
+        const dDate = normalizeDate(dRow[1]);
+        if (dDate < params.from || dDate > params.to) continue;
+        if (dRow[2] !== 'START') continue;           // only opening records
+        if (summaryDates.has(dDate)) continue;       // already in summary
+        summaryDates.add(dDate);
+        summaries.push({
+          date               : dDate,
+          opening            : parseFloat(dRow[13]) || 0,
+          cashAdvance        : 0,
+          totalWithReceipt   : 0,
+          totalWithoutReceipt: 0,
+          expenses           : 0,
+          cashOver           : 0,
+          replenishment      : 0,
+          closing            : 0,
+          variance           : 0,
+          status             : 'OPEN'
+        });
+      }
     }
 
     return { success: true, data: { entries, summaries } };
