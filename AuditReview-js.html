@@ -47,8 +47,10 @@ async function loadAuditReviewPage() {
 
   // Load entries
   const entriesRes = await callServer('getExpenseEntries', state.currentDate);
-  const entries = (entriesRes.success ? entriesRes.data || [] : [])
-    .filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  const allEntries = entriesRes.success ? entriesRes.data || [] : [];
+  // Store in state so updateAuditProgress can reference them
+  state.entries = allEntries;
+  const entries = allEntries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
 
   renderAuditEntries(entries);
   updateAuditProgress(entries);
@@ -339,11 +341,34 @@ async function confirmAuditDecision(decision) {
       document.getElementById('auditDecisionNote')?.focus();
       return;
     }
-    if (!confirm('Approve and close this day? This action cannot be undone.')) return;
 
-    const res = await callServer('auditApproveDay', { date: state.currentDate, notes: note });
+    // Check if variance is zero — offer carry forward
+    const isZeroVariance = Math.abs(variance) < 0.01;
+    let carryForward = false;
+
+    if (isZeroVariance && actualCash > 0) {
+      carryForward = confirm(
+        'Variance is ₱0.00 ✓\n\n' +
+        'Your physical cash count of ' + fmt(actualCash) + ' will become tomorrow\'s opening cash automatically.\n\n' +
+        'Click OK to approve and carry forward, or Cancel to approve without carrying forward.'
+      );
+    } else {
+      if (!confirm('Approve and close this day? This action cannot be undone.')) return;
+    }
+
+    const res = await callServer('auditApproveDay', {
+      date        : state.currentDate,
+      notes       : note,
+      carryForward: carryForward
+    });
+
     if (res.success) {
-      toast('Day approved and closed ✓', 'success');
+      toast(
+        carryForward
+          ? 'Day approved ✓ — tomorrow\'s opening cash set to ' + fmt(actualCash)
+          : 'Day approved and closed ✓',
+        'success'
+      );
       loadAuditReviewPage();
       loadDayData();
     } else {

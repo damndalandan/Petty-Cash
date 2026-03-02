@@ -114,22 +114,31 @@ function applyRoleUI() {
   const navFiling = document.getElementById('nav-filing');
   if (navFiling && isAuditor()) navFiling.classList.add('hidden');
 
+  /// Hide Denominations from sidebar entirely for Auditor
+  const navDenom = document.getElementById('nav-denominations');
+  if (navDenom && isAuditor()) navDenom.classList.add('hidden');
+
   // Hide Opening tab from Cashier
   applyDenomRoleRestrictions();
 }
 
 function applyDenomRoleRestrictions() {
+  // Auditor: hide entire denomination card — they use Audit Review page instead
+  if (isAuditor()) {
+    const card = document.getElementById('denomCardContainer');
+    if (card) card.closest('.bg-white')?.classList.add('hidden');
+    const tabs = document.getElementById('denomTabBar');
+    if (tabs) tabs.classList.add('hidden');
+    return;
+  }
+
+  // Cashier: disable Opening tab
   const openingTab = document.getElementById('btn-tab-start');
   if (!openingTab) return;
-
-  if (!isAuditor()) {
-    // Cashier: disable Opening tab
-    openingTab.disabled = true;
-    openingTab.classList.add('opacity-40', 'cursor-not-allowed');
-    openingTab.title = 'Only Auditors can enter the Opening count';
-    // Force cashier to Closing tab
-    switchDenomTab('END');
-  }
+  openingTab.disabled = true;
+  openingTab.classList.add('opacity-40', 'cursor-not-allowed');
+  openingTab.title = 'Only Auditors can enter the Opening count';
+  switchDenomTab('END');
 }
 
 function updateDateLabel() {

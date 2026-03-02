@@ -1232,7 +1232,7 @@ function findUnclosedPastDate(beforeDate) {
 // AUDITOR APPROVAL
 // ─────────────────────────────────────────────
 function auditApproveDay(data) {
-  // data: { date, notes }
+  // data: { date, notes, carryForward: bool }
   try {
     const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet    = ss.getSheetByName(SHEETS.SUMMARY);
@@ -1253,12 +1253,67 @@ function auditApproveDay(data) {
         '',
         data.date
       );
+
+      // ── Carry forward: save auditor's END count as next day's START ──
+      if (data.carryForward) {
+        const nextDate  = getNextDate(data.date);
+        const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+        const denomRows  = denomSheet.getDataRange().getValues();
+
+        // Get auditor's END count for this date
+        let endBreakdown = null, endTotal = 0;
+        for (let j = 1; j < denomRows.length; j++) {
+          if (normalizeDate(denomRows[j][1]) === data.date && denomRows[j][2] === 'END') {
+            endBreakdown = denomRows[j][3]; // breakdown JSON string
+            endTotal     = parseFloat(denomRows[j][13]) || 0;
+            break;
+          }
+        }
+
+        if (endBreakdown !== null) {
+          // Check if next day START already exists — don't overwrite
+          let nextDayStartExists = false;
+          for (let j = 1; j < denomRows.length; j++) {
+            if (normalizeDate(denomRows[j][1]) === nextDate && denomRows[j][2] === 'START') {
+              nextDayStartExists = true;
+              break;
+            }
+          }
+
+          if (!nextDayStartExists) {
+            const newId = generateId('DEN', nextDate, denomSheet);
+            denomSheet.appendRow([
+              newId, nextDate, 'START',
+              endBreakdown,
+              0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+              endTotal,
+              'Carried from ' + data.date + ' audit',
+              now
+            ]);
+            recalculateDailySummary(nextDate);
+            writeAuditLog(
+              'OPENING_SAVED',
+              `Opening cash carried forward from ${data.date} audit count. Total: ₱${endTotal.toFixed(2)}`,
+              newId,
+              nextDate
+            );
+          }
+        }
+      }
+
       return { success: true };
     }
     return { success: false, message: 'No summary record found for ' + data.date };
   } catch(e) {
     return { success: false, message: e.toString() };
   }
+}
+
+// Helper: get next calendar date string
+function getNextDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
 }
 
 function getPreviousDayClosing(date) {
