@@ -115,8 +115,9 @@ function applyRoleUI() {
   if (navFiling && isAuditor()) navFiling.classList.add('hidden');
 
   /// Hide Denominations from sidebar entirely for Auditor
+  // Hide Denominations from Auditor only — Admin can see it
   const navDenom = document.getElementById('nav-denominations');
-  if (navDenom && isAuditor()) navDenom.classList.add('hidden');
+  if (navDenom && state.userRole === 'Auditor') navDenom.classList.add('hidden');
 
   // Hide Opening tab from Cashier
   applyDenomRoleRestrictions();
@@ -124,7 +125,7 @@ function applyRoleUI() {
 
 function applyDenomRoleRestrictions() {
   // Auditor: hide entire denomination card — they use Audit Review page instead
-  if (isAuditor()) {
+  if (state.userRole === 'Auditor') {
     const card = document.getElementById('denomCardContainer');
     if (card) card.closest('.bg-white')?.classList.add('hidden');
     const tabs = document.getElementById('denomTabBar');
@@ -132,12 +133,22 @@ function applyDenomRoleRestrictions() {
     return;
   }
 
-  // Cashier: disable Opening tab
+  // Admin: show Opening tab only, hide Closing tab
+  if (isAdmin()) {
+    const closingTab = document.getElementById('btn-tab-end');
+    if (closingTab) {
+      closingTab.classList.add('hidden');
+    }
+    switchDenomTab('START');
+    return;
+  }
+
+  // Cashier: disable Opening tab, force to Closing
   const openingTab = document.getElementById('btn-tab-start');
   if (!openingTab) return;
   openingTab.disabled = true;
   openingTab.classList.add('opacity-40', 'cursor-not-allowed');
-  openingTab.title = 'Only Auditors can enter the Opening count';
+  openingTab.title = 'Only Auditors/Admin can enter the Opening count';
   switchDenomTab('END');
 }
 

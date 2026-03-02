@@ -195,6 +195,12 @@
   let pendingClosingData = null;
 
   async function saveDenomination() {
+    // Admin can only save Opening
+    if (isAdmin() && state.denomTab === 'END') {
+      toast('Admin can only enter the Opening cash count.', 'warning');
+      return;
+    }
+
     // Hard guard: block saving closing on an already closed day
     if (state.summary && state.summary.status === 'CLOSED' && state.denomTab === 'END') {
       toast('This day is already CLOSED. Use the Edit Opening button to make corrections.', 'warning');
@@ -512,7 +518,7 @@
 
     // Only show on Opening tab, only for Auditor, only if no opening saved yet
     const hasOpening = (state.denomRecords || []).some(r => r.type === 'START');
-    if (state.denomTab !== 'START' || hasOpening || !isAuditor()) {
+    if (state.denomTab !== 'START' || hasOpening || (!isAuditor() && !isAdmin())) {
       banner.classList.add('hidden');
       return;
     }
@@ -634,8 +640,8 @@ function applyClosedDayGuard() {
     const isFlagged = status === 'FLAGGED';
     const isToday   = state.currentDate === new Date().toISOString().split('T')[0];
 
-    // Auditor has no denomination card access — they use Audit Review page
-    if (isAuditor()) return;
+    // Pure Auditor: no denomination card access — they use Audit Review page
+    if (state.userRole === 'Auditor') return;
 
     // Clean up old banners
     document.getElementById('pendingAuditBanner')?.remove();
