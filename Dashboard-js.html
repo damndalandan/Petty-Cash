@@ -63,13 +63,13 @@ async function loadDayData() {
   const todayStr = new Date().toISOString().split('T')[0];
   checkPreviousDayStatus(todayStr);
 
-  // Admin metrics — only load once per dashboard visit (not on every date change)
+  // Admin metrics — show section immediately, load data once
   if (isAdmin()) {
     const section = document.getElementById('adminMetricsSection');
     if (section) section.classList.remove('hidden');
     if (!adminMetricsRaw) {
       initAdminMetricYears();
-      loadAdminMetrics();
+      loadAdminMetrics(); // shows skeleton instantly, fetches in background
     }
   }
 }
@@ -314,20 +314,35 @@ function initAdminMetricYears() {
 async function loadAdminMetrics() {
   if (!isAdmin()) return;
 
-  const panelList = document.getElementById('adminPanelList');
-  if (panelList) panelList.innerHTML = '<div class="p-6 text-center text-gray-400 text-sm animate-pulse">Loading...</div>';
+  // Show section immediately with skeleton badges
+  const section = document.getElementById('adminMetricsSection');
+  if (section) section.classList.remove('hidden');
+
+  // Set all badges to loading state
+  ['unclosed','unfiled','discrepancies','cashOver','pendingAdvances'].forEach(key => {
+    const b = document.getElementById('badge-' + key);
+    if (b) { b.textContent = '…'; b.classList.add('opacity-50'); }
+  });
 
   const res = await callServer('getAdminMetrics');
   if (!res.success) {
     toast('Failed to load admin metrics', 'error');
+    ['unclosed','unfiled','discrepancies','cashOver','pendingAdvances'].forEach(key => {
+      const b = document.getElementById('badge-' + key);
+      if (b) { b.textContent = '!'; b.classList.remove('opacity-50'); }
+    });
     return;
   }
 
   adminMetricsRaw = res.data;
-  renderAdminMetricCards();
 
-  // Re-render the open panel if one is active
-  if (adminActiveCard) renderAdminPanel(adminActiveCard);
+  // Remove loading state
+  ['unclosed','unfiled','discrepancies','cashOver','pendingAdvances'].forEach(key => {
+    const b = document.getElementById('badge-' + key);
+    if (b) b.classList.remove('opacity-50');
+  });
+
+  renderAdminMetricCards();
 }
 
 function getAdminFilteredData(key) {
@@ -383,28 +398,83 @@ function renderAdminMetricCards() {
 }
 
 function toggleAdminCard(key) {
-  const panel = document.getElementById('adminMetricPanel');
-  if (!panel) return;
-
-  if (adminActiveCard === key) {
-    // Collapse
-    adminActiveCard = null;
-    panel.classList.add('hidden');
-    renderAdminMetricCards();
+  if (!adminMetricsRaw) {
+    toast('Data still loading, please wait...', 'warning');
     return;
   }
-
   adminActiveCard = key;
-  panel.classList.remove('hidden');
   renderAdminMetricCards();
-  renderAdminPanel(key);
+  openAdminPanelModal(key);
 }
 
 function closeAdminCard() {
   adminActiveCard = null;
-  const panel = document.getElementById('adminMetricPanel');
-  if (panel) panel.classList.add('hidden');
   renderAdminMetricCards();
+  const modal = document.getElementById('adminPanelModal');
+  if (modal) modal.classList.add('hidden');
+}
+
+function openAdminPanelModal(key) {
+  const modal   = document.getElementById('adminPanelModal');
+  const titleEl = document.getElementById('adminPanelModalTitle');
+  const listEl  = document.getElementById('adminPanelModalList');
+  if (!modal || !titleEl || !listEl) return;
+
+  const meta = ADMIN_PANEL_META[key] || { title: key, empty: 'No items.' };
+  titleEl.textContent = meta.title;
+
+  // Reuse renderAdminPanel logic but target modal list
+  const data = getAdminFilteredData(key);
+
+  if (!data.length) {
+    listEl.innerHTML = `<div class="p-10 text-center text-gray-400 text-sm">${meta.empty}</div>`;
+  } else if (key === 'pendingAdvances') {
+    listEl.innerHTML = data.map(item => {
+      const urgency = item.daysOutstanding >= 7 ? 'text-red-600' : item.daysOutstanding >= 3 ? 'text-amber-600' : 'text-gray-500';
+      const statusBadge = item.status === 'LIQUIDATION_PENDING'
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-bold">Pending Review</span>'
+        : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-bold">Outstanding</span>';
+      return `
+        <div onclick="openAdminDayModal('${item.date}', 'pendingAdvances')"
+          class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer transition border-b border-gray-100 last:border-0">
+          <div class="flex flex-col">
+            <span class="text-sm font-bold text-gray-700">${formatAdminDate(item.date)}</span>
+            <span class="text-xs text-gray-500 truncate max-w-[200px]">${item.description || '—'} · ${item.requestedBy || '—'}</span>
+          </div>
+          <div class="flex flex-col items-end gap-1">
+            <span class="font-mono text-sm font-bold text-gray-700">${fmt(item.amount)}</span>
+            <div class="flex items-center gap-1.5">${statusBadge}<span class="text-[10px] ${urgency} font-mono">${item.daysOutstanding}d</span></div>
+          </div>
+        </div>`;
+    }).join('');
+  } else {
+    listEl.innerHTML = data.map(item => {
+      let rightHtml = '';
+      if (key === 'unclosed') {
+        const sc = { OPEN:'bg-green-100 text-green-700', PENDING_AUDIT:'bg-amber-100 text-amber-700', FLAGGED:'bg-red-100 text-red-700' }[item.status] || 'bg-gray-100 text-gray-500';
+        rightHtml = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${sc}">${item.status}</span>`;
+      } else if (key === 'unfiled') {
+        const icons = [(item.filedReceipts?'✅':'❌'),(item.filedNoReceipts?'✅':'❌'),(item.filedReport?'✅':'❌')];
+        rightHtml = `<span class="text-xs font-mono text-gray-500 tracking-widest" title="Receipts / No-Receipts / Report">${icons.join(' ')}</span>`;
+      } else if (key === 'discrepancies') {
+        const v = item.variance || 0;
+        rightHtml = `<span class="font-mono font-bold text-sm ${v < 0 ? 'text-red-600':'text-blue-600'}">${v>=0?'+':''}${fmt(v)}</span>`;
+      } else if (key === 'cashOver') {
+        rightHtml = `<span class="font-mono font-bold text-sm text-emerald-600">+${fmt(item.cashOver)}</span>`;
+      }
+      return `
+        <div onclick="openAdminDayModal('${item.date}', '${key}')"
+          class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer transition border-b border-gray-100 last:border-0">
+          <div class="flex flex-col">
+            <span class="text-sm font-bold text-gray-700">${formatAdminDate(item.date)}</span>
+            <span class="text-xs text-gray-400 font-mono">Exp: ${fmt(item.expenses || 0)}</span>
+          </div>
+          <div class="flex items-center gap-2">${rightHtml}</div>
+        </div>`;
+    }).join('');
+  }
+
+  modal.classList.remove('hidden');
 }
 
 const ADMIN_PANEL_META = {
