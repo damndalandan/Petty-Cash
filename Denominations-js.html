@@ -149,6 +149,9 @@
   }
 
   async function checkOpeningEligibility() {
+    // Admin only enters Opening — never blocked by unclosed past dates
+    if (isAdmin()) return;
+
     const res = await callServer('findUnclosedPastDate', state.currentDate);
     if (res.success && res.date) {
       const container = document.getElementById('denomCardContainer');
