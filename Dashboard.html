@@ -68,56 +68,56 @@
           <!-- Card: Unclosed -->
           <div onclick="toggleAdminCard('unclosed')" id="card-unclosed"
             class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-red-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-2">
-              <span class="text-xl">🔓</span>
-              <span id="badge-unclosed" class="text-xs font-black px-2 py-0.5 rounded-full bg-red-100 text-red-700">0</span>
+            <div class="flex justify-between items-start mb-3">
+              <span class="text-2xl">🔓</span>
+              <span id="badge-unclosed" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-red-100 text-red-700">0</span>
             </div>
-            <div class="text-xs font-bold text-gray-700 leading-tight">Unclosed Days</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">Not yet audited</div>
+            <div class="text-sm font-bold text-gray-700 leading-tight">Unclosed Days</div>
+            <div class="text-xs text-gray-400 mt-1">Not yet audited</div>
           </div>
 
           <!-- Card: Unfiled -->
           <div onclick="toggleAdminCard('unfiled')" id="card-unfiled"
             class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-amber-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-2">
-              <span class="text-xl">📂</span>
-              <span id="badge-unfiled" class="text-xs font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">0</span>
+            <div class="flex justify-between items-start mb-3">
+              <span class="text-2xl">📂</span>
+              <span id="badge-unfiled" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700">0</span>
             </div>
-            <div class="text-xs font-bold text-gray-700 leading-tight">Unfiled Days</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">Incomplete filing</div>
+            <div class="text-sm font-bold text-gray-700 leading-tight">Unfiled Days</div>
+            <div class="text-xs text-gray-400 mt-1">Incomplete filing</div>
           </div>
 
           <!-- Card: Discrepancies -->
           <div onclick="toggleAdminCard('discrepancies')" id="card-discrepancies"
             class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-orange-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-2">
-              <span class="text-xl">⚠️</span>
-              <span id="badge-discrepancies" class="text-xs font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">0</span>
+            <div class="flex justify-between items-start mb-3">
+              <span class="text-2xl">⚠️</span>
+              <span id="badge-discrepancies" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700">0</span>
             </div>
-            <div class="text-xs font-bold text-gray-700 leading-tight">Discrepancies</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">Variance detected</div>
+            <div class="text-sm font-bold text-gray-700 leading-tight">Discrepancies</div>
+            <div class="text-xs text-gray-400 mt-1">Variance detected</div>
           </div>
 
           <!-- Card: Cash Over -->
           <div onclick="toggleAdminCard('cashOver')" id="card-cashOver"
             class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-blue-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-2">
-              <span class="text-xl">💹</span>
-              <span id="badge-cashOver" class="text-xs font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">0</span>
+            <div class="flex justify-between items-start mb-3">
+              <span class="text-2xl">💹</span>
+              <span id="badge-cashOver" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">0</span>
             </div>
-            <div class="text-xs font-bold text-gray-700 leading-tight">Cash Over Days</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">Excess cash found</div>
+            <div class="text-sm font-bold text-gray-700 leading-tight">Cash Over Days</div>
+            <div class="text-xs text-gray-400 mt-1">Excess cash found</div>
           </div>
 
           <!-- Card: Pending Advances -->
           <div onclick="toggleAdminCard('pendingAdvances')" id="card-pendingAdvances"
             class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-purple-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-2">
-              <span class="text-xl">💳</span>
-              <span id="badge-pendingAdvances" class="text-xs font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">0</span>
+            <div class="flex justify-between items-start mb-3">
+              <span class="text-2xl">💳</span>
+              <span id="badge-pendingAdvances" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-700">0</span>
             </div>
-            <div class="text-xs font-bold text-gray-700 leading-tight">Pending Advances</div>
-            <div class="text-[10px] text-gray-400 mt-0.5">Unliquidated</div>
+            <div class="text-sm font-bold text-gray-700 leading-tight">Pending Advances</div>
+            <div class="text-xs text-gray-400 mt-1">Unliquidated</div>
           </div>
 
         </div>
@@ -145,7 +145,7 @@
       </div>
 
       <!-- Stats Grid -->
-      <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-6 gap-4" id="dashStatsGrid">
         <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-200 border-l-4 border-l-blue-500">
           <h3 class="text-[10px] md:text-xs text-gray-500 uppercase tracking-wider font-mono mb-1">Opening Cash</h3>
           <p class="text-lg md:text-2xl font-bold text-gray-800 font-mono" id="stat-opening">₱0.00</p>
@@ -166,11 +166,11 @@
              <span id="stat-expected" class="font-mono font-bold text-gray-700">₱0.00</span>
           </div>
         </div>
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 admin-hide-card">
            <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-1">With Receipt</h3>
            <p class="text-lg font-mono font-medium text-gray-700" id="stat-receipt">₱0.00</p>
         </div>
-        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200">
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-gray-200 admin-hide-card">
            <h3 class="text-xs text-gray-400 uppercase tracking-wider mb-1">No Receipt</h3>
            <p class="text-lg font-mono font-medium text-gray-700" id="stat-noreceipt">₱0.00</p>
         </div>
