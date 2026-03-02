@@ -1,38 +1,117 @@
-<script>
 // =============================================
 // FILING CHECKLIST PAGE LOGIC
 // =============================================
 
+let filingSelectedDate = null;
+
 async function loadFilingPage() {
-  // Set default month filter to current month
+  // Set default month filter
   const monthEl = document.getElementById('filingMonthFilter');
-  if (monthEl && !monthEl.value) {
-    monthEl.value = state.currentDate.slice(0, 7);
-  }
+  if (monthEl && !monthEl.value) monthEl.value = state.currentDate.slice(0, 7);
 
   const month   = monthEl?.value || state.currentDate.slice(0, 7);
   const from    = month + '-01';
   const lastDay = new Date(month.slice(0,4), month.slice(5,7), 0).getDate();
   const to      = month + '-' + String(lastDay).padStart(2,'0');
 
-  // Date label
-  const todayLabel = document.getElementById('filingTodayLabel');
-  if (todayLabel) {
-    const d = new Date(state.currentDate + 'T00:00:00');
-    todayLabel.textContent = d.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  // Load date list for left panel (Cashier only)
+  if (isCashier() || isAdmin()) {
+    loadFilingDateList();
   }
 
-  // Load existing filing for today to pre-fill checkboxes
-  const res = await callServer('getFilingChecklists', { from: state.currentDate, to: state.currentDate });
-  if (res.success && res.data.length) {
-    const rec = res.data[0];
+  // Hide left panel for Admin (read-only)
+  const submitPanel = document.getElementById('filingSubmitPanel');
+  if (submitPanel) submitPanel.classList.toggle('hidden', isAdmin());
+
+  // Load history table
+  const histRes = await callServer('getFilingChecklists', { from, to });
+  renderFilingHistory(histRes.success ? histRes.data : []);
+}
+
+// ── Load the color-coded date list in the left panel ──
+async function loadFilingDateList() {
+  const container = document.getElementById('filingDateList');
+  const noDaysMsg = document.getElementById('filingNoDaysMsg');
+  if (!container) return;
+
+  container.innerHTML = '<div class="text-xs text-gray-400 italic px-1 animate-pulse">Loading...</div>';
+
+  const res = await callServer('getClosedDaysForFiling');
+  if (!res.success || !res.data.length) {
+    container.innerHTML = '';
+    if (noDaysMsg) noDaysMsg.classList.remove('hidden');
+    return;
+  }
+
+  if (noDaysMsg) noDaysMsg.classList.add('hidden');
+
+  const colorMap = {
+    filed      : { dot: 'bg-green-400', text: 'text-green-700',  bg: 'bg-green-50  hover:bg-green-100  border-green-200',  label: 'Filed'      },
+    incomplete : { dot: 'bg-amber-400', text: 'text-amber-700',  bg: 'bg-amber-50  hover:bg-amber-100  border-amber-200',  label: 'Incomplete' },
+    never      : { dot: 'bg-red-400',   text: 'text-red-700',    bg: 'bg-red-50    hover:bg-red-100    border-red-200',    label: 'Not Filed'  }
+  };
+
+  container.innerHTML = res.data.map(d => {
+    const c = colorMap[d.status] || colorMap.never;
+    return `
+      <button onclick="selectFilingDate('${d.date}')"
+        id="filingDateBtn-${d.date}"
+        class="filing-date-btn w-full flex items-center justify-between px-3 py-2 rounded-lg border text-left transition text-xs font-medium ${c.bg}">
+        <span class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full ${c.dot} shrink-0"></span>
+          <span class="font-mono ${c.text}">${d.date}</span>
+        </span>
+        <span class="text-[10px] font-bold ${c.text} opacity-70">${c.label}</span>
+      </button>`;
+  }).join('');
+
+  // Auto-select first unfiled/incomplete day, else first day
+  const firstPending = res.data.find(d => d.status !== 'filed');
+  const autoSelect   = firstPending || res.data[0];
+  if (autoSelect) selectFilingDate(autoSelect.date);
+}
+
+// ── Select a date from the list and load its filing data ──
+async function selectFilingDate(date) {
+  filingSelectedDate = date;
+
+  // Highlight selected
+  document.querySelectorAll('.filing-date-btn').forEach(btn => {
+    btn.classList.toggle('ring-2', btn.id === 'filingDateBtn-' + date);
+    btn.classList.toggle('ring-offset-1', btn.id === 'filingDateBtn-' + date);
+    btn.classList.toggle('ring-amber-500', btn.id === 'filingDateBtn-' + date);
+  });
+
+  // Update label
+  const labelEl = document.getElementById('filingSelectedDateLabel');
+  if (labelEl) labelEl.textContent = date;
+
+  // Enable submit button
+  const btn = document.getElementById('submitFilingBtn');
+  if (btn) btn.disabled = false;
+
+  // Reset checkboxes
+  setCheckbox('chkFiling_Receipts',   false);
+  setCheckbox('chkFiling_NoReceipts', false);
+  setCheckbox('chkFiling_Report',     false);
+  const notesEl = document.getElementById('filingNotes');
+  if (notesEl) notesEl.value = '';
+
+  // Hide banner
+  const banner = document.getElementById('filingStatusBanner');
+  if (banner) banner.classList.add('hidden');
+
+  // Load existing record for this date if any
+  const res = await callServer('getFilingChecklists', { from: date, to: date });
+  // Filter to only the exact date (getFilingChecklists now includes synthetic rows too)
+  const rec = res.success ? res.data.find(r => r.date === date && !r.neverFiled) : null;
+
+  if (rec) {
     setCheckbox('chkFiling_Receipts',   rec.filedReceipts);
     setCheckbox('chkFiling_NoReceipts', rec.filedNoReceipts);
     setCheckbox('chkFiling_Report',     rec.filedReport);
-    const notesEl = document.getElementById('filingNotes');
     if (notesEl) notesEl.value = rec.notes || '';
 
-    const banner = document.getElementById('filingStatusBanner');
     if (banner) {
       if (rec.fullyFiled) {
         banner.className = 'flex items-center gap-2 p-3 rounded-xl bg-green-50 border border-green-200 text-sm text-green-700 font-medium';
@@ -43,14 +122,7 @@ async function loadFilingPage() {
       }
       banner.classList.remove('hidden');
     }
-  } else {
-    const banner = document.getElementById('filingStatusBanner');
-    if (banner) banner.classList.add('hidden');
   }
-
-  // Load history
-  const histRes = await callServer('getFilingChecklists', { from, to });
-  renderFilingHistory(histRes.success ? histRes.data : []);
 }
 
 function setCheckbox(id, val) {
@@ -59,61 +131,71 @@ function setCheckbox(id, val) {
 }
 
 function renderFilingHistory(records) {
-  const tbody   = document.getElementById('filingHistoryBody');
-  const badge   = document.getElementById('filing-unfiled-badge');
+  const tbody = document.getElementById('filingHistoryBody');
+  const badge = document.getElementById('filing-unfiled-badge');
   if (!tbody) return;
 
   if (!records.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm italic">No filing records for this period</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm italic">No closed days for this period</td></tr>';
     if (badge) badge.classList.add('hidden');
     return;
   }
 
+  // Count unfiled = neverFiled OR incomplete
   const unfiled = records.filter(r => !r.fullyFiled).length;
   if (badge) {
-    if (unfiled > 0) {
-      badge.textContent = unfiled + ' unfiled';
-      badge.classList.remove('hidden');
-    } else {
-      badge.classList.add('hidden');
-    }
+    if (unfiled > 0) { badge.textContent = unfiled + ' unfiled'; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
   }
 
-  // Update sidebar badge
+  // Sidebar badge
   const sidebarBadge = document.getElementById('filing-badge');
   if (sidebarBadge) {
-    if (unfiled > 0) {
-      sidebarBadge.textContent = unfiled;
-      sidebarBadge.classList.remove('hidden');
-    } else {
-      sidebarBadge.classList.add('hidden');
-    }
+    if (unfiled > 0) { sidebarBadge.textContent = unfiled; sidebarBadge.classList.remove('hidden'); }
+    else sidebarBadge.classList.add('hidden');
   }
 
-  const tick  = (val) => val
+  const tick = (val) => val
     ? '<span class="text-green-600 font-bold text-base">✓</span>'
-    : '<span class="text-red-400 font-bold text-base">✗</span>';
+    : '<span class="text-red-400 text-base">—</span>';
 
   tbody.innerHTML = records.map(r => {
-    const rowBg = r.fullyFiled ? '' : 'bg-red-50';
-    const status = r.fullyFiled
-      ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✅ Filed</span>'
-      : '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">⚠️ Incomplete</span>';
+    let rowBg, statusBadge;
+
+    if (r.fullyFiled) {
+      rowBg       = '';
+      statusBadge = '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✅ Filed</span>';
+    } else if (r.neverFiled) {
+      rowBg       = 'bg-red-50';
+      statusBadge = '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700">🔴 Not Filed</span>';
+    } else {
+      rowBg       = 'bg-amber-50';
+      statusBadge = '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⚠️ Incomplete</span>';
+    }
+
+    // Cashier: clicking a row in the table selects that date in the left panel
+    const rowClick = (!isAdmin() && !r.fullyFiled)
+      ? `onclick="selectFilingDate('${r.date}'); document.getElementById('filingSubmitPanel')?.scrollIntoView({behavior:'smooth'})"`
+      : '';
+    const rowCursor = (!isAdmin() && !r.fullyFiled) ? 'cursor-pointer' : '';
+
     return `
-      <tr class="hover:bg-gray-50 transition ${rowBg}">
+      <tr class="hover:bg-gray-50 transition ${rowBg} ${rowCursor}" ${rowClick}>
         <td class="px-4 py-3 font-mono text-sm text-gray-700 font-medium">${r.date}</td>
-        <td class="px-4 py-3 text-center">${tick(r.filedReceipts)}</td>
-        <td class="px-4 py-3 text-center">${tick(r.filedNoReceipts)}</td>
-        <td class="px-4 py-3 text-center">${tick(r.filedReport)}</td>
-        <td class="px-4 py-3">${status}${r.notes ? '<div class="text-xs text-gray-400 mt-0.5">' + r.notes + '</div>' : ''}</td>
+        <td class="px-4 py-3 text-center">${r.neverFiled ? '<span class="text-gray-300">—</span>' : tick(r.filedReceipts)}</td>
+        <td class="px-4 py-3 text-center">${r.neverFiled ? '<span class="text-gray-300">—</span>' : tick(r.filedNoReceipts)}</td>
+        <td class="px-4 py-3 text-center">${r.neverFiled ? '<span class="text-gray-300">—</span>' : tick(r.filedReport)}</td>
+        <td class="px-4 py-3">${statusBadge}${r.notes ? '<div class="text-xs text-gray-400 mt-0.5">' + r.notes + '</div>' : ''}</td>
         <td class="px-4 py-3 text-xs text-gray-500 truncate max-w-[160px]">${r.submittedBy || '—'}</td>
       </tr>`;
   }).join('');
 }
 
 async function submitFilingChecklist() {
+  if (!filingSelectedDate) { toast('Please select a date to file', 'warning'); return; }
+
   const data = {
-    date            : state.currentDate,
+    date            : filingSelectedDate,
     filedReceipts   : document.getElementById('chkFiling_Receipts')?.checked   || false,
     filedNoReceipts : document.getElementById('chkFiling_NoReceipts')?.checked || false,
     filedReport     : document.getElementById('chkFiling_Report')?.checked     || false,
@@ -134,4 +216,3 @@ async function submitFilingChecklist() {
     toast(res.message || 'Failed to save', 'error');
   }
 }
-</script>

@@ -11,54 +11,70 @@
 
   <div class="grid lg:grid-cols-3 gap-6">
 
-    <!-- LEFT: Submit checklist for today (Cashier) -->
+    <!-- LEFT PANEL: Cashier only — date list + form -->
     <div class="lg:col-span-1" id="filingSubmitPanel">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 sticky top-4 space-y-4">
-        <div>
-          <h2 class="text-base font-bold text-gray-800">📋 Today's Filing</h2>
-          <p class="text-xs text-gray-500 mt-1" id="filingTodayLabel"></p>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden sticky top-4">
+
+        <!-- Date list -->
+        <div class="border-b border-gray-200 bg-gray-50 px-4 py-3">
+          <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">Closed Days</h2>
+          <div id="filingDateList" class="space-y-1 max-h-52 overflow-y-auto pr-1">
+            <div class="text-xs text-gray-400 italic px-1">Loading...</div>
+          </div>
         </div>
 
-        <div id="filingStatusBanner" class="hidden"></div>
+        <!-- Form -->
+        <div class="p-5 space-y-4">
+          <div>
+            <h2 class="text-base font-bold text-gray-800 flex items-center gap-2">
+              <span class="w-6 h-6 rounded bg-amber-100 text-amber-600 flex items-center justify-center text-xs">📋</span>
+              Filing for: <span id="filingSelectedDateLabel" class="font-mono text-amber-700 ml-1">—</span>
+            </h2>
+          </div>
 
-        <div class="space-y-3" id="filingCheckboxes">
-          <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-            <input type="checkbox" id="chkFiling_Receipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
-            <div>
-              <div class="text-sm font-bold text-gray-700">🧾 Official Receipts Filed</div>
-              <div class="text-xs text-gray-500 mt-0.5">All ORs placed in the receipts folder.</div>
-            </div>
-          </label>
-          <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-            <input type="checkbox" id="chkFiling_NoReceipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
-            <div>
-              <div class="text-sm font-bold text-gray-700">⚠️ No-Receipt Forms Filed</div>
-              <div class="text-xs text-gray-500 mt-0.5">All acknowledgment slips signed and filed.</div>
-            </div>
-          </label>
-          <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-            <input type="checkbox" id="chkFiling_Report" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
-            <div>
-              <div class="text-sm font-bold text-gray-700">📋 Daily Report Saved</div>
-              <div class="text-xs text-gray-500 mt-0.5">Report printed or saved for records.</div>
-            </div>
-          </label>
+          <div id="filingStatusBanner" class="hidden"></div>
+
+          <div class="space-y-3" id="filingCheckboxes">
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
+              <input type="checkbox" id="chkFiling_Receipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
+              <div>
+                <div class="text-sm font-bold text-gray-700">🧾 Official Receipts Filed</div>
+                <div class="text-xs text-gray-500 mt-0.5">All ORs placed in the receipts folder.</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
+              <input type="checkbox" id="chkFiling_NoReceipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
+              <div>
+                <div class="text-sm font-bold text-gray-700">⚠️ No-Receipt Forms Filed</div>
+                <div class="text-xs text-gray-500 mt-0.5">All acknowledgment slips signed and filed.</div>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
+              <input type="checkbox" id="chkFiling_Report" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
+              <div>
+                <div class="text-sm font-bold text-gray-700">📋 Daily Report Saved</div>
+                <div class="text-xs text-gray-500 mt-0.5">Report printed or saved for records.</div>
+              </div>
+            </label>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes <span class="font-normal text-gray-400">(optional)</span></label>
+            <textarea id="filingNotes" rows="2" placeholder="Any remarks or exceptions..."
+              class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none bg-gray-50"></textarea>
+          </div>
+
+          <button id="submitFilingBtn" onclick="submitFilingChecklist()" disabled
+            class="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl shadow-sm transition text-sm">
+            ✓ Submit Filing Checklist
+          </button>
+
+          <p id="filingNoDaysMsg" class="hidden text-xs text-gray-400 text-center italic">No closed days available to file.</p>
         </div>
-
-        <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes <span class="font-normal text-gray-400">(optional)</span></label>
-          <textarea id="filingNotes" rows="2" placeholder="Any remarks or exceptions..."
-            class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none bg-gray-50"></textarea>
-        </div>
-
-        <button id="submitFilingBtn" onclick="submitFilingChecklist()"
-          class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-xl shadow-sm transition text-sm">
-          ✓ Submit Filing Checklist
-        </button>
       </div>
     </div>
 
-    <!-- RIGHT: History / review (Auditor sees unfiled days highlighted) -->
+    <!-- RIGHT PANEL: History table (all roles) -->
     <div class="lg:col-span-2">
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 
@@ -70,6 +86,13 @@
               class="text-xs p-1.5 border border-gray-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-amber-400">
             <span id="filing-unfiled-badge" class="hidden text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700"></span>
           </div>
+        </div>
+
+        <!-- Legend -->
+        <div class="px-4 py-2 border-b border-gray-100 bg-white flex items-center gap-4 text-xs text-gray-500">
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-green-400 inline-block"></span> Fully Filed</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span> Incomplete</span>
+          <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-red-400 inline-block"></span> Not Filed</span>
         </div>
 
         <!-- Table -->

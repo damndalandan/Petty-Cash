@@ -1681,36 +1681,120 @@ function saveFilingChecklist(data) {
 
 function getFilingChecklists(params) {
   // params: { from, to }
+  // Now cross-references PettyCash_Summary CLOSED days so never-filed days appear too
   try {
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEETS.FILING);
-    if (!sheet) return { success: true, data: [] };
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
-    const rows    = sheet.getDataRange().getValues();
+    // ── 1. Collect all CLOSED days in range from Summary ──
+    const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
+    const closedDates = {};
+    if (sumSheet) {
+      const sumRows = sumSheet.getDataRange().getValues();
+      for (let i = 1; i < sumRows.length; i++) {
+        const rDate  = normalizeDate(sumRows[i][1]);
+        const status = sumRows[i][11];
+        if (params?.from && rDate < params.from) continue;
+        if (params?.to   && rDate > params.to)   continue;
+        if (status === 'CLOSED') closedDates[rDate] = true;
+      }
+    }
+
+    // ── 2. Collect actual filing records in range ──
+    const filingSheet = ss.getSheetByName(SHEETS.FILING);
+    const filingMap   = {};
+    if (filingSheet) {
+      const rows = filingSheet.getDataRange().getValues();
+      for (let i = 1; i < rows.length; i++) {
+        const rowDate = normalizeDate(rows[i][1]);
+        if (params?.from && rowDate < params.from) continue;
+        if (params?.to   && rowDate > params.to)   continue;
+        filingMap[rowDate] = {
+          id              : rows[i][0],
+          date            : rowDate,
+          filedReceipts   : rows[i][2] === 'YES',
+          filedNoReceipts : rows[i][3] === 'YES',
+          filedReport     : rows[i][4] === 'YES',
+          notes           : rows[i][5] || '',
+          submittedBy     : rows[i][6] || '',
+          submittedAt     : rows[i][7] || '',
+          fullyFiled      : rows[i][2] === 'YES' && rows[i][3] === 'YES' && rows[i][4] === 'YES',
+          neverFiled      : false
+        };
+      }
+    }
+
+    // ── 3. Merge: every CLOSED day must appear, even if never filed ──
     const records = [];
 
-    for (let i = 1; i < rows.length; i++) {
-      const row     = rows[i];
-      const rowDate = normalizeDate(row[1]);
+    // Add all filing records in range (whether CLOSED or not)
+    Object.values(filingMap).forEach(r => records.push(r));
 
-      if (params?.from && rowDate < params.from) continue;
-      if (params?.to   && rowDate > params.to)   continue;
-
-      records.push({
-        id              : row[0],
-        date            : rowDate,
-        filedReceipts   : row[2] === 'YES',
-        filedNoReceipts : row[3] === 'YES',
-        filedReport     : row[4] === 'YES',
-        notes           : row[5] || '',
-        submittedBy     : row[6] || '',
-        submittedAt     : row[7] || '',
-        fullyFiled      : row[2] === 'YES' && row[3] === 'YES' && row[4] === 'YES'
-      });
-    }
+    // Add CLOSED days that have no filing record at all
+    Object.keys(closedDates).forEach(date => {
+      if (!filingMap[date]) {
+        records.push({
+          id              : null,
+          date            : date,
+          filedReceipts   : false,
+          filedNoReceipts : false,
+          filedReport     : false,
+          notes           : '',
+          submittedBy     : '',
+          submittedAt     : '',
+          fullyFiled      : false,
+          neverFiled      : true
+        });
+      }
+    });
 
     records.sort((a, b) => b.date > a.date ? 1 : -1);
     return { success: true, data: records };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+// ─────────────────────────────────────────────
+// NEW: Returns all CLOSED days with filing status for the date picker panel
+// ─────────────────────────────────────────────
+function getClosedDaysForFiling() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+
+    // Get all CLOSED days from Summary
+    const sumRows   = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    const closedMap = {};
+    for (let i = 1; i < sumRows.length; i++) {
+      if (sumRows[i][11] === 'CLOSED') closedMap[normalizeDate(sumRows[i][1])] = true;
+    }
+
+    // Get all filing records
+    const filingSheet = ss.getSheetByName(SHEETS.FILING);
+    const filingMap   = {};
+    if (filingSheet) {
+      const rows = filingSheet.getDataRange().getValues();
+      for (let i = 1; i < rows.length; i++) {
+        const d = normalizeDate(rows[i][1]);
+        filingMap[d] = {
+          fullyFiled : rows[i][2] === 'YES' && rows[i][3] === 'YES' && rows[i][4] === 'YES',
+          neverFiled : false
+        };
+      }
+    }
+
+    // Build result: one entry per CLOSED day
+    const days = Object.keys(closedMap).map(date => {
+      if (filingMap[date]) {
+        return {
+          date      : date,
+          status    : filingMap[date].fullyFiled ? 'filed' : 'incomplete'
+        };
+      }
+      return { date, status: 'never' };
+    });
+
+    days.sort((a, b) => b.date > a.date ? 1 : -1);
+    return { success: true, data: days };
   } catch(e) {
     return { success: false, message: e.toString(), data: [] };
   }
