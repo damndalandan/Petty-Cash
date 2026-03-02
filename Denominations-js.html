@@ -135,8 +135,8 @@
     const notes    = document.getElementById('denomNotes');
     const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
     const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
-    if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.remove('hidden');
-    if (notes)    notes.closest('.p-6.border-t')?.classList.remove('hidden');
+    document.getElementById('denomGridSection')?.classList.remove('hidden');
+    document.getElementById('denomNotesSection')?.classList.remove('hidden');
     if (saveBtn)  saveBtn.style.display = '';
     if (clearBtn) clearBtn.style.display = '';
 
@@ -795,8 +795,8 @@ function applyClosedDayGuard() {
     const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
 
     if (state.denomTab === 'START') {
-      if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.add('hidden');
-      if (notes)    notes.closest('.p-6.border-t')?.classList.add('hidden');
+      document.getElementById('denomGridSection')?.classList.add('hidden');
+      document.getElementById('denomNotesSection')?.classList.add('hidden');
       if (saveBtn)  saveBtn.style.display = 'none';
       if (clearBtn) clearBtn.style.display = 'none';
     }
@@ -837,8 +837,8 @@ function applyClosedDayGuard() {
     const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
     const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
 
-    if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.remove('hidden');
-    if (notes)    notes.closest('.p-6.border-t')?.classList.remove('hidden');
+    document.getElementById('denomGridSection')?.classList.remove('hidden');
+    document.getElementById('denomNotesSection')?.classList.remove('hidden');
     if (saveBtn)  saveBtn.style.display = '';
     if (clearBtn) clearBtn.style.display = '';
 

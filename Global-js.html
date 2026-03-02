@@ -165,7 +165,7 @@ function applyDenomRoleRestrictions() {
   openingTab.disabled = true;
   openingTab.classList.add('opacity-40', 'cursor-not-allowed');
   openingTab.title = 'Only Auditors/Admin can enter the Opening count';
-  switchDenomTab('END');
+  setTimeout(() => switchDenomTab('END'), 150);
 }
 
 function updateDateLabel() {
