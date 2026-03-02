@@ -147,6 +147,26 @@ function showReportDetail(dateStr) {
 
   const summary = (currentReportMonthData.summaries || []).find(s => s.date === dateStr);
 
+  // Audit status badge
+  const badgeEl = document.getElementById('reportAuditStatusBadge');
+  if (badgeEl) {
+    const auditStatusMap = {
+      OPEN         : { label: '⚪ Open',          cls: 'bg-gray-100 text-gray-600'   },
+      PENDING_AUDIT: { label: '🟡 Pending Audit', cls: 'bg-amber-100 text-amber-700' },
+      FLAGGED      : { label: '🔴 Flagged',        cls: 'bg-red-100 text-red-700'     },
+      CLOSED       : { label: '🟢 Closed',         cls: 'bg-green-100 text-green-700' },
+    };
+    const auditStatus = summary?.status || null;
+    if (auditStatus && auditStatusMap[auditStatus]) {
+      const info = auditStatusMap[auditStatus];
+      badgeEl.textContent = info.label;
+      badgeEl.className   = `text-[10px] font-bold px-2.5 py-1 rounded-full ${info.cls}`;
+      badgeEl.classList.remove('hidden');
+    } else {
+      badgeEl.classList.add('hidden');
+    }
+  }
+
   if (summary) {
     document.getElementById('d-opening').textContent  = fmt(summary.opening);
     document.getElementById('d-expenses').textContent = fmt(summary.expenses);

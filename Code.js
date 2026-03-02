@@ -1955,3 +1955,135 @@ function flagDay(data) {
     return { success: false, message: e.toString() };
   }
 }
+
+// ─────────────────────────────────────────────
+// ADMIN METRICS DASHBOARD
+// ─────────────────────────────────────────────
+function getAdminMetrics() {
+  try {
+    const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sumSheet  = ss.getSheetByName(SHEETS.SUMMARY);
+    const filSheet  = ss.getSheetByName(SHEETS.FILING);
+    const entSheet  = ss.getSheetByName(SHEETS.ENTRIES);
+
+    const today = normalizeDate(new Date());
+
+    // ── 1. Read all SUMMARY rows ──
+    const sumRows = sumSheet ? sumSheet.getDataRange().getValues() : [];
+    const unclosedDays   = [];
+    const discrepancyDays = [];
+    const cashOverDays   = [];
+
+    for (let i = 1; i < sumRows.length; i++) {
+      const row    = sumRows[i];
+      if (row.length < 12) continue;
+      const rDate  = normalizeDate(row[1]);
+      if (rDate > today) continue;         // skip future dates
+      const status   = row[11] || 'OPEN';
+      const variance = parseFloat(row[10]) || 0;
+      const cashOver = parseFloat(row[7])  || 0;
+      const opening  = parseFloat(row[2])  || 0;
+      const expenses = parseFloat(row[6])  || 0;
+      const closing  = parseFloat(row[9])  || 0;
+
+      // Unclosed = anything not CLOSED
+      if (status !== 'CLOSED') {
+        unclosedDays.push({ date: rDate, status, opening, expenses, closing, variance });
+      }
+
+      // Discrepancy = |variance| > 0.01
+      if (Math.abs(variance) > 0.01) {
+        discrepancyDays.push({ date: rDate, status, variance, opening, expenses, closing });
+      }
+
+      // Cash Over = cashOver > 0
+      if (cashOver > 0) {
+        cashOverDays.push({ date: rDate, status, cashOver, opening, expenses, closing });
+      }
+    }
+
+    // ── 2. Unfiled days (CLOSED days with incomplete filing) ──
+    const closedDates = {};
+    for (let i = 1; i < sumRows.length; i++) {
+      const row = sumRows[i];
+      if ((row[11] || '') === 'CLOSED') {
+        const d = normalizeDate(row[1]);
+        if (d <= today) closedDates[d] = { date: d, opening: parseFloat(row[2])||0, expenses: parseFloat(row[6])||0, closing: parseFloat(row[9])||0 };
+      }
+    }
+
+    const filingMap = {};
+    if (filSheet) {
+      const filRows = filSheet.getDataRange().getValues();
+      for (let i = 1; i < filRows.length; i++) {
+        const d = normalizeDate(filRows[i][1]);
+        filingMap[d] = {
+          filedReceipts  : filRows[i][2] === 'YES',
+          filedNoReceipts: filRows[i][3] === 'YES',
+          filedReport    : filRows[i][4] === 'YES',
+          fullyFiled     : filRows[i][2] === 'YES' && filRows[i][3] === 'YES' && filRows[i][4] === 'YES'
+        };
+      }
+    }
+
+    const unfiledDays = [];
+    Object.keys(closedDates).forEach(d => {
+      const fil = filingMap[d];
+      if (!fil || !fil.fullyFiled) {
+        unfiledDays.push({
+          date           : d,
+          opening        : closedDates[d].opening,
+          expenses       : closedDates[d].expenses,
+          closing        : closedDates[d].closing,
+          filedReceipts  : fil ? fil.filedReceipts   : false,
+          filedNoReceipts: fil ? fil.filedNoReceipts  : false,
+          filedReport    : fil ? fil.filedReport      : false,
+          neverFiled     : !fil
+        });
+      }
+    });
+
+    // ── 3. Pending cash advances (ACTIVE or LIQUIDATION_PENDING) ──
+    const pendingAdvances = [];
+    if (entSheet) {
+      const entRows = entSheet.getDataRange().getValues();
+      const msPerDay = 1000 * 60 * 60 * 24;
+      for (let i = 1; i < entRows.length; i++) {
+        const row    = entRows[i];
+        if (row[2] !== 'CASH_ADVANCE') continue;
+        if (row[10] === 'DELETED' || row[10] === 'LIQUIDATED') continue;
+        const issuedDate = normalizeDate(row[1]);
+        const daysOut    = Math.floor((new Date(today) - new Date(issuedDate)) / msPerDay);
+        pendingAdvances.push({
+          date        : issuedDate,
+          description : row[4],
+          amount      : parseFloat(row[5]) || 0,
+          requestedBy : row[8],
+          status      : row[10],
+          daysOutstanding: daysOut
+        });
+      }
+      pendingAdvances.sort((a, b) => b.daysOutstanding - a.daysOutstanding);
+    }
+
+    // Sort all lists newest first
+    const byDateDesc = (a, b) => b.date > a.date ? 1 : -1;
+    unclosedDays.sort(byDateDesc);
+    discrepancyDays.sort(byDateDesc);
+    cashOverDays.sort(byDateDesc);
+    unfiledDays.sort(byDateDesc);
+
+    return {
+      success: true,
+      data: {
+        unclosed    : unclosedDays,
+        unfiled     : unfiledDays,
+        discrepancies: discrepancyDays,
+        cashOver    : cashOverDays,
+        pendingAdvances: pendingAdvances
+      }
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}

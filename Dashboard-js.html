@@ -62,6 +62,16 @@ async function loadDayData() {
   // Always check from TODAY regardless of which date is selected
   const todayStr = new Date().toISOString().split('T')[0];
   checkPreviousDayStatus(todayStr);
+
+  // Admin metrics — only load once per dashboard visit (not on every date change)
+  if (isAdmin()) {
+    const section = document.getElementById('adminMetricsSection');
+    if (section) section.classList.remove('hidden');
+    if (!adminMetricsRaw) {
+      initAdminMetricYears();
+      loadAdminMetrics();
+    }
+  }
 }
 
 async function loadDiscrepancyWidget() {
@@ -279,6 +289,310 @@ async function loadDayStatusBanner() {
       advBanner.classList.add('hidden');
     }
   }
+}
+
+// =============================================
+// ADMIN METRICS
+// =============================================
+
+let adminMetricsRaw  = null;   // full data from server
+let adminActiveCard  = null;   // currently expanded card key
+let adminModalDate   = null;   // date open in modal
+
+function initAdminMetricYears() {
+  const yEl = document.getElementById('adminMetricYear');
+  if (!yEl || yEl.options.length > 0) return;
+  const cur = new Date().getFullYear();
+  for (let y = cur - 3; y <= cur + 1; y++) {
+    const o = document.createElement('option');
+    o.value = y; o.textContent = y;
+    if (y === cur) o.selected = true;
+    yEl.appendChild(o);
+  }
+}
+
+async function loadAdminMetrics() {
+  if (!isAdmin()) return;
+
+  const panelList = document.getElementById('adminPanelList');
+  if (panelList) panelList.innerHTML = '<div class="p-6 text-center text-gray-400 text-sm animate-pulse">Loading...</div>';
+
+  const res = await callServer('getAdminMetrics');
+  if (!res.success) {
+    toast('Failed to load admin metrics', 'error');
+    return;
+  }
+
+  adminMetricsRaw = res.data;
+  renderAdminMetricCards();
+
+  // Re-render the open panel if one is active
+  if (adminActiveCard) renderAdminPanel(adminActiveCard);
+}
+
+function getAdminFilteredData(key) {
+  if (!adminMetricsRaw) return [];
+  const raw  = adminMetricsRaw[key] || [];
+  const mEl  = document.getElementById('adminMetricMonth');
+  const yEl  = document.getElementById('adminMetricYear');
+  const selM = mEl ? mEl.value : 'ALL';
+  const selY = yEl ? parseInt(yEl.value) : new Date().getFullYear();
+
+  return raw.filter(item => {
+    const d = new Date((item.date || '') + 'T00:00:00');
+    if (isNaN(d)) return true;
+    if (d.getFullYear() !== selY) return false;
+    if (selM !== 'ALL' && d.getMonth() !== parseInt(selM)) return false;
+    return true;
+  });
+}
+
+function renderAdminMetricCards() {
+  const keys = [
+    { key: 'unclosed',       badge: 'badge-unclosed',       card: 'card-unclosed',       activeClass: 'border-red-500 bg-red-50'    },
+    { key: 'unfiled',        badge: 'badge-unfiled',        card: 'card-unfiled',        activeClass: 'border-amber-500 bg-amber-50' },
+    { key: 'discrepancies',  badge: 'badge-discrepancies',  card: 'card-discrepancies',  activeClass: 'border-orange-500 bg-orange-50'},
+    { key: 'cashOver',       badge: 'badge-cashOver',       card: 'card-cashOver',       activeClass: 'border-blue-500 bg-blue-50'  },
+    { key: 'pendingAdvances',badge: 'badge-pendingAdvances',card: 'card-pendingAdvances',activeClass: 'border-purple-500 bg-purple-50'},
+  ];
+
+  keys.forEach(({ key, badge, card, activeClass }) => {
+    const data  = getAdminFilteredData(key);
+    const count = data.length;
+    const bEl   = document.getElementById(badge);
+    const cEl   = document.getElementById(card);
+    if (bEl) bEl.textContent = count;
+
+    // Highlight active card
+    if (cEl) {
+      const defaultClasses = {
+        unclosed      : 'border-red-200',
+        unfiled       : 'border-amber-200',
+        discrepancies : 'border-orange-200',
+        cashOver      : 'border-blue-200',
+        pendingAdvances:'border-purple-200',
+      };
+      cEl.classList.remove(...Object.values(defaultClasses), 'border-red-500','border-amber-500','border-orange-500','border-blue-500','border-purple-500','bg-red-50','bg-amber-50','bg-orange-50','bg-blue-50','bg-purple-50');
+      if (adminActiveCard === key) {
+        cEl.classList.add(...activeClass.split(' '));
+      } else {
+        cEl.classList.add(defaultClasses[key]);
+      }
+    }
+  });
+}
+
+function toggleAdminCard(key) {
+  const panel = document.getElementById('adminMetricPanel');
+  if (!panel) return;
+
+  if (adminActiveCard === key) {
+    // Collapse
+    adminActiveCard = null;
+    panel.classList.add('hidden');
+    renderAdminMetricCards();
+    return;
+  }
+
+  adminActiveCard = key;
+  panel.classList.remove('hidden');
+  renderAdminMetricCards();
+  renderAdminPanel(key);
+}
+
+function closeAdminCard() {
+  adminActiveCard = null;
+  const panel = document.getElementById('adminMetricPanel');
+  if (panel) panel.classList.add('hidden');
+  renderAdminMetricCards();
+}
+
+const ADMIN_PANEL_META = {
+  unclosed      : { title: '🔓 Unclosed Days',          empty: '✅ All days are closed!' },
+  unfiled       : { title: '📂 Unfiled Days',            empty: '✅ All closed days are filed!' },
+  discrepancies : { title: '⚠️ Days with Discrepancies', empty: '✅ No discrepancies found!' },
+  cashOver      : { title: '💹 Days with Cash Over',     empty: 'No cash-over days found.' },
+  pendingAdvances:{ title: '💳 Pending Cash Advances',   empty: '✅ No pending advances!' },
+};
+
+function renderAdminPanel(key) {
+  const titleEl = document.getElementById('adminPanelTitle');
+  const listEl  = document.getElementById('adminPanelList');
+  if (!titleEl || !listEl) return;
+
+  const meta = ADMIN_PANEL_META[key] || { title: key, empty: 'No items.' };
+  titleEl.textContent = meta.title;
+
+  const data = getAdminFilteredData(key);
+
+  if (!data.length) {
+    listEl.innerHTML = `<div class="p-8 text-center text-gray-400 text-sm">${meta.empty}</div>`;
+    return;
+  }
+
+  if (key === 'pendingAdvances') {
+    listEl.innerHTML = data.map(item => {
+      const urgency = item.daysOutstanding >= 7 ? 'text-red-600' : item.daysOutstanding >= 3 ? 'text-amber-600' : 'text-gray-500';
+      const statusBadge = item.status === 'LIQUIDATION_PENDING'
+        ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 font-bold">Pending Review</span>'
+        : '<span class="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-bold">Outstanding</span>';
+      return `
+        <div onclick="openAdminDayModal('${item.date}', 'pendingAdvances')"
+          class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer transition">
+          <div class="flex flex-col">
+            <span class="text-sm font-bold text-gray-700">${formatAdminDate(item.date)}</span>
+            <span class="text-xs text-gray-500 truncate max-w-[180px]">${item.description || '—'} · ${item.requestedBy || '—'}</span>
+          </div>
+          <div class="flex flex-col items-end gap-1">
+            <span class="font-mono text-sm font-bold text-gray-700">${fmt(item.amount)}</span>
+            <div class="flex items-center gap-1.5">
+              ${statusBadge}
+              <span class="text-[10px] ${urgency} font-mono">${item.daysOutstanding}d</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    return;
+  }
+
+  listEl.innerHTML = data.map(item => {
+    let rightHtml = '';
+    if (key === 'unclosed') {
+      const statusColors = { OPEN:'bg-green-100 text-green-700', PENDING_AUDIT:'bg-amber-100 text-amber-700', FLAGGED:'bg-red-100 text-red-700' };
+      const sc = statusColors[item.status] || 'bg-gray-100 text-gray-500';
+      rightHtml = `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${sc}">${item.status}</span>`;
+    } else if (key === 'unfiled') {
+      const icons = [
+        item.filedReceipts   ? '✅' : '❌',
+        item.filedNoReceipts ? '✅' : '❌',
+        item.filedReport     ? '✅' : '❌',
+      ];
+      rightHtml = `<span class="text-xs font-mono text-gray-500 tracking-widest" title="Receipts / No-Receipts / Report">${icons.join(' ')}</span>`;
+    } else if (key === 'discrepancies') {
+      const v = item.variance || 0;
+      rightHtml = `<span class="font-mono font-bold text-sm ${v < 0 ? 'text-red-600' : 'text-blue-600'}">${v >= 0 ? '+' : ''}${fmt(v)}</span>`;
+    } else if (key === 'cashOver') {
+      rightHtml = `<span class="font-mono font-bold text-sm text-emerald-600">+${fmt(item.cashOver)}</span>`;
+    }
+
+    return `
+      <div onclick="openAdminDayModal('${item.date}', '${key}')"
+        class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 cursor-pointer transition">
+        <div class="flex flex-col">
+          <span class="text-sm font-bold text-gray-700">${formatAdminDate(item.date)}</span>
+          <span class="text-xs text-gray-400 font-mono">Exp: ${fmt(item.expenses || 0)}</span>
+        </div>
+        <div class="flex items-center gap-2">${rightHtml}</div>
+      </div>`;
+  }).join('');
+}
+
+function formatAdminDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function openAdminDayModal(date, cardKey) {
+  adminModalDate = date;
+  const modal    = document.getElementById('adminDayModal');
+  const titleEl  = document.getElementById('adminModalTitle');
+  const dateEl   = document.getElementById('adminModalDate');
+  const bodyEl   = document.getElementById('adminModalBody');
+  if (!modal) return;
+
+  titleEl.textContent = ADMIN_PANEL_META[cardKey]?.title || 'Day Detail';
+  dateEl.textContent  = formatAdminDate(date);
+
+  // Find data for this date
+  const raw   = adminMetricsRaw || {};
+  const sum   = (raw.unclosed || []).find(x => x.date === date)
+             || (raw.discrepancies || []).find(x => x.date === date)
+             || (raw.cashOver || []).find(x => x.date === date)
+             || (raw.unfiled || []).find(x => x.date === date)
+             || {};
+
+  let specificHtml = '';
+
+  if (cardKey === 'unclosed') {
+    const statusColors = { OPEN:'bg-green-100 text-green-700', PENDING_AUDIT:'bg-amber-100 text-amber-700', FLAGGED:'bg-red-100 text-red-700' };
+    const sc = statusColors[sum.status] || 'bg-gray-100 text-gray-500';
+    specificHtml = `
+      <div class="flex justify-between items-center">
+        <span class="text-xs text-gray-500 uppercase font-mono">Audit Status</span>
+        <span class="text-xs font-bold px-2.5 py-1 rounded-full ${sc}">${sum.status || '—'}</span>
+      </div>`;
+  } else if (cardKey === 'unfiled') {
+    const fil = (raw.unfiled || []).find(x => x.date === date) || {};
+    specificHtml = `
+      <div class="rounded-lg border border-gray-200 overflow-hidden">
+        <div class="px-4 py-2 bg-gray-50 text-xs font-bold text-gray-500 uppercase border-b">Filing Status</div>
+        ${[['📄 Receipts Filed', fil.filedReceipts],['📄 No-Receipt Docs Filed', fil.filedNoReceipts],['📋 Report Filed', fil.filedReport]].map(([label, val]) => `
+        <div class="flex justify-between items-center px-4 py-2 border-b border-gray-100 last:border-0">
+          <span class="text-xs text-gray-600">${label}</span>
+          <span class="text-sm">${val ? '✅' : '❌'}</span>
+        </div>`).join('')}
+      </div>`;
+  } else if (cardKey === 'discrepancies') {
+    const v = sum.variance || 0;
+    specificHtml = `
+      <div class="flex justify-between items-center">
+        <span class="text-xs text-gray-500 uppercase font-mono">Variance</span>
+        <span class="font-mono font-bold text-base ${v < 0 ? 'text-red-600' : 'text-blue-600'}">${v >= 0 ? '+' : ''}${fmt(v)}</span>
+      </div>`;
+  } else if (cardKey === 'cashOver') {
+    specificHtml = `
+      <div class="flex justify-between items-center">
+        <span class="text-xs text-gray-500 uppercase font-mono">Cash Over Amount</span>
+        <span class="font-mono font-bold text-base text-emerald-600">+${fmt(sum.cashOver || 0)}</span>
+      </div>`;
+  } else if (cardKey === 'pendingAdvances') {
+    const adv = (raw.pendingAdvances || []).filter(x => x.date === date);
+    specificHtml = adv.map(a => `
+      <div class="rounded-lg border border-gray-200 p-3">
+        <div class="flex justify-between mb-1">
+          <span class="text-xs font-bold text-gray-700">${a.description || '—'}</span>
+          <span class="font-mono font-bold text-sm text-purple-700">${fmt(a.amount)}</span>
+        </div>
+        <div class="text-[10px] text-gray-400">Requested by: ${a.requestedBy || '—'} · ${a.daysOutstanding} days outstanding</div>
+      </div>`).join('') || '<div class="text-xs text-gray-400">No advance details.</div>';
+  }
+
+  bodyEl.innerHTML = `
+    <div class="grid grid-cols-3 gap-3">
+      <div class="bg-gray-50 rounded-lg p-3 text-center">
+        <div class="text-[10px] text-gray-400 uppercase font-mono mb-1">Opening</div>
+        <div class="text-sm font-bold font-mono text-gray-700">${fmt(sum.opening || 0)}</div>
+      </div>
+      <div class="bg-gray-50 rounded-lg p-3 text-center">
+        <div class="text-[10px] text-gray-400 uppercase font-mono mb-1">Expenses</div>
+        <div class="text-sm font-bold font-mono text-red-600">${fmt(sum.expenses || 0)}</div>
+      </div>
+      <div class="bg-gray-50 rounded-lg p-3 text-center">
+        <div class="text-[10px] text-gray-400 uppercase font-mono mb-1">Closing</div>
+        <div class="text-sm font-bold font-mono text-green-600">${fmt(sum.closing || 0)}</div>
+      </div>
+    </div>
+    ${specificHtml}`;
+
+  modal.classList.remove('hidden');
+}
+
+function closeAdminDayModal() {
+  const modal = document.getElementById('adminDayModal');
+  if (modal) modal.classList.add('hidden');
+  adminModalDate = null;
+}
+
+function goToDateFromModal() {
+  if (!adminModalDate) return;
+  closeAdminDayModal();
+  const picker = document.getElementById('globalDate');
+  if (picker) {
+    picker.value = adminModalDate;
+    if (typeof onDateChange === 'function') onDateChange();
+  }
+  navigate('report');
 }
 
 </script>

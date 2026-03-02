@@ -107,9 +107,9 @@ function applyRoleUI() {
   const navAuditLog = document.getElementById('nav-auditlog');
   if (navAuditLog && (isAuditor() || isAdmin())) navAuditLog.classList.remove('hidden');
 
-  // Show Audit Review for Auditor only
+  // Show Audit Review for Auditor only (NOT Admin)
   const navAuditReview = document.getElementById('nav-auditreview');
-  if (navAuditReview && isAuditor()) navAuditReview.classList.remove('hidden');
+  if (navAuditReview && isAuditor() && !isAdmin()) navAuditReview.classList.remove('hidden');
 
   // Hide Filing Checklist from Auditor
   const navFiling = document.getElementById('nav-filing');
