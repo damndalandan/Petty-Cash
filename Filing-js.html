@@ -1,3 +1,4 @@
+<script>
 // =============================================
 // FILING CHECKLIST PAGE LOGIC
 // =============================================
@@ -5,7 +6,6 @@
 let filingSelectedDate = null;
 
 async function loadFilingPage() {
-  // Set default month filter
   const monthEl = document.getElementById('filingMonthFilter');
   if (monthEl && !monthEl.value) monthEl.value = state.currentDate.slice(0, 7);
 
@@ -14,21 +14,15 @@ async function loadFilingPage() {
   const lastDay = new Date(month.slice(0,4), month.slice(5,7), 0).getDate();
   const to      = month + '-' + String(lastDay).padStart(2,'0');
 
-  // Load date list for left panel (Cashier only)
-  if (isCashier() || isAdmin()) {
-    loadFilingDateList();
-  }
+  if (isCashier() || isAdmin()) loadFilingDateList();
 
-  // Hide left panel for Admin (read-only)
   const submitPanel = document.getElementById('filingSubmitPanel');
   if (submitPanel) submitPanel.classList.toggle('hidden', isAdmin());
 
-  // Load history table
   const histRes = await callServer('getFilingChecklists', { from, to });
   renderFilingHistory(histRes.success ? histRes.data : []);
 }
 
-// ── Load the color-coded date list in the left panel ──
 async function loadFilingDateList() {
   const container = document.getElementById('filingDateList');
   const noDaysMsg = document.getElementById('filingNoDaysMsg');
@@ -46,9 +40,9 @@ async function loadFilingDateList() {
   if (noDaysMsg) noDaysMsg.classList.add('hidden');
 
   const colorMap = {
-    filed      : { dot: 'bg-green-400', text: 'text-green-700',  bg: 'bg-green-50  hover:bg-green-100  border-green-200',  label: 'Filed'      },
-    incomplete : { dot: 'bg-amber-400', text: 'text-amber-700',  bg: 'bg-amber-50  hover:bg-amber-100  border-amber-200',  label: 'Incomplete' },
-    never      : { dot: 'bg-red-400',   text: 'text-red-700',    bg: 'bg-red-50    hover:bg-red-100    border-red-200',    label: 'Not Filed'  }
+    filed      : { dot: 'bg-green-400', text: 'text-green-700', bg: 'bg-green-50 hover:bg-green-100 border-green-200',  label: 'Filed'      },
+    incomplete : { dot: 'bg-amber-400', text: 'text-amber-700', bg: 'bg-amber-50 hover:bg-amber-100 border-amber-200',  label: 'Incomplete' },
+    never      : { dot: 'bg-red-400',   text: 'text-red-700',   bg: 'bg-red-50 hover:bg-red-100 border-red-200',        label: 'Not Filed'  }
   };
 
   container.innerHTML = res.data.map(d => {
@@ -65,45 +59,37 @@ async function loadFilingDateList() {
       </button>`;
   }).join('');
 
-  // Auto-select first unfiled/incomplete day, else first day
   const firstPending = res.data.find(d => d.status !== 'filed');
   const autoSelect   = firstPending || res.data[0];
   if (autoSelect) selectFilingDate(autoSelect.date);
 }
 
-// ── Select a date from the list and load its filing data ──
 async function selectFilingDate(date) {
   filingSelectedDate = date;
 
-  // Highlight selected
   document.querySelectorAll('.filing-date-btn').forEach(btn => {
-    btn.classList.toggle('ring-2', btn.id === 'filingDateBtn-' + date);
-    btn.classList.toggle('ring-offset-1', btn.id === 'filingDateBtn-' + date);
-    btn.classList.toggle('ring-amber-500', btn.id === 'filingDateBtn-' + date);
+    const isSelected = btn.id === 'filingDateBtn-' + date;
+    btn.classList.toggle('ring-2', isSelected);
+    btn.classList.toggle('ring-offset-1', isSelected);
+    btn.classList.toggle('ring-amber-500', isSelected);
   });
 
-  // Update label
   const labelEl = document.getElementById('filingSelectedDateLabel');
   if (labelEl) labelEl.textContent = date;
 
-  // Enable submit button
   const btn = document.getElementById('submitFilingBtn');
   if (btn) btn.disabled = false;
 
-  // Reset checkboxes
   setCheckbox('chkFiling_Receipts',   false);
   setCheckbox('chkFiling_NoReceipts', false);
   setCheckbox('chkFiling_Report',     false);
   const notesEl = document.getElementById('filingNotes');
   if (notesEl) notesEl.value = '';
 
-  // Hide banner
   const banner = document.getElementById('filingStatusBanner');
   if (banner) banner.classList.add('hidden');
 
-  // Load existing record for this date if any
   const res = await callServer('getFilingChecklists', { from: date, to: date });
-  // Filter to only the exact date (getFilingChecklists now includes synthetic rows too)
   const rec = res.success ? res.data.find(r => r.date === date && !r.neverFiled) : null;
 
   if (rec) {
@@ -141,14 +127,12 @@ function renderFilingHistory(records) {
     return;
   }
 
-  // Count unfiled = neverFiled OR incomplete
   const unfiled = records.filter(r => !r.fullyFiled).length;
   if (badge) {
     if (unfiled > 0) { badge.textContent = unfiled + ' unfiled'; badge.classList.remove('hidden'); }
     else badge.classList.add('hidden');
   }
 
-  // Sidebar badge
   const sidebarBadge = document.getElementById('filing-badge');
   if (sidebarBadge) {
     if (unfiled > 0) { sidebarBadge.textContent = unfiled; sidebarBadge.classList.remove('hidden'); }
@@ -161,7 +145,6 @@ function renderFilingHistory(records) {
 
   tbody.innerHTML = records.map(r => {
     let rowBg, statusBadge;
-
     if (r.fullyFiled) {
       rowBg       = '';
       statusBadge = '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-700">✅ Filed</span>';
@@ -173,7 +156,6 @@ function renderFilingHistory(records) {
       statusBadge = '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⚠️ Incomplete</span>';
     }
 
-    // Cashier: clicking a row in the table selects that date in the left panel
     const rowClick = (!isAdmin() && !r.fullyFiled)
       ? `onclick="selectFilingDate('${r.date}'); document.getElementById('filingSubmitPanel')?.scrollIntoView({behavior:'smooth'})"`
       : '';
@@ -216,3 +198,4 @@ async function submitFilingChecklist() {
     toast(res.message || 'Failed to save', 'error');
   }
 }
+</script>
