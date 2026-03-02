@@ -352,44 +352,9 @@ async function confirmAuditDecision(decision) {
   const variance = actualCash - expected;
 
   if (decision === 'approve') {
-    if (variance > 0.01 && !note) {
-      toast('Please add an explanation note for the cash overage.', 'warning');
-      document.getElementById('auditDecisionNote')?.focus();
-      return;
-    }
-
-    // Check if variance is zero — offer carry forward
-    const isZeroVariance = Math.abs(variance) < 0.01;
-    let carryForward = false;
-
-    if (isZeroVariance && actualCash > 0) {
-      carryForward = confirm(
-        'Variance is ₱0.00 ✓\n\n' +
-        'Your physical cash count of ' + fmt(actualCash) + ' will become tomorrow\'s opening cash automatically.\n\n' +
-        'Click OK to approve and carry forward, or Cancel to approve without carrying forward.'
-      );
-    } else {
-      if (!confirm('Approve and close this day? This action cannot be undone.')) return;
-    }
-
-    const res = await callServer('auditApproveDay', {
-      date        : state.currentDate,
-      notes       : note,
-      carryForward: carryForward
-    });
-
-    if (res.success) {
-      toast(
-        carryForward
-          ? 'Day approved ✓ — tomorrow\'s opening cash set to ' + fmt(actualCash)
-          : 'Day approved and closed ✓',
-        'success'
-      );
-      loadAuditReviewPage();
-      loadDayData();
-    } else {
-      toast(res.message || 'Failed to approve', 'error');
-    }
+    // Open the approval modal instead of using browser confirm
+    openAuditApproveModal(variance, actualCash);
+    return;
 
   } else {
     // Send back — build flagged entry payload
@@ -413,6 +378,131 @@ async function confirmAuditDecision(decision) {
     } else {
       toast(res.message || 'Failed to send back', 'error');
     }
+  }
+}
+
+function openAuditApproveModal(variance, actualCash) {
+  const entries  = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  const verified = entries.filter(e => auditEntryReviews[e.id]?.status === 'verified').length;
+  const flagged  = entries.filter(e => auditEntryReviews[e.id]?.status === 'flagged').length;
+  const total    = entries.length;
+
+  const summary    = state.summary;
+  const opening    = parseFloat(summary?.openingCash        || 0);
+  const expenses   = parseFloat(summary?.totalExpenses      || 0);
+  const cashAdv    = parseFloat(summary?.cashAdvance        || 0);
+  const replenish  = parseFloat(summary?.totalReplenishment || 0);
+  const cashOver   = parseFloat(summary?.totalCashOver      || 0);
+  const expected   = (opening + replenish + cashOver) - (expenses + cashAdv);
+
+  const isZero    = Math.abs(variance) < 0.01;
+  const isOver    = variance > 0.01;
+  const isShort   = variance < -0.01;
+  const fmtVar    = (variance >= 0 ? '+' : '') + fmt(variance);
+
+  // Date label
+  const d = new Date(state.currentDate + 'T00:00:00');
+  const dateLabel = d.toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  document.getElementById('auditApproveModalDate').textContent = dateLabel;
+
+  // Counts
+  document.getElementById('auditModalVerifiedCount').textContent = verified;
+  document.getElementById('auditModalFlaggedCount').textContent  = flagged;
+  document.getElementById('auditModalTotalCount').textContent    = total;
+
+  // Cash summary
+  document.getElementById('auditModalExpected').textContent = fmt(expected);
+  document.getElementById('auditModalActual').textContent   = fmt(actualCash);
+  const varEl = document.getElementById('auditModalVariance');
+  varEl.textContent = fmtVar;
+  varEl.className   = 'text-base font-black font-mono ' + (isZero ? 'text-green-600' : isOver ? 'text-blue-600' : 'text-red-600');
+
+  // Variance block
+  const varBlock = document.getElementById('auditApproveVarianceBlock');
+  if (isZero) {
+    varBlock.className = 'rounded-xl p-4 border border-green-200 bg-green-50 text-sm font-medium text-green-700';
+    varBlock.innerHTML = '✅ Variance is ₱0.00 — cash is balanced.';
+  } else if (isOver) {
+    varBlock.className = 'rounded-xl p-4 border border-blue-200 bg-blue-50 text-sm font-medium text-blue-700';
+    varBlock.innerHTML = '💙 Cash over by ' + fmt(Math.abs(variance)) + ' — please explain the overage below.';
+  } else {
+    varBlock.className = 'rounded-xl p-4 border border-red-200 bg-red-50 text-sm font-medium text-red-700';
+    varBlock.innerHTML = '⚠️ Cash short by ' + fmt(Math.abs(variance)) + ' — consider sending back to cashier instead.';
+  }
+
+  // Carry forward notice
+  const carryNotice = document.getElementById('auditCarryForwardNotice');
+  carryNotice.classList.toggle('hidden', !isZero || actualCash <= 0);
+
+  // Overage note field
+  const overageBlock = document.getElementById('auditOverageNoteBlock');
+  overageBlock.classList.toggle('hidden', !isOver);
+
+  // Clear fields
+  document.getElementById('auditApproveNote').value = '';
+  if (document.getElementById('auditApproveOverageNote')) {
+    document.getElementById('auditApproveOverageNote').value = '';
+  }
+
+  // Store values for executeAuditApprove
+  const modal = document.getElementById('auditApproveModal');
+  modal.dataset.variance   = variance.toFixed(4);
+  modal.dataset.actualCash = actualCash.toFixed(4);
+  modal.dataset.isOver     = isOver ? '1' : '0';
+  modal.dataset.isZero     = isZero ? '1' : '0';
+
+  modal.classList.remove('hidden');
+}
+
+function closeAuditApproveModal() {
+  document.getElementById('auditApproveModal')?.classList.add('hidden');
+}
+
+async function executeAuditApprove() {
+  const modal      = document.getElementById('auditApproveModal');
+  const isOver     = modal.dataset.isOver     === '1';
+  const isZero     = modal.dataset.isZero     === '1';
+  const actualCash = parseFloat(modal.dataset.actualCash || '0');
+  const note       = document.getElementById('auditApproveNote')?.value?.trim() || '';
+  const overNote   = document.getElementById('auditApproveOverageNote')?.value?.trim() || '';
+
+  // Require overage explanation
+  if (isOver && !overNote) {
+    toast('Please explain the cash overage before approving.', 'warning');
+    document.getElementById('auditApproveOverageNote')?.focus();
+    return;
+  }
+
+  const fullNote = [overNote, note].filter(Boolean).join(' | ');
+
+  // Carry forward only if zero variance and actual cash > 0
+  const carryForward = isZero && actualCash > 0;
+
+  const btn = document.getElementById('auditApproveConfirmBtn');
+  btn.disabled    = true;
+  btn.textContent = 'Approving...';
+
+  const res = await callServer('auditApproveDay', {
+    date        : state.currentDate,
+    notes       : fullNote,
+    carryForward: carryForward
+  });
+
+  btn.disabled  = false;
+  btn.innerHTML = '✅ Confirm Approve & Close';
+
+  if (res.success) {
+    closeAuditApproveModal();
+    toast(
+      carryForward
+        ? 'Day approved ✓ — tomorrow\'s opening set to ' + fmt(actualCash)
+        : 'Day approved and closed ✓',
+      'success'
+    );
+    loadAuditReviewPage();
+    loadDayData();
+  } else {
+    toast(res.message || 'Failed to approve', 'error');
   }
 }
 </script>

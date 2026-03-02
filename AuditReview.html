@@ -80,4 +80,98 @@
     </div>
 
   </div>
+
+  <!-- AUDIT APPROVE MODAL -->
+<div id="auditApproveModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+  <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden">
+
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-green-700 to-green-600 p-5 flex justify-between items-center">
+      <div>
+        <h3 class="text-white font-bold text-lg">✅ Approve & Close Day</h3>
+        <p class="text-green-100 text-xs mt-0.5" id="auditApproveModalDate"></p>
+      </div>
+      <button onclick="closeAuditApproveModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+
+    <!-- Summary -->
+    <div class="p-5 space-y-4">
+
+      <!-- Variance status -->
+      <div id="auditApproveVarianceBlock" class="rounded-xl p-4 border text-sm font-medium"></div>
+
+      <!-- Entry review summary -->
+      <div class="rounded-xl border border-gray-200 overflow-hidden">
+        <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase">Entry Review Summary</div>
+        <div class="flex divide-x divide-gray-100">
+          <div class="flex-1 text-center py-3">
+            <div class="text-xl font-black text-green-600" id="auditModalVerifiedCount">0</div>
+            <div class="text-xs text-gray-500 mt-0.5">✅ Verified</div>
+          </div>
+          <div class="flex-1 text-center py-3">
+            <div class="text-xl font-black text-red-500" id="auditModalFlaggedCount">0</div>
+            <div class="text-xs text-gray-500 mt-0.5">❌ Flagged</div>
+          </div>
+          <div class="flex-1 text-center py-3">
+            <div class="text-xl font-black text-gray-400" id="auditModalTotalCount">0</div>
+            <div class="text-xs text-gray-500 mt-0.5">Total Entries</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cash count summary -->
+      <div class="rounded-xl border border-gray-200 overflow-hidden">
+        <div class="px-4 py-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-500 uppercase">Cash Count</div>
+        <div class="flex divide-x divide-gray-100">
+          <div class="flex-1 text-center py-3">
+            <div class="text-base font-black text-gray-700 font-mono" id="auditModalExpected">₱0.00</div>
+            <div class="text-xs text-gray-500 mt-0.5">Expected</div>
+          </div>
+          <div class="flex-1 text-center py-3">
+            <div class="text-base font-black text-gray-700 font-mono" id="auditModalActual">₱0.00</div>
+            <div class="text-xs text-gray-500 mt-0.5">Physical Count</div>
+          </div>
+          <div class="flex-1 text-center py-3">
+            <div class="text-base font-black font-mono" id="auditModalVariance">₱0.00</div>
+            <div class="text-xs text-gray-500 mt-0.5">Variance</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carry forward notice -->
+      <div id="auditCarryForwardNotice" class="hidden rounded-xl p-3 bg-blue-50 border border-blue-200 text-xs text-blue-700 font-medium">
+        💡 Variance is ₱0.00 — your physical cash count will be offered as tomorrow's opening cash.
+      </div>
+
+      <!-- Overage note (required if over) -->
+      <div id="auditOverageNoteBlock" class="hidden">
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Overage Explanation <span class="text-red-400">*required</span></label>
+        <input type="text" id="auditApproveOverageNote" placeholder="Explain the cash overage..."
+          class="w-full text-sm px-3 py-2 border border-blue-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-blue-50">
+      </div>
+
+      <!-- General audit note -->
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Audit Notes <span class="text-gray-400">(optional)</span></label>
+        <textarea id="auditApproveNote" rows="2" placeholder="Any general notes for this audit..."
+          class="w-full text-sm px-3 py-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-green-400 bg-gray-50 resize-none"></textarea>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="px-5 pb-5 flex gap-3">
+      <button onclick="closeAuditApproveModal()"
+        class="flex-1 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-xl border border-gray-200 transition">
+        Cancel
+      </button>
+      <button onclick="executeAuditApprove()" id="auditApproveConfirmBtn"
+        class="flex-1 py-2.5 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition">
+        ✅ Confirm Approve & Close
+      </button>
+    </div>
+
+  </div>
+</div>
+
 </div>
