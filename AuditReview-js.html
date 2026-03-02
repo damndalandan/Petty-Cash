@@ -20,41 +20,57 @@ async function loadAuditReviewPage() {
 
   buildAuditDenomGrid();
 
-  // Load day data for expected cash
-  const summaryRes = await callServer('getDailySummary', state.currentDate);
-  if (summaryRes.success && summaryRes.data) {
-    state.summary = summaryRes.data;
-  }
-  updateAuditVariance();
+  // Show loading state on entries panel
+  const entryList = document.getElementById('auditEntryList');
+  if (entryList) entryList.innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm animate-pulse">Loading entries...</div>';
 
-  // Load existing denomination END count if already saved
-  const denomRes = await callServer('getDenominations', state.currentDate);
-  if (denomRes.success && denomRes.data) {
-    const endRecord = denomRes.data.find(d => d.type === 'END');
-    if (endRecord && endRecord.breakdown) {
-      try {
-        const breakdown = typeof endRecord.breakdown === 'string'
-          ? JSON.parse(endRecord.breakdown) : endRecord.breakdown;
-        Object.keys(breakdown).forEach(bill => {
-          auditDenomValues[bill] = breakdown[bill];
-          const input = document.getElementById('auditDenom-' + bill);
-          if (input) input.value = breakdown[bill];
+  try {
+    // Load summary, denomination records, and entries all in parallel
+    const [summaryRes, denomRes, entriesRes] = await Promise.all([
+      callServer('getDailySummary', state.currentDate),
+      callServer('getDenominationRecords', state.currentDate),
+      callServer('getExpenseEntries', state.currentDate)
+    ]);
+
+    // 1. Summary → needed for expected cash / variance
+    if (summaryRes.success && summaryRes.data) {
+      state.summary = summaryRes.data;
+    }
+
+    // 2. Denomination END count → pre-fill the auditor's cash count grid
+    if (denomRes.success && denomRes.data) {
+      const endRecord = denomRes.data.find(d => d.type === 'END');
+      if (endRecord && endRecord.denominations) {
+        const denoms = endRecord.denominations;
+        AUDIT_BILLS.forEach(bill => {
+          const qty = parseFloat(denoms[String(bill)]) || 0;
+          if (qty > 0) {
+            auditDenomValues[String(bill)] = qty;
+            const input = document.getElementById('auditDenom-' + bill);
+            if (input) input.value = qty;
+          }
         });
         updateAuditDenomTotal();
-      } catch(e) {}
+      } else {
+        updateAuditVariance();
+      }
+    } else {
+      updateAuditVariance();
     }
+
+    // 3. Entries → render the review list
+    const allEntries = entriesRes.success ? (entriesRes.data || []) : [];
+    state.entries = allEntries;
+    const entries = allEntries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
+
+    renderAuditEntries(entries);
+    updateAuditProgress(entries);
+    updateAuditStatusBanner();
+
+  } catch(e) {
+    console.error('loadAuditReviewPage error:', e);
+    if (entryList) entryList.innerHTML = '<div class="px-4 py-8 text-center text-red-400 text-sm">Failed to load entries. Please refresh.</div>';
   }
-
-  // Load entries
-  const entriesRes = await callServer('getExpenseEntries', state.currentDate);
-  const allEntries = entriesRes.success ? entriesRes.data || [] : [];
-  // Store in state so updateAuditProgress can reference them
-  state.entries = allEntries;
-  const entries = allEntries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
-
-  renderAuditEntries(entries);
-  updateAuditProgress(entries);
-  updateAuditStatusBanner();
 }
 
 // ── Build compact denomination grid ──
