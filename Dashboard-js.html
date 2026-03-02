@@ -222,11 +222,12 @@ async function loadDayStatusBanner() {
   banner.classList.remove('hidden');
 
   const statusMap = {
-    NO_RECORD    : { icon:'📋', title:'No record yet', sub:'Auditor has not opened this day.', bg:'bg-gray-50 border-gray-200 text-gray-700' },
-    OPEN         : { icon:'🟢', title:'Day is Open',   sub:'Cashier can record expenses.',      bg:'bg-green-50 border-green-200 text-green-800' },
-    PENDING_AUDIT: { icon:'🔍', title:'Pending Audit', sub:'Closing submitted. Awaiting auditor approval.', bg:'bg-amber-50 border-amber-300 text-amber-800' },
-    CLOSED       : { icon:'🔒', title:'Day Closed',    sub:'Auditor has approved and closed this day.',     bg:'bg-blue-50 border-blue-200 text-blue-800' }
-  };
+  NO_RECORD    : { icon:'📋', title:'No record yet',   sub:'Auditor has not opened this day.',                bg:'bg-gray-50 border-gray-200 text-gray-700'  },
+  OPEN         : { icon:'🟢', title:'Day is Open',     sub:'Cashier can record expenses.',                    bg:'bg-green-50 border-green-200 text-green-800' },
+  PENDING_AUDIT: { icon:'🔍', title:'Pending Audit',   sub:'Closing submitted. Awaiting auditor approval.',   bg:'bg-amber-50 border-amber-300 text-amber-800' },
+  FLAGGED      : { icon:'🚩', title:'Recount Required',sub:'Auditor flagged this day. Please recount cash.',  bg:'bg-red-50 border-red-400 text-red-800'       },
+  CLOSED       : { icon:'🔒', title:'Day Closed',      sub:'Auditor has approved and closed this day.',       bg:'bg-blue-50 border-blue-200 text-blue-800'    }
+};
 
   const info = statusMap[res.status] || statusMap['NO_RECORD'];
   banner.className = `rounded-xl px-5 py-3 flex items-center justify-between gap-3 border shadow-sm ${info.bg}`;
@@ -243,6 +244,24 @@ async function loadDayStatusBanner() {
         class="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition">
         Review & Approve →
       </button>`;
+  }
+  if (res.status === 'FLAGGED' && isCashier()) {
+    // Show flag note if available
+    const noteHtml = res.flagNote
+      ? `<div class="text-xs text-red-600 mt-1 font-normal">Auditor note: "${res.flagNote}"</div>`
+      : '';
+    actionEl.innerHTML = `
+      <div class="text-right">
+        <button onclick="navigate('denominations')"
+          class="whitespace-nowrap px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow transition">
+          🔄 Recount & Resubmit →
+        </button>
+        ${noteHtml}
+      </div>`;
+  }
+  if (res.status === 'FLAGGED' && isAuditor()) {
+    actionEl.innerHTML = `
+      <span class="text-xs text-red-600 font-medium">Waiting for cashier recount...</span>`;
   }
 
   // ── Outstanding Advances Banner ──

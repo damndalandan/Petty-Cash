@@ -480,7 +480,17 @@ function recalculateDailySummary(date) {
 
     const expected = (openingCash + totalReplenishment) - (totalExp + cashAdvance);
     const variance = closingCash - expected;
-    const status   = hasClosing ? 'PENDING_AUDIT' : 'OPEN';
+    // If day was FLAGGED and cashier re-submits closing count → back to PENDING_AUDIT
+    let existingStatus = '';
+    for (let i = 1; i < sumData.length; i++) {
+      if (normalizeDate(sumData[i][1]) === date) {
+        existingStatus = sumData[i][11] || '';
+        break;
+      }
+    }
+    const status = hasClosing
+      ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
+      : 'OPEN';
 
     const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
     const sumData  = sumSheet.getDataRange().getValues();
@@ -1201,7 +1211,7 @@ function findUnclosedPastDate(beforeDate) {
       if (data[i].length < 12) continue;
       const rDate = normalizeDate(data[i][1]);
       const s = data[i][11];
-      if (rDate < beforeDate && (s === 'OPEN' || s === 'PENDING_AUDIT')) unclosed.push(rDate);
+      if (rDate < beforeDate && (s === 'OPEN' || s === 'PENDING_AUDIT' || s === 'FLAGGED')) unclosed.push(rDate);
     }
 
     if (!unclosed.length) return { success: true, date: null };
@@ -1303,15 +1313,33 @@ function getDayStatus(date) {
       outstandingTotal += parseFloat(row[5]) || 0;
     }
 
-    return {
-      success            : true,
-      status             : summaryStatus,
-      openingCash        : openingCash,
-      closingCash        : closingCash,
-      replenishment      : replenishment,
-      outstandingAdvances: outstandingAdvances,
-      outstandingTotal   : outstandingTotal
-    };
+    // Get flag note from audit log if FLAGGED
+  let flagNote = '';
+  if (summaryStatus === 'FLAGGED') {
+    try {
+      const logSheet = ss.getSheetByName(SHEETS.AUDIT_LOG);
+      if (logSheet) {
+        const logs = logSheet.getDataRange().getValues();
+        for (let i = logs.length - 1; i >= 1; i--) {
+          if (normalizeDate(logs[i][2]) === date && logs[i][3] === 'DAY_FLAGGED') {
+            flagNote = logs[i][6] || '';
+            break;
+          }
+        }
+      }
+    } catch(e) {}
+  }
+
+  return {
+    success            : true,
+    status             : summaryStatus,
+    openingCash        : openingCash,
+    closingCash        : closingCash,
+    replenishment      : replenishment,
+    outstandingAdvances: outstandingAdvances,
+    outstandingTotal   : outstandingTotal,
+    flagNote           : flagNote
+  };
   } catch(e) {
     return { success: false, message: e.toString() };
   }
@@ -1797,5 +1825,35 @@ function getClosedDaysForFiling() {
     return { success: true, data: days };
   } catch(e) {
     return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+function flagDay(data) {
+  // data: { date, note }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.SUMMARY);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (normalizeDate(rows[i][1]) !== data.date) continue;
+      const row = i + 1;
+      sheet.getRange(row, 12).setValue('FLAGGED');
+      sheet.getRange(row, 13).setValue(email);
+      sheet.getRange(row, 14).setValue(now);
+
+      writeAuditLog(
+        'DAY_FLAGGED',
+        `Auditor flagged day for recount. Note: ${data.note || '—'}`,
+        '',
+        data.date
+      );
+      return { success: true };
+    }
+    return { success: false, message: 'No summary record found for ' + data.date };
+  } catch(e) {
+    return { success: false, message: e.toString() };
   }
 }
