@@ -70,7 +70,22 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   updateDateLabel();
 
-  // Load role first — everything else depends on who is logged in
+  // ── Apply grid layout immediately — no need to wait for role ──
+  // This ensures the dashboard looks correct on first paint
+  const grid = document.getElementById('dashStatsGrid');
+  if (grid) {
+    grid.classList.remove('lg:grid-cols-6');
+    grid.classList.add('lg:grid-cols-4');
+    grid.querySelectorAll(':scope > div').forEach(card => {
+      card.style.minHeight = '100px';
+      card.classList.add('flex', 'flex-col', 'justify-between');
+    });
+  }
+
+  // Navigate to dashboard immediately so layout is visible during role load
+  navigate('dashboard');
+
+  // Load role — role-specific UI (admin section, nav items) applied after
   const roleRes = await callServer('getUserRole');
   if (roleRes.success) {
     state.userRole  = roleRes.role;
@@ -83,7 +98,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyDenomCardVisibility();
   loadDayData();
 
-  navigate('dashboard');
   updateReceiptIndicator();
 });
 
@@ -119,17 +133,6 @@ function applyRoleUI() {
   // Hide Denominations from Auditor only — Admin can see it
   const navDenom = document.getElementById('nav-denominations');
   if (navDenom && state.userRole === 'Auditor') navDenom.classList.add('hidden');
-
-  // Resize stats grid to 4-col and match metric card height for all roles
-  const grid = document.getElementById('dashStatsGrid');
-  if (grid) {
-    grid.classList.remove('lg:grid-cols-6');
-    grid.classList.add('lg:grid-cols-4');
-    grid.querySelectorAll(':scope > div').forEach(card => {
-      card.style.minHeight = '100px';
-      card.classList.add('flex', 'flex-col', 'justify-between');
-    });
-  }
 } 
 
 function updateDateLabel() {

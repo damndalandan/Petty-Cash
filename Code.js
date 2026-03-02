@@ -923,6 +923,22 @@ function saveReceiptRecord(data) {
       now                    // Created_At
     ]);
 
+    // ── Update Has_Receipt on the linked entry ──
+    if (data.entryId) {
+      const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+      const entryRows  = entrySheet.getDataRange().getValues();
+      for (let i = 1; i < entryRows.length; i++) {
+        if (entryRows[i][0] === data.entryId) {
+          entrySheet.getRange(i + 1, 7).setValue('YES');
+          entrySheet.getRange(i + 1, 8).setValue(data.receiptNo || '');
+          entrySheet.getRange(i + 1, 13).setValue(now);
+          markNoReceiptDeleted(data.entryId);
+          recalculateDailySummary(data.date);
+          break;
+        }
+      }
+    }
+
     return { success: true, id, vat };
   } catch(e) {
     return { success: false, message: e.toString() };
