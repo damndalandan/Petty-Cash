@@ -135,36 +135,29 @@ function applyDenomRoleRestrictions() {
 
   // Admin: show Opening tab only, hide Closing tab
   if (isAdmin()) {
-    const closingTab = document.getElementById('btn-tab-end');
-    if (closingTab) closingTab.classList.add('hidden');
-
-    // Ensure the bill grid and notes sections are visible
-    const grid    = document.getElementById('denomGrid');
-    const notes   = document.getElementById('denomNotes');
-    const saveBtn = document.querySelector('button[onclick="saveDenomination()"]');
-    const clearBtn= document.querySelector('button[onclick="clearDenomForm()"]');
-    if (grid)     grid.closest('.p-6.bg-gray-50\\/30')?.classList.remove('hidden');
-    if (notes)    notes.closest('.p-6.border-t')?.classList.remove('hidden');
-    if (saveBtn)  saveBtn.style.display = '';
-    if (clearBtn) clearBtn.style.display = '';
-
-    // Re-enable all bill inputs
-    const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
-    BILLS.forEach(bill => {
-      const el = document.getElementById('denom-' + bill);
-      if (el) { el.disabled = false; el.classList.remove('opacity-50', 'cursor-not-allowed'); }
-    });
-
-    switchDenomTab('START');
+    setTimeout(() => {
+      const closingTab = document.getElementById('btn-tab-end');
+      if (closingTab) closingTab.classList.add('hidden');
+      document.getElementById('denomGridSection')?.classList.remove('hidden');
+      document.getElementById('denomNotesSection')?.classList.remove('hidden');
+      const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
+      const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
+      if (saveBtn)  saveBtn.style.display = '';
+      if (clearBtn) clearBtn.style.display = '';
+      const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+      BILLS.forEach(bill => {
+        const el = document.getElementById('denom-' + bill);
+        if (el) { el.disabled = false; el.classList.remove('opacity-50', 'cursor-not-allowed'); }
+      });
+      switchDenomTab('START');
+    }, 150);
     return;
   }
 
-  // Cashier: disable Opening tab, force to Closing
+  // Cashier: hide Opening tab entirely, force to Closing
   const openingTab = document.getElementById('btn-tab-start');
   if (!openingTab) return;
-  openingTab.disabled = true;
-  openingTab.classList.add('opacity-40', 'cursor-not-allowed');
-  openingTab.title = 'Only Auditors/Admin can enter the Opening count';
+  openingTab.classList.add('hidden');
   setTimeout(() => switchDenomTab('END'), 150);
 }
 
