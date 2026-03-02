@@ -126,39 +126,47 @@ function applyRoleUI() {
 function applyDenomRoleRestrictions() {
   // Auditor: hide entire denomination card — they use Audit Review page instead
   if (state.userRole === 'Auditor') {
-    const card = document.getElementById('denomCardContainer');
-    if (card) card.closest('.bg-white')?.classList.add('hidden');
-    const tabs = document.getElementById('denomTabBar');
-    if (tabs) tabs.classList.add('hidden');
+    setTimeout(() => {
+      const card = document.getElementById('denomCardContainer');
+      if (card) card.classList.add('hidden');
+    }, 150);
     return;
   }
 
-  // Admin: show Opening tab only, hide Closing tab
+  // Admin: Opening tab only — hide Closing tab, show grid
   if (isAdmin()) {
     setTimeout(() => {
       const closingTab = document.getElementById('btn-tab-end');
       if (closingTab) closingTab.classList.add('hidden');
+
       document.getElementById('denomGridSection')?.classList.remove('hidden');
       document.getElementById('denomNotesSection')?.classList.remove('hidden');
+
       const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
       const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
       if (saveBtn)  saveBtn.style.display = '';
       if (clearBtn) clearBtn.style.display = '';
-      const BILLS = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
-      BILLS.forEach(bill => {
+
+      [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25].forEach(bill => {
         const el = document.getElementById('denom-' + bill);
         if (el) { el.disabled = false; el.classList.remove('opacity-50', 'cursor-not-allowed'); }
       });
+
       switchDenomTab('START');
     }, 150);
     return;
   }
 
-  // Cashier: hide Opening tab entirely, force to Closing
-  const openingTab = document.getElementById('btn-tab-start');
-  if (!openingTab) return;
-  openingTab.classList.add('hidden');
-  setTimeout(() => switchDenomTab('END'), 150);
+  // Cashier: hide Opening tab entirely, show Closing only
+  setTimeout(() => {
+    const openingTab = document.getElementById('btn-tab-start');
+    if (openingTab) openingTab.classList.add('hidden');
+
+    document.getElementById('denomGridSection')?.classList.remove('hidden');
+    document.getElementById('denomNotesSection')?.classList.remove('hidden');
+
+    switchDenomTab('END');
+  }, 150);
 }
 
 function updateDateLabel() {
