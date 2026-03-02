@@ -476,16 +476,13 @@ async function executeAuditApprove() {
   const fullNote = [overNote, note].filter(Boolean).join(' | ');
 
   // Carry forward only if zero variance and actual cash > 0
-  const carryForward = isZero && actualCash > 0;
-
   const btn = document.getElementById('auditApproveConfirmBtn');
   btn.disabled    = true;
   btn.textContent = 'Approving...';
 
   const res = await callServer('auditApproveDay', {
-    date        : state.currentDate,
-    notes       : fullNote,
-    carryForward: carryForward
+    date : state.currentDate,
+    notes: fullNote
   });
 
   btn.disabled  = false;
@@ -493,12 +490,8 @@ async function executeAuditApprove() {
 
   if (res.success) {
     closeAuditApproveModal();
-    toast(
-      carryForward
-        ? 'Day approved ✓ — tomorrow\'s opening set to ' + fmt(actualCash)
-        : 'Day approved and closed ✓',
-      'success'
-    );
+    const cashMsg = actualCash > 0 ? ' — tomorrow\'s opening set to ' + fmt(actualCash) : '';
+    toast('Day approved and closed ✓' + cashMsg, 'success');
     loadAuditReviewPage();
     loadDayData();
   } else {

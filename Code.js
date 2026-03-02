@@ -1231,14 +1231,17 @@ function findUnclosedPastDate(beforeDate) {
 // ─────────────────────────────────────────────
 // AUDITOR APPROVAL
 // ─────────────────────────────────────────────
+
 function auditApproveDay(data) {
   // data: { date, notes, carryForward: bool }
   try {
-    const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet    = ss.getSheetByName(SHEETS.SUMMARY);
-    const rows     = sheet.getDataRange().getValues();
-    const email    = getUserEmail();
-    const now      = new Date().toISOString();
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.SUMMARY);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    let found = false;
 
     for (let i = 1; i < rows.length; i++) {
       if (normalizeDate(rows[i][1]) !== data.date) continue;
@@ -1246,6 +1249,7 @@ function auditApproveDay(data) {
       sheet.getRange(row, 12).setValue('CLOSED');
       sheet.getRange(row, 13).setValue(email);
       sheet.getRange(row, 14).setValue(now);
+      found = true;
 
       writeAuditLog(
         'DAY_APPROVED',
@@ -1253,60 +1257,79 @@ function auditApproveDay(data) {
         '',
         data.date
       );
+      break;
+    }
 
-      // ── Carry forward: save auditor's END count as next day's START ──
-      if (data.carryForward) {
-        const nextDate  = getNextDate(data.date);
-        const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
-        const denomRows  = denomSheet.getDataRange().getValues();
+    if (!found) return { success: false, message: 'No summary record found for ' + data.date };
 
-        // Get auditor's END count for this date
-        let endBreakdown = null, endTotal = 0;
-        for (let j = 1; j < denomRows.length; j++) {
-          if (normalizeDate(denomRows[j][1]) === data.date && denomRows[j][2] === 'END') {
-            endBreakdown = denomRows[j][3]; // breakdown JSON string
-            endTotal     = parseFloat(denomRows[j][13]) || 0;
-            break;
-          }
-        }
+    // ── Always carry forward the auditor's END count as next day's START ──
+    const nextDate   = getNextDate(data.date);
+    const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+    const denomRows  = denomSheet.getDataRange().getValues();
 
-        if (endBreakdown !== null) {
-          // Check if next day START already exists — don't overwrite
-          let nextDayStartExists = false;
-          for (let j = 1; j < denomRows.length; j++) {
-            if (normalizeDate(denomRows[j][1]) === nextDate && denomRows[j][2] === 'START') {
-              nextDayStartExists = true;
-              break;
-            }
-          }
+    // Find auditor's END count for this date
+    let endRow = null;
+    for (let j = 1; j < denomRows.length; j++) {
+      if (normalizeDate(denomRows[j][1]) === data.date && denomRows[j][2] === 'END') {
+        endRow = denomRows[j];
+        break;
+      }
+    }
 
-          if (!nextDayStartExists) {
-            const newId = generateId('DEN', nextDate, denomSheet);
-            denomSheet.appendRow([
-              newId, nextDate, 'START',
-              endBreakdown,
-              0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-              endTotal,
-              'Carried from ' + data.date + ' audit',
-              now
-            ]);
-            recalculateDailySummary(nextDate);
-            writeAuditLog(
-              'OPENING_SAVED',
-              `Opening cash carried forward from ${data.date} audit count. Total: ₱${endTotal.toFixed(2)}`,
-              newId,
-              nextDate
-            );
-          }
+    if (endRow) {
+      // Check if next day START already exists — don't overwrite
+      let nextDayStartExists = false;
+      for (let j = 1; j < denomRows.length; j++) {
+        if (normalizeDate(denomRows[j][1]) === nextDate && denomRows[j][2] === 'START') {
+          nextDayStartExists = true;
+          break;
         }
       }
 
-      return { success: true };
+      if (!nextDayStartExists) {
+        const endTotal = parseFloat(endRow[13]) || 0;
+        const newId    = 'DEN-OC-' + nextDate.replace(/-/g,'') + '-CF';
+
+        denomSheet.appendRow([
+          newId,          // ID
+          nextDate,       // Date
+          'START',        // Type
+          endRow[3],      // ₱1000
+          endRow[4],      // ₱500
+          endRow[5],      // ₱200
+          endRow[6],      // ₱100
+          endRow[7],      // ₱50
+          endRow[8],      // ₱20
+          endRow[9],      // ₱10
+          endRow[10],     // ₱5
+          endRow[11],     // ₱1
+          endRow[12],     // ₱0.25
+          endTotal,       // Total
+          'Carried forward from ' + data.date + ' audit closing count',
+          now             // Timestamp
+        ]);
+
+        recalculateDailySummary(nextDate);
+
+        writeAuditLog(
+          'OPENING_SAVED',
+          `Opening cash auto-carried from ${data.date} audit count. Total: ₱${endTotal.toFixed(2)}`,
+          newId,
+          nextDate
+        );
+      }
     }
-    return { success: false, message: 'No summary record found for ' + data.date };
+
+    return { success: true };
   } catch(e) {
     return { success: false, message: e.toString() };
   }
+}
+
+function getNextDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().split('T')[0];
 }
 
 // Helper: get next calendar date string
