@@ -1,176 +1,275 @@
-  <script>
+<script>
   // =============================================
-  // DENOMINATIONS: MODERN CARD LOGIC
+  // DENOMINATIONS — ROLE-SEPARATED LOGIC
+  // Admin  = Opening card only (START)
+  // Cashier = Closing card only (END)
   // =============================================
 
   function buildDenomGrid() {
-    const container = document.getElementById('denomGrid');
-    if(!container) return;
-
-    container.innerHTML = BILLS.map(bill => {
-      let colorClass = 'text-gray-700'; 
-      if(bill >= 1000) colorClass = 'text-blue-600';
-      else if(bill >= 500) colorClass = 'text-yellow-600';
-      else if(bill >= 100) colorClass = 'text-purple-600';
-      else if(bill >= 20) colorClass = 'text-orange-600';
-      
-      return `
-      <div class="bg-white rounded-xl border border-gray-200 px-3 py-2.5 transition-all hover:shadow-md hover:border-blue-300 group flex-1 min-w-[85px]">
-        <div class="flex flex-col items-center gap-2">
-            <div class="text-base xl:text-lg font-black font-mono ${colorClass} opacity-80 group-hover:opacity-100 transition-opacity">
-              ₱${bill}
-            </div>
-            <input type="number" 
-                  id="denom-${bill}" 
-                  data-bill="${bill}"
-                  min="0" 
-                  placeholder="0" 
-                  class="w-full text-center text-lg font-bold py-2 px-1 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none text-gray-800"
-                  oninput="calcDenomTotal(this)">
+    // Build opening grid (Admin)
+    const openingContainer = document.getElementById('denomGrid');
+    if (openingContainer) {
+      openingContainer.innerHTML = BILLS.map(bill => {
+        let colorClass = 'text-gray-700';
+        if (bill >= 1000) colorClass = 'text-blue-600';
+        else if (bill >= 500) colorClass = 'text-yellow-600';
+        else if (bill >= 100) colorClass = 'text-purple-600';
+        else if (bill >= 20) colorClass = 'text-orange-600';
+        return `
+        <div class="bg-white rounded-xl border border-gray-200 px-3 py-2.5 transition-all hover:shadow-md hover:border-blue-300 group flex-1 min-w-[85px]">
+          <div class="flex flex-col items-center gap-2">
+            <div class="text-base xl:text-lg font-black font-mono ${colorClass} opacity-80 group-hover:opacity-100 transition-opacity">₱${bill}</div>
+            <input type="number" id="denom-${bill}" data-bill="${bill}" min="0" placeholder="0"
+              class="w-full text-center text-lg font-bold py-2 px-1 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all outline-none text-gray-800"
+              oninput="calcOpeningTotal()">
             <div class="w-full text-center border-t border-gray-100 pt-1.5">
               <span class="font-mono text-xs text-gray-500 group-hover:text-blue-600 transition-colors" id="dsub-${bill}">₱0.00</span>
             </div>
-        </div>
-      </div>
-      `;
-    }).join('');
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    // Build closing grid (Cashier)
+    const closingContainer = document.getElementById('denomGridClosing');
+    if (closingContainer) {
+      closingContainer.innerHTML = BILLS.map(bill => {
+        let colorClass = 'text-gray-700';
+        if (bill >= 1000) colorClass = 'text-blue-600';
+        else if (bill >= 500) colorClass = 'text-yellow-600';
+        else if (bill >= 100) colorClass = 'text-purple-600';
+        else if (bill >= 20) colorClass = 'text-orange-600';
+        return `
+        <div class="bg-white rounded-xl border border-gray-200 px-3 py-2.5 transition-all hover:shadow-md hover:border-amber-300 group flex-1 min-w-[85px]">
+          <div class="flex flex-col items-center gap-2">
+            <div class="text-base xl:text-lg font-black font-mono ${colorClass} opacity-80 group-hover:opacity-100 transition-opacity">₱${bill}</div>
+            <input type="number" id="denom-closing-${bill}" data-bill="${bill}" min="0" placeholder="0"
+              class="w-full text-center text-lg font-bold py-2 px-1 border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all outline-none text-gray-800"
+              oninput="calcClosingTotal()">
+            <div class="w-full text-center border-t border-gray-100 pt-1.5">
+              <span class="font-mono text-xs text-gray-500 group-hover:text-amber-600 transition-colors" id="dsub-closing-${bill}">₱0.00</span>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
   }
 
-  function autoSwitchDenomTab() {
-  const records = state.denomRecords || [];
-  const opening = records.find(r => r.type === 'START');
-  if (opening) {
-    switchDenomTab('END');
-    lockOpeningDisplay(opening.total);
-  } else {
-    unlockOpeningDisplay();
-    switchDenomTab('START');
-  }
-}
+  // ── Show only the card relevant to the user's role ──
+  function applyDenomCardVisibility() {
+    const openingCard = document.getElementById('denomOpeningCard');
+    const closingCard = document.getElementById('denomClosingCard');
+    if (!openingCard || !closingCard) return;
 
-  function calcDenomTotal() {
+    if (isAdmin()) {
+      openingCard.classList.remove('hidden');
+      closingCard.classList.add('hidden');
+      state.denomTab = 'START';
+    } else if (isCashier() && !isAdmin()) {
+      openingCard.classList.add('hidden');
+      closingCard.classList.remove('hidden');
+      state.denomTab = 'END';
+    } else {
+      // Auditor — hide both
+      openingCard.classList.add('hidden');
+      closingCard.classList.add('hidden');
+    }
+  }
+
+  // ── Calc totals ──
+  function calcOpeningTotal() {
     let total = 0;
-
     BILLS.forEach(bill => {
       const el = document.getElementById('denom-' + bill);
-      if (!el) return;
-      const qty = parseFloat(el.value) || 0; 
+      const qty = parseFloat(el?.value) || 0;
       const sub = qty * bill;
       total += sub;
       const sEl = document.getElementById('dsub-' + bill);
-      if(sEl) sEl.textContent = fmt(sub);
+      if (sEl) sEl.textContent = fmt(sub);
     });
-    
-    const totalEl = document.getElementById('denomTotalDisplay');
-    if (!totalEl) return;
-    if (total > 0) {
-      totalEl.classList.remove('text-gray-400');
-      totalEl.classList.add('text-gray-800');
-    } else {
-      totalEl.classList.add('text-gray-400');
+    const totalEl = document.getElementById('openingTotalDisplay');
+    if (totalEl) {
+      totalEl.textContent = fmt(total).replace('₱', '');
+      totalEl.classList.toggle('text-gray-400', total === 0);
+      totalEl.classList.toggle('text-gray-800', total > 0);
     }
-    totalEl.textContent = fmt(total).replace('₱', '');
     refreshPrevClosingMatch();
   }
 
+  function calcClosingTotal() {
+    let total = 0;
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-closing-' + bill);
+      const qty = parseFloat(el?.value) || 0;
+      const sub = qty * bill;
+      total += sub;
+      const sEl = document.getElementById('dsub-closing-' + bill);
+      if (sEl) sEl.textContent = fmt(sub);
+    });
+    const totalEl = document.getElementById('closingTotalDisplay');
+    if (totalEl) {
+      totalEl.textContent = fmt(total).replace('₱', '');
+      totalEl.classList.toggle('text-gray-400', total === 0);
+      totalEl.classList.toggle('text-gray-800', total > 0);
+    }
+  }
+
+  // Keep old name working (used in receipt sync etc.)
+  function calcDenomTotal() { calcOpeningTotal(); }
+
+  // ── Clear forms ──
   function clearDenomForm() {
     BILLS.forEach(bill => {
       const el = document.getElementById('denom-' + bill);
-      if(el) el.value = '';
-      const sel = document.getElementById('dsub-' + bill);
-      if(sel) sel.textContent = '₱0.00';
+      if (el) el.value = '';
+      const sEl = document.getElementById('dsub-' + bill);
+      if (sEl) sEl.textContent = '₱0.00';
     });
-    const notesEl = document.getElementById('denomNotes');
-    if(notesEl) notesEl.value = '';
-    const totalEl = document.getElementById('denomTotalDisplay');
-    if(totalEl) { totalEl.textContent = '0.00'; totalEl.classList.add('text-gray-400'); }
+    const notesEl = document.getElementById('openingNotes');
+    if (notesEl) notesEl.value = '';
+    const totalEl = document.getElementById('openingTotalDisplay');
+    if (totalEl) { totalEl.textContent = '0.00'; totalEl.classList.add('text-gray-400'); }
   }
 
-  function switchDenomTab(type) {
-    state.denomTab = type;
-    const denomTypeEl = document.getElementById('denomType');
-    if(denomTypeEl) denomTypeEl.value = type;
-    
-    const btnStart = document.getElementById('btn-tab-start');
-    const btnEnd = document.getElementById('btn-tab-end');
-    const container = document.getElementById('denomCardContainer');
-    const label = document.getElementById('denomLabel');
+  function clearClosingForm() {
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-closing-' + bill);
+      if (el) el.value = '';
+      const sEl = document.getElementById('dsub-closing-' + bill);
+      if (sEl) sEl.textContent = '₱0.00';
+    });
+    const notesEl = document.getElementById('closingNotes');
+    if (notesEl) notesEl.value = '';
+    const totalEl = document.getElementById('closingTotalDisplay');
+    if (totalEl) { totalEl.textContent = '0.00'; totalEl.classList.add('text-gray-400'); }
+  }
 
-    const existingMsg = document.getElementById('openingBlockedMessage');
-    if(existingMsg) existingMsg.remove();
-    if(container) container.classList.remove('hidden');
+  // ── Opening: lock/unlock display after save ──
+  function lockOpeningDisplay(total) {
+    const card = document.getElementById('denomOpeningCard');
+    if (!card) return;
+    card.setAttribute('data-opening-total', total);
 
-    if(btnStart) btnStart.className = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
-    if(btnEnd)   btnEnd.className   = "px-6 py-2.5 text-sm font-bold rounded-lg transition-all flex items-center gap-2";
-    if(container) container.className = "rounded-2xl shadow-lg overflow-hidden transition-all duration-500 border-t-4";
+    const totalEl = document.getElementById('openingTotalDisplay');
+    if (totalEl) {
+      totalEl.textContent = fmt(total).replace('₱', '');
+      totalEl.classList.remove('text-gray-400');
+      totalEl.classList.add('text-gray-800');
+    }
 
-    if (type === 'START') {
-      if(btnStart) btnStart.classList.add('bg-blue-600', 'text-white', 'shadow-md');
-      if(btnEnd)   btnEnd.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
-      if(container) container.classList.add('bg-blue-50', 'border-blue-500', 'border', 'border-blue-200');
+    document.getElementById('openingGridSection')?.classList.add('hidden');
+    document.getElementById('openingNotesSection')?.classList.add('hidden');
 
-      // Restore opening total if locked
-      const savedTotal = container?.getAttribute('data-opening-total');
-      if (savedTotal) {
-        BILLS.forEach(bill => {
-          const el = document.getElementById('denom-' + bill);
-          if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
-        });
-        if (label) label.textContent = 'Opening Total (Locked)';
-        const totalEl = document.getElementById('denomTotalDisplay');
-        if (totalEl) { totalEl.textContent = fmt(parseFloat(savedTotal)).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
-      } else {
-        if(label) label.textContent = "Opening Total";
-      }
+    if (!document.getElementById('openingLockedMsg')) {
+      const msg = document.createElement('div');
+      msg.id = 'openingLockedMsg';
+      msg.className = 'px-6 pb-6 pt-2';
+      msg.innerHTML = `
+        <div class="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🔒</span>
+            <div>
+              <div class="text-sm font-bold text-blue-800">Opening Cash Locked</div>
+              <div class="text-xs text-blue-500 mt-0.5">Opening count has been saved and locked.</div>
+            </div>
+          </div>
+          <button onclick="openEditOpeningModal()" class="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-50 transition shadow-sm">✏️ Edit Opening</button>
+        </div>`;
+      card.appendChild(msg);
+    }
 
-      checkOpeningEligibility();
-    } else {
-    if(btnStart) btnStart.classList.add('text-gray-500', 'hover:bg-gray-200', 'hover:text-gray-700');
-    if(btnEnd)   btnEnd.classList.add('bg-amber-500', 'text-white', 'shadow-md');
-    if(container) container.classList.add('bg-amber-50', 'border-amber-500', 'border', 'border-amber-200');
-    if(label) label.textContent = "Closing Total";
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-' + bill);
+      if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
+    });
+  }
 
-    // Always ensure closing form is visible
-    const grid     = document.getElementById('denomGrid');
-    const notes    = document.getElementById('denomNotes');
-    const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
-    const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
-    document.getElementById('denomGridSection')?.classList.remove('hidden');
-    document.getElementById('denomNotesSection')?.classList.remove('hidden');
-    if (saveBtn)  saveBtn.style.display = '';
-    if (clearBtn) clearBtn.style.display = '';
-
-    // re-enable inputs for closing tab
+  function unlockOpeningDisplay() {
+    document.getElementById('openingLockedMsg')?.remove();
+    document.getElementById('openingGridSection')?.classList.remove('hidden');
+    document.getElementById('openingNotesSection')?.classList.remove('hidden');
     BILLS.forEach(bill => {
       const el = document.getElementById('denom-' + bill);
       if (el) { el.disabled = false; el.classList.remove('opacity-50', 'cursor-not-allowed'); }
     });
   }
+
+  // ── Closing: lock display after day is CLOSED ──
+  function lockClosingDisplay() {
+    document.getElementById('closingGridSection')?.classList.add('hidden');
+    document.getElementById('closingNotesSection')?.classList.add('hidden');
+    if (!document.getElementById('closingLockedMsg')) {
+      const msg = document.createElement('div');
+      msg.id = 'closingLockedMsg';
+      msg.className = 'px-6 pb-6 pt-2';
+      msg.innerHTML = `
+        <div class="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
+          <span class="text-2xl">🔒</span>
+          <div>
+            <div class="text-sm font-bold text-green-800">Day Closed</div>
+            <div class="text-xs text-green-600 mt-0.5">This day has been audited and locked.</div>
+          </div>
+        </div>`;
+      document.getElementById('denomClosingCard')?.appendChild(msg);
+    }
   }
 
-async function checkOpeningEligibility() {
-    // Remove any existing warning first
+  // ── Previous closing reference (Admin opening tab) ──
+  function updatePrevClosingRef() {
+    const banner   = document.getElementById('prevClosingRef');
+    const amountEl = document.getElementById('prevClosingAmount');
+    const matchEl  = document.getElementById('prevClosingMatch');
+    if (!banner || !isAdmin()) return;
+
+    const hasOpening = (state.denomRecords || []).some(r => r.type === 'START');
+    if (hasOpening) { banner.classList.add('hidden'); return; }
+
+    banner.classList.remove('hidden');
+    if (state.prevDayClosing !== null) {
+      amountEl.textContent = fmt(state.prevDayClosing);
+      refreshPrevClosingMatch();
+    } else {
+      amountEl.textContent = '—';
+      matchEl.textContent  = 'First Day';
+      matchEl.className    = 'text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500';
+    }
+  }
+
+  function refreshPrevClosingMatch() {
+    const matchEl = document.getElementById('prevClosingMatch');
+    if (!matchEl || state.prevDayClosing === null) return;
+    let currentTotal = 0;
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-' + bill);
+      currentTotal += (parseFloat(el?.value) || 0) * bill;
+    });
+    const diff = currentTotal - state.prevDayClosing;
+    if (Math.abs(diff) < 0.01) {
+      matchEl.textContent = '✓ Matched';
+      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700';
+    } else if (diff > 0) {
+      matchEl.textContent = `+${fmt(diff)} Over`;
+      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700';
+    } else {
+      matchEl.textContent = `${fmt(Math.abs(diff))} Short`;
+      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700';
+    }
+  }
+
+  // ── Opening eligibility check (Admin) ──
+  async function checkOpeningEligibility() {
     document.getElementById('openingBlockedMessage')?.remove();
 
     const res = await callServer('findUnclosedPastDate', state.currentDate);
     if (res.success && res.date) {
-      const container = document.getElementById('denomCardContainer');
-
-      // Show the card but disable all inputs and save button
-      if (container) container.classList.remove('hidden');
-
-      // Disable all bill inputs
       BILLS.forEach(bill => {
         const el = document.getElementById('denom-' + bill);
         if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
       });
-
-      // Disable save button
       const saveBtn = document.querySelector('button[onclick="saveDenomination()"]');
       if (saveBtn) { saveBtn.disabled = true; saveBtn.classList.add('opacity-50', 'cursor-not-allowed'); }
 
-      // Show warning banner inside the card (above the grid)
-      const gridSection = document.getElementById('denomGridSection');
+      const gridSection = document.getElementById('openingGridSection');
       if (gridSection && !document.getElementById('openingBlockedMessage')) {
         const msg = document.createElement('div');
         msg.id = 'openingBlockedMessage';
@@ -183,25 +282,79 @@ async function checkOpeningEligibility() {
               <div class="text-xs text-red-500 mt-0.5">Close <span class="font-mono font-bold">${res.date}</span> first before entering today's opening.</div>
             </div>
           </div>
-          <button onclick="goToDate('${res.date}')" class="shrink-0 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-lg shadow hover:bg-red-700 transition">Go to ${res.date}</button>
-        `;
+          <button onclick="goToDate('${res.date}')" class="shrink-0 px-4 py-2 bg-red-600 text-white text-xs font-bold rounded-lg shadow hover:bg-red-700 transition">Go to ${res.date}</button>`;
         gridSection.insertBefore(msg, gridSection.firstChild);
       }
     }
   }
+
   function goToDate(date) {
     const picker = document.getElementById('globalDate');
-    if(picker) {
+    if (picker) {
       picker.value = date;
-      if(typeof onDateChange === 'function') onDateChange();
-      setTimeout(() => { navigate('denominations'); switchDenomTab('END'); }, 500);
+      if (typeof onDateChange === 'function') onDateChange();
+      setTimeout(() => navigate('denominations'), 500);
     }
+  }
+
+  // ── Save Opening (Admin) ──
+  async function saveDenomination() {
+    if (state.summary && state.summary.status === 'CLOSED') {
+      toast('This day is already CLOSED. Use Edit Opening to make corrections.', 'warning');
+      return;
+    }
+    const breakdown = {};
+    let total = 0;
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-' + bill);
+      const qty = parseFloat(el?.value) || 0;
+      if (qty > 0) breakdown[bill] = qty;
+      total += qty * bill;
+    });
+    if (total === 0 && !confirm('Total is ₱0.00. Save anyway?')) return;
+
+    const data = {
+      date     : state.currentDate,
+      type     : 'START',
+      breakdown: JSON.stringify(breakdown),
+      total    : total,
+      notes    : document.getElementById('openingNotes')?.value || ''
+    };
+    await executeSave(data);
+  }
+
+  // ── Save Closing (Cashier) ──
+  async function saveClosing() {
+    if (state.summary && state.summary.status === 'CLOSED') {
+      toast('This day is already CLOSED.', 'warning');
+      return;
+    }
+    const breakdown = {};
+    let total = 0;
+    BILLS.forEach(bill => {
+      const el = document.getElementById('denom-closing-' + bill);
+      const qty = parseFloat(el?.value) || 0;
+      if (qty > 0) breakdown[bill] = qty;
+      total += qty * bill;
+    });
+    if (total === 0 && !confirm('Total is ₱0.00. Save anyway?')) return;
+
+    pendingClosingData = {
+      date     : state.currentDate,
+      type     : 'END',
+      breakdown: JSON.stringify(breakdown),
+      total    : total,
+      notes    : document.getElementById('closingNotes')?.value || ''
+    };
+
+    await refreshStateForClosingModal();
+    showClosingModal(total);
   }
 
   function showLoading(bool) {
     const btn = document.querySelector('button[onclick="saveDenomination()"]');
-    if(!btn) return;
-    if(bool) {
+    if (!btn) return;
+    if (bool) {
       btn.dataset.original = btn.innerHTML;
       btn.innerHTML = `<span class="animate-spin inline-block mr-2">⟳</span> Saving...`;
       btn.disabled = true;
@@ -215,53 +368,6 @@ async function checkOpeningEligibility() {
 
   let pendingClosingData = null;
 
-  async function saveDenomination() {
-    // Admin can only save Opening
-    if (isAdmin() && state.denomTab === 'END') {
-      toast('Admin can only enter the Opening cash count.', 'warning');
-      return;
-    }
-
-    // Hard guard: block saving closing on an already closed day
-    if (state.summary && state.summary.status === 'CLOSED' && state.denomTab === 'END') {
-      toast('This day is already CLOSED. Use the Edit Opening button to make corrections.', 'warning');
-      return;
-    }
-
-    const breakdown = {};
-    let total = 0;
-    const billTypes = BILLS;
-
-    billTypes.forEach(bill => {
-      const el = document.getElementById('denom-' + bill);
-      const qty = parseFloat(el?.value) || 0;
-      if (qty > 0) breakdown[bill] = qty;
-      total += (qty * bill);
-    });
-
-    if (total === 0 && !confirm("Total is ₱0.00. Save anyway?")) return;
-
-    const data = {
-      date: state.currentDate,
-      type: state.denomTab,
-      breakdown: JSON.stringify(breakdown),
-      total: total,
-      notes: document.getElementById('denomNotes')?.value || ''
-    };
-
-    if (state.denomTab === 'END') {
-      pendingClosingData = data;
-      // Always fetch fresh state before computing variance
-      await refreshStateForClosingModal();
-      showClosingModal(total);
-      return;
-    }
-
-    await executeSave(data);
-  }
-
-  // Re-fetch entries + summary fresh from server before opening the closing modal
-  // so variance is never computed against stale in-memory state
   async function refreshStateForClosingModal() {
     const [entriesRes, summaryRes] = await Promise.all([
       callServer('getExpenseEntries', state.currentDate),
@@ -276,85 +382,63 @@ async function checkOpeningEligibility() {
   // =============================================
   function showClosingModal(actual) {
     const modal = document.getElementById('closingModal');
-    if(!modal) return;
+    if (!modal) return;
 
-    // Compute expected from fresh state
     const opening = parseFloat(state.summary?.openingCash || 0);
-
     const expenses = state.entries
       .filter(e => e.type === 'EXPENSE' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-
     const cashAdvance = state.entries
       .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-
     const replenishment = state.entries
       .filter(e => e.type === 'REPLENISHMENT' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
     const expected = (opening + replenishment) - (expenses + cashAdvance);
-    // Variance: positive = overage (more cash than expected), negative = shortage
     const variance = actual - expected;
 
     document.getElementById('modExpected').textContent = fmt(expected);
-    document.getElementById('modActual').textContent = fmt(actual);
+    document.getElementById('modActual').textContent   = fmt(actual);
 
     const vEl = document.getElementById('modVariance');
-    // Store raw numeric value on element for confirmClosingSave to read reliably
     vEl.dataset.value = variance.toFixed(2);
     vEl.textContent = (variance > 0 ? '+' : '') + fmt(Math.abs(variance));
     vEl.className = 'font-mono font-black text-2xl ' +
       (Math.abs(variance) < 0.01 ? 'text-green-600' : variance < 0 ? 'text-red-600' : 'text-blue-600');
 
     const sEl = document.getElementById('modStatus');
+    const shortagePanel = document.getElementById('shortagePanel');
+    const overagePanel  = document.getElementById('overagePanel');
+    if (shortagePanel) shortagePanel.classList.add('hidden');
+    if (overagePanel)  overagePanel.classList.add('hidden');
 
-    // Shortage panel
-    const shortagePanel  = document.getElementById('shortagePanel');
-    // Overage panel
-    const overagePanel   = document.getElementById('overagePanel');
-
-    if(shortagePanel) shortagePanel.classList.add('hidden');
-    if(overagePanel)  overagePanel.classList.add('hidden');
-
-    // Reset checkboxes
-    const chkShortage    = document.getElementById('chkCreateShortage');
-    const chkCustodian   = document.getElementById('chkCustodianTopUp');
-    const chkOverage     = document.getElementById('chkCreateOverage');
+    const chkShortage  = document.getElementById('chkCreateShortage');
+    const chkCustodian = document.getElementById('chkCustodianTopUp');
+    const chkOverage   = document.getElementById('chkCreateOverage');
     if (chkShortage)  chkShortage.checked  = false;
     if (chkCustodian) chkCustodian.checked = false;
     if (chkOverage)   chkOverage.checked   = false;
 
     if (Math.abs(variance) < 0.01) {
-      // ── BALANCED ──
       sEl.textContent = '✅ BALANCED';
       sEl.className = 'text-xs text-green-600 font-bold uppercase tracking-widest mt-1';
     } else if (variance < 0) {
-      // ── SHORTAGE: actual cash is LESS than expected ──
       sEl.textContent = '⚠️ SHORTAGE';
       sEl.className = 'text-xs text-red-500 font-bold uppercase tracking-widest mt-1';
-
-      const amt = Math.abs(variance);
-      if(shortagePanel) {
+      if (shortagePanel) {
         shortagePanel.classList.remove('hidden');
-        shortagePanel.querySelectorAll('.variance-amount').forEach(el => {
-          el.textContent = fmt(amt);
-        });
+        shortagePanel.querySelectorAll('.variance-amount').forEach(el => el.textContent = fmt(Math.abs(variance)));
       }
     } else {
-      // ── OVERAGE: actual cash is MORE than expected ──
       sEl.textContent = '💰 OVERAGE';
       sEl.className = 'text-xs text-blue-500 font-bold uppercase tracking-widest mt-1';
-
-      if(overagePanel) {
+      if (overagePanel) {
         overagePanel.classList.remove('hidden');
-        overagePanel.querySelectorAll('.variance-amount').forEach(el => {
-          el.textContent = fmt(variance);
-        });
+        overagePanel.querySelectorAll('.variance-amount').forEach(el => el.textContent = fmt(variance));
       }
     }
 
-    // ── Populate entries summary list ──
     const entriesListEl = document.getElementById('closingEntriesList');
     if (entriesListEl) {
       const dayEntries = state.entries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
@@ -362,10 +446,9 @@ async function checkOpeningEligibility() {
         entriesListEl.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400 text-center italic">No entries for today</div>';
       } else {
         entriesListEl.innerHTML = dayEntries.map(e => {
-          const hasReceipt = e.hasReceipt;
-          const typeLabel  = e.type === 'CASH_ADVANCE' ? '💳' : e.type === 'REPLENISHMENT' ? '🔄' : '💸';
-          const rcptBadge  = e.type === 'EXPENSE'
-            ? (hasReceipt
+          const typeLabel = e.type === 'CASH_ADVANCE' ? '💳' : e.type === 'REPLENISHMENT' ? '🔄' : '💸';
+          const rcptBadge = e.type === 'EXPENSE'
+            ? (e.hasReceipt
                 ? '<span class="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">🧾 OR</span>'
                 : '<span class="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded">⚠️ No Receipt</span>')
             : '';
@@ -381,13 +464,12 @@ async function checkOpeningEligibility() {
         }).join('');
       }
     }
-
     modal.classList.remove('hidden');
   }
 
   function closeClosingModal() {
     const modal = document.getElementById('closingModal');
-    if(modal) modal.classList.add('hidden');
+    if (modal) modal.classList.add('hidden');
     pendingClosingData = null;
   }
 
@@ -408,61 +490,42 @@ async function checkOpeningEligibility() {
     const dataToSave = { ...pendingClosingData };
     closeClosingModal();
 
-    // 1. Save the closing denomination record
     await executeSave(dataToSave);
 
-    // 2. Record shortage — books the missing cash as an expense
     if (createShortageEntry) {
       const amt = Math.abs(varianceVal);
       toast('Recording shortage entry...', 'info');
       const res = await callServer('saveExpenseEntry', {
-        date       : dataToSave.date,
-        type       : 'EXPENSE',
-        category   : 'Miscellaneous',
+        date: dataToSave.date, type: 'EXPENSE', category: 'Miscellaneous',
         description: `Cash Shortage — ₱${amt.toFixed(2)} unaccounted`,
-        amount     : amt,
-        hasReceipt : false,
-        referenceNo: 'SHORTAGE-ADJ',
-        requestedBy: 'System',
-        approvedBy : 'Auto'
+        amount: amt, hasReceipt: false, referenceNo: 'SHORTAGE-ADJ',
+        requestedBy: 'System', approvedBy: 'Auto'
       });
       if (res.success) toast(`Shortage of ${fmt(amt)} recorded ✓`, 'success');
       else toast('Failed to record shortage: ' + res.message, 'error');
     }
 
-    // 3. Custodian top-up — logs that the custodian replaced the missing cash
     if (createCustodianTopUp) {
       const amt = Math.abs(varianceVal);
       toast('Recording custodian top-up...', 'info');
       const res = await callServer('saveReplenishmentEntry', {
-        date       : dataToSave.date,
-        type       : 'REPLENISHMENT',
-        category   : 'Replenishment',
-        description: `Custodian Top-Up — ₱${amt.toFixed(2)} replaced by custodian from own pocket`,
-        amount     : amt,
-        hasReceipt : false,
-        referenceNo: 'CUSTODIAN-TOPUP',
-        requestedBy: 'Custodian',
-        approvedBy : ''
+        date: dataToSave.date, type: 'REPLENISHMENT', category: 'Replenishment',
+        description: `Custodian Top-Up — ₱${amt.toFixed(2)} replaced by custodian`,
+        amount: amt, hasReceipt: false, referenceNo: 'CUSTODIAN-TOPUP',
+        requestedBy: 'Custodian', approvedBy: ''
       });
       if (res.success) toast(`Custodian top-up of ${fmt(amt)} logged ✓`, 'success');
       else toast('Failed to log top-up: ' + res.message, 'error');
     }
 
-    // 4. Record overage
     if (createOverageEntry) {
       const amt = Math.abs(varianceVal);
       toast('Recording overage entry...', 'info');
       const res = await callServer('saveCashOverEntry', {
-        date       : dataToSave.date,
-        type       : 'CASH_OVER',
-        category   : 'Miscellaneous',
+        date: dataToSave.date, type: 'CASH_OVER', category: 'Miscellaneous',
         description: `Cash Overage — ₱${amt.toFixed(2)} more than expected`,
-        amount     : amt,
-        hasReceipt : false,
-        referenceNo: 'OVER-ADJ',
-        requestedBy: 'System',
-        approvedBy : 'Auto'
+        amount: amt, hasReceipt: false, referenceNo: 'OVER-ADJ',
+        requestedBy: 'System', approvedBy: 'Auto'
       });
       if (res.success) toast(`Overage of ${fmt(amt)} recorded ✓`, 'success');
       else toast('Failed to record overage: ' + res.message, 'error');
@@ -480,11 +543,11 @@ async function checkOpeningEligibility() {
           toast('Opening count updated & change logged ✓', 'success');
           state.editingOpening = false;
         } else {
-          toast('Cash count saved', 'success');
+          toast('Cash count saved ✓', 'success');
         }
         clearDenomForm();
         loadDayData();
-        loadDenominations(); // this will re-run autoSwitchDenomTab + lock if needed
+        loadDenominations();
       } else {
         toast(res.message || 'Failed to save', 'error');
       }
@@ -496,11 +559,14 @@ async function checkOpeningEligibility() {
     }
   }
 
+  // ── Load denominations (called on page navigate) ──
   async function loadDenominations() {
     const container = document.getElementById('savedDenomsContainer');
     if (!container) return;
 
-    checkOpeningEligibility();
+    applyDenomCardVisibility();
+    if (isAdmin()) checkOpeningEligibility();
+
     container.innerHTML = '<div class="text-center py-6 text-gray-400 text-sm animate-pulse">Loading records...</div>';
 
     try {
@@ -510,20 +576,27 @@ async function checkOpeningEligibility() {
         callServer('getPreviousDayClosing', state.currentDate)
       ]);
 
-      if (summaryRes.success && summaryRes.data) {
-        state.summary = summaryRes.data;
-      }
-
-      // Store yesterday's closing for reference
+      if (summaryRes.success && summaryRes.data) state.summary = summaryRes.data;
       state.prevDayClosing = (prevRes.success && prevRes.data) ? prevRes.data.closingCash : null;
       state.prevDayDate    = (prevRes.success && prevRes.data) ? prevRes.data.date : null;
 
       if (denomRes.success) {
         state.denomRecords = denomRes.data || [];
-        autoSwitchDenomTab();
+
+        const opening = state.denomRecords.find(r => r.type === 'START');
+
+        if (isAdmin()) {
+          if (opening) lockOpeningDisplay(opening.total);
+          else unlockOpeningDisplay();
+          updatePrevClosingRef();
+        }
+
+        if (isCashier() && !isAdmin()) {
+          if (state.summary?.status === 'CLOSED') lockClosingDisplay();
+        }
+
         renderDenomRecords(state.denomRecords);
         applyClosedDayGuard();
-        updatePrevClosingRef();
       }
     } catch(e) {
       console.error(e);
@@ -531,70 +604,61 @@ async function checkOpeningEligibility() {
     }
   }
 
-  function updatePrevClosingRef() {
-    const banner = document.getElementById('prevClosingRef');
-    const amountEl = document.getElementById('prevClosingAmount');
-    const matchEl  = document.getElementById('prevClosingMatch');
-    if (!banner) return;
+  // ── applyClosedDayGuard — banners only ──
+  function applyClosedDayGuard() {
+    const status    = state.summary?.status;
+    const isClosed  = status === 'CLOSED';
+    const isFlagged = status === 'FLAGGED';
+    const isToday   = state.currentDate === new Date().toISOString().split('T')[0];
 
-    // Only show on Opening tab, only for Auditor, only if no opening saved yet
-    const hasOpening = (state.denomRecords || []).some(r => r.type === 'START');
-    if (state.denomTab !== 'START' || hasOpening || (!isAuditor() && !isAdmin())) {
-      banner.classList.add('hidden');
-      return;
+    if (state.userRole === 'Auditor') return;
+
+    document.getElementById('closedDayBanner')?.remove();
+    document.getElementById('flaggedDayBanner')?.remove();
+
+    if (isFlagged && isCashier()) {
+      const card = document.getElementById('denomClosingCard');
+      if (card) {
+        const b = document.createElement('div');
+        b.id = 'flaggedDayBanner';
+        b.className = 'mb-4 flex items-start gap-3 bg-red-50 border border-red-400 rounded-xl p-4 shadow-sm';
+        b.innerHTML = `<span class="text-2xl">🚩</span><div><div class="text-sm font-bold text-red-800">Recount Required</div><div class="text-xs text-red-600 mt-0.5">The auditor flagged this day. Please recount and re-enter your closing.</div></div>`;
+        card.parentElement.insertBefore(b, card);
+      }
     }
 
-    if (state.prevDayClosing !== null) {
-      banner.classList.remove('hidden');
-      amountEl.textContent = fmt(state.prevDayClosing);
-      // Live comparison updated by calcDenomTotal
-      refreshPrevClosingMatch();
-    } else {
-      // First day ever — no previous closing
-      banner.classList.remove('hidden');
-      amountEl.textContent = '—';
-      matchEl.textContent  = 'First Day';
-      matchEl.className    = 'text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-500';
-    }
-  }
-
-  function refreshPrevClosingMatch() {
-    const matchEl = document.getElementById('prevClosingMatch');
-    if (!matchEl || state.prevDayClosing === null) return;
-
-    // Read current denomination total
-    let currentTotal = 0;
-    BILLS.forEach(bill => {
-      const el = document.getElementById('denom-' + bill);
-      currentTotal += (parseFloat(el?.value) || 0) * bill;
-    });
-
-    const diff = currentTotal - state.prevDayClosing;
-    if (Math.abs(diff) < 0.01) {
-      matchEl.textContent = '✓ Matched';
-      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-green-100 text-green-700';
-    } else if (diff > 0) {
-      matchEl.textContent = `+${fmt(diff)} Over`;
-      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-700';
-    } else {
-      matchEl.textContent = `${fmt(Math.abs(diff))} Short`;
-      matchEl.className   = 'text-xs font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-700';
+    if (isClosed) {
+      const card = isAdmin()
+        ? document.getElementById('denomOpeningCard')
+        : document.getElementById('denomClosingCard');
+      if (card) {
+        const b = document.createElement('div');
+        b.id = 'closedDayBanner';
+        b.className = 'mb-4 flex items-center justify-between gap-4 bg-green-50 border border-green-300 rounded-xl p-4 shadow-sm';
+        b.innerHTML = `
+          <div class="flex items-center gap-3">
+            <span class="text-2xl">🔒</span>
+            <div>
+              <div class="text-sm font-bold text-green-800">This Day is Closed</div>
+              <div class="text-xs text-green-600 mt-0.5">Cash has been audited and locked for ${state.currentDate}.${isToday ? ' Use Edit Opening for corrections.' : ''}</div>
+            </div>
+          </div>
+          <div class="text-xs font-bold text-green-700 bg-green-100 px-3 py-1.5 rounded-full border border-green-200">✓ CLOSED</div>`;
+        card.parentElement.insertBefore(b, card);
+      }
     }
   }
 
   function renderDenomRecords(data) {
     const container = document.getElementById('savedDenomsContainer');
     if (!container) return;
-
     if (data && data.length > 0) {
       container.innerHTML = data.map(d => {
         const isStart = d.type === 'START';
-        const color = isStart
-          ? 'text-blue-600 bg-blue-50 border-blue-200'
-          : 'text-amber-600 bg-amber-50 border-amber-200';
+        const color = isStart ? 'text-blue-600 bg-blue-50 border-blue-200' : 'text-amber-600 bg-amber-50 border-amber-200';
         const icon  = isStart ? '☀️' : '🌙';
         const label = isStart ? 'Opening' : 'Closing';
-        const ts = d.timestamp ? new Date(d.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '--:--';
+        const ts    = d.timestamp ? new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
         const editBtn = isStart
           ? `<button onclick="openEditOpeningModal()" class="mt-1 text-xs text-blue-500 hover:text-blue-700 font-medium transition">✏️ Edit Opening</button>`
           : '';
@@ -619,284 +683,13 @@ async function checkOpeningEligibility() {
     }
   }
 
-  async function confirmAuditApprove() {
-    const notes = document.getElementById('auditNotes')?.value?.trim() || '';
-    if (!confirm('Approve and close this day? This action cannot be undone.')) return;
-
-    const res = await callServer('auditApproveDay', {
-      date : state.currentDate,
-      notes: notes
-    });
-
-    if (res.success) {
-      toast('Day approved and closed ✓', 'success');
-      loadDayData();
-      loadDenominations();
-    } else {
-      toast(res.message || 'Failed to approve', 'error');
-    }
-  }
-  
-  async function confirmFlagDay() {
-  const notes = document.getElementById('auditNotes')?.value?.trim() || '';
-  if (!confirm('Flag this day for cashier recount? The cashier will be notified to re-enter the closing denomination.')) return;
-
-  const res = await callServer('flagDay', {
-    date: state.currentDate,
-    note: notes
-  });
-
-  if (res.success) {
-    toast('Day flagged — cashier has been notified to recount 🚩', 'warning');
-    loadDayData();
-    loadDenominations();
-  } else {
-    toast(res.message || 'Failed to flag day', 'error');
-  }
-}
-
-function applyClosedDayGuard() {
-    const status    = state.summary?.status;
-    const isClosed  = status === 'CLOSED';
-    const isFlagged = status === 'FLAGGED';
-    const isToday   = state.currentDate === new Date().toISOString().split('T')[0];
-
-    // Pure Auditor: no denomination card access — they use Audit Review page
-    if (state.userRole === 'Auditor') return;
-
-    // Clean up old banners
-    document.getElementById('pendingAuditBanner')?.remove();
-    document.getElementById('closedDayBanner')?.remove();
-    document.getElementById('flaggedDayBanner')?.remove();
-
-    // FLAGGED — show recount banner for cashier
-    if (isFlagged) {
-      const container = document.getElementById('denomCardContainer');
-      if (container) {
-        const flagBanner = document.createElement('div');
-        flagBanner.id = 'flaggedDayBanner';
-        flagBanner.className = 'mb-4 flex items-start gap-3 bg-red-50 border border-red-400 rounded-xl p-4 shadow-sm';
-        flagBanner.innerHTML = `
-          <span class="text-2xl">🚩</span>
-          <div>
-            <div class="text-sm font-bold text-red-800">Recount Required</div>
-            <div class="text-xs text-red-600 mt-0.5">The auditor has flagged this day. Please recount the physical cash and re-enter the closing denomination below.</div>
-          </div>`;
-        container.parentElement.insertBefore(flagBanner, container);
-      }
-      return;
-    }
-
-    if (!isClosed) return;
-
-    // CLOSED — show locked banner for cashier
-    const container = document.getElementById('denomCardContainer');
-    if (!container) return;
-
-    const banner = document.createElement('div');
-    banner.id = 'closedDayBanner';
-    banner.className = 'mb-4 flex items-center justify-between gap-4 bg-green-50 border border-green-300 rounded-xl p-4 shadow-sm';
-    banner.innerHTML = `
-      <div class="flex items-center gap-3">
-        <span class="text-2xl">🔒</span>
-        <div>
-          <div class="text-sm font-bold text-green-800">This Day is Closed</div>
-          <div class="text-xs text-green-600 mt-0.5">
-            Cash has been audited and locked for <span class="font-mono font-bold">${state.currentDate}</span>.
-            ${isToday ? ' If you need to make corrections, contact your auditor.' : ''}
-          </div>
-        </div>
-      </div>
-      <div class="text-xs font-bold text-green-700 bg-green-100 px-3 py-1.5 rounded-full border border-green-200">✓ CLOSED</div>`;
-    container.parentElement.insertBefore(banner, container);
-
-    // Lock the closing tab form
-    if (state.denomTab === 'END') {
-      BILLS.forEach(bill => {
-        const el = document.getElementById('denom-' + bill);
-        if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
-      });
-      const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
-      const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
-      if (saveBtn)  saveBtn.style.display  = 'none';
-      if (clearBtn) clearBtn.style.display = 'none';
-    }
-  }
-
-  // FLAGGED — show recount banner for cashier
-  if (isFlagged && isCashier()) {
-    const container = document.getElementById('denomCardContainer');
-    if (container) {
-      const flagBanner = document.createElement('div');
-      flagBanner.id = 'flaggedDayBanner';
-      flagBanner.className = 'mb-4 flex items-start gap-3 bg-red-50 border border-red-400 rounded-xl p-4 shadow-sm';
-      flagBanner.innerHTML = `
-        <span class="text-2xl">🚩</span>
-        <div>
-          <div class="text-sm font-bold text-red-800">Recount Required</div>
-          <div class="text-xs text-red-600 mt-0.5">The auditor has flagged this day due to a cash shortage. Please recount the physical cash and re-enter the closing denomination below.</div>
-        </div>`;
-      container.parentElement.insertBefore(flagBanner, container);
-    }
-  }
-
-  // FLAGGED — auditor waiting view
-  if (isFlagged && isAuditor()) {
-    const container = document.getElementById('denomCardContainer');
-    if (container) {
-      const waitBanner = document.createElement('div');
-      waitBanner.id = 'flaggedAuditorBanner';
-      waitBanner.className = 'mb-4 flex items-center gap-3 bg-red-50 border border-red-300 rounded-xl p-4 shadow-sm';
-      waitBanner.innerHTML = `
-        <span class="text-2xl">⏳</span>
-        <div>
-          <div class="text-sm font-bold text-red-800">Waiting for Cashier Recount</div>
-          <div class="text-xs text-red-600 mt-0.5">You flagged this day. The cashier has been notified to recount and resubmit.</div>
-        </div>`;
-      container.parentElement.insertBefore(waitBanner, container);
-    }
-  }
-    // Remove any existing guard banner first
-    document.getElementById('closedDayBanner')?.remove();
-
-    if (isAuditor()) return;
-    if (!isClosed && !isFlagged) return;
-
-    // Show a banner above the card
-    const container = document.getElementById('denomCardContainer');
-    if (!container) return;
-
-    const banner = document.createElement('div');
-    banner.id = 'closedDayBanner';
-    banner.className = 'mb-4 flex items-center justify-between gap-4 bg-green-50 border border-green-300 rounded-xl p-4 shadow-sm';
-    banner.innerHTML = `
-      <div class="flex items-center gap-3">
-        <span class="text-2xl">🔒</span>
-        <div>
-          <div class="text-sm font-bold text-green-800">This Day is Closed</div>
-          <div class="text-xs text-green-600 mt-0.5">
-            Cash has been audited and locked for <span class="font-mono font-bold">${state.currentDate}</span>.
-            ${isToday ? 'If you need to make corrections, use Edit Opening.' : ''}
-          </div>
-        </div>
-      </div>
-      <div class="text-xs font-bold text-green-700 bg-green-100 px-3 py-1.5 rounded-full border border-green-200">✓ CLOSED</div>
-    `;
-    container.parentElement.insertBefore(banner, container);
-
-    // Lock the closing tab form
-    if (state.denomTab === 'END') {
-      const billTypes = BILLS;
-      billTypes.forEach(bill => {
-        const el = document.getElementById('denom-' + bill);
-        if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
-      });
-
-      const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
-      const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
-      if (saveBtn)  saveBtn.style.display  = 'none';
-      if (clearBtn) clearBtn.style.display = 'none';
-    }
-
-  function lockOpeningDisplay(total) {
-    const container = document.getElementById('denomCardContainer');
-    container?.setAttribute('data-opening-total', total);
-
-    const label   = document.getElementById('denomLabel');
-    const totalEl = document.getElementById('denomTotalDisplay');
-    if (state.denomTab === 'START') {
-      if (label)   label.textContent = 'Opening Total (Locked)';
-      if (totalEl) { totalEl.textContent = fmt(total).replace('₱',''); totalEl.classList.remove('text-gray-400'); totalEl.classList.add('text-gray-800'); }
-    }
-
-    // Hide the bill grid and notes, show lock message
-    const grid  = document.getElementById('denomGrid');
-    const notes = document.getElementById('denomNotes');
-    const saveBtn = document.querySelector('button[onclick="saveDenomination()"]');
-    const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
-
-    if (state.denomTab === 'START') {
-      document.getElementById('denomGridSection')?.classList.add('hidden');
-      document.getElementById('denomNotesSection')?.classList.add('hidden');
-      if (saveBtn)  saveBtn.style.display = 'none';
-      if (clearBtn) clearBtn.style.display = 'none';
-    }
-
-    // Add lock message if not already there
-    if (state.denomTab === 'START' && !document.getElementById('openingLockedMsg')) {
-      const msg = document.createElement('div');
-      msg.id = 'openingLockedMsg';
-      msg.className = 'px-6 pb-6 pt-2';
-      msg.innerHTML = `
-        <div class="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <div class="flex items-center gap-3">
-            <span class="text-2xl">🔒</span>
-            <div>
-              <div class="text-sm font-bold text-blue-800">Opening Cash Locked</div>
-              <div class="text-xs text-blue-500 mt-0.5">Opening count has been saved and locked.</div>
-            </div>
-          </div>
-          <button onclick="openEditOpeningModal()" class="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-50 transition shadow-sm">
-            ✏️ Edit Opening
-          </button>
-        </div>`;
-      container?.appendChild(msg);
-    }
-
-    BILLS.forEach(bill => {
-      const el = document.getElementById('denom-' + bill);
-      if (el) { el.disabled = true; el.classList.add('opacity-50', 'cursor-not-allowed'); }
-    });
-
-  }
-
-  function unlockOpeningDisplay() {
-    document.getElementById('openingLockedMsg')?.remove();
-
-    const grid  = document.getElementById('denomGrid');
-    const notes = document.getElementById('denomNotes');
-    const saveBtn  = document.querySelector('button[onclick="saveDenomination()"]');
-    const clearBtn = document.querySelector('button[onclick="clearDenomForm()"]');
-
-    document.getElementById('denomGridSection')?.classList.remove('hidden');
-    document.getElementById('denomNotesSection')?.classList.remove('hidden');
-    if (saveBtn)  saveBtn.style.display = '';
-    if (clearBtn) clearBtn.style.display = '';
-
-    BILLS.forEach(bill => {
-      const el = document.getElementById('denom-' + bill);
-      if (el) { el.disabled = false; el.classList.remove('opacity-50', 'cursor-not-allowed'); }
-    });
-  }
-
-  function editOpeningCount() {
-    if (!confirm('Edit the opening count? This will be logged as a change in the saved records.')) return;
-    unlockOpeningDisplay();
-
-    // Pre-fill grid with existing opening values
-    const openingRecord = (state.denomRecords || []).find(r => r.type === 'START');
-    if (openingRecord?.denominations) {
-      const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
-      billTypes.forEach(bill => {
-        const el = document.getElementById('denom-' + bill);
-        if (el) el.value = openingRecord.denominations[String(bill)] || '';
-      });
-      calcDenomTotal();
-    }
-
-    // Mark as an edit so the save note reflects the change
-    state.editingOpening = true;
-    switchDenomTab('START');
-  }
-
+  // ── Edit Opening Modal (Admin) ──
   function openEditOpeningModal() {
     const openingRecord = (state.denomRecords || []).find(r => r.type === 'START');
     if (!openingRecord) return;
 
-    // Build modal dynamically if not already in DOM
     if (!document.getElementById('editOpeningModal')) {
-      const billTypes = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
-      const gridHTML = billTypes.map(bill => `
+      const gridHTML = BILLS.map(bill => `
         <div class="flex flex-col items-center bg-gray-50 rounded-xl p-3 border border-gray-100">
           <span class="text-xs font-black font-mono text-gray-500 mb-2">₱${bill}</span>
           <input type="number" id="edit-denom-${bill}" min="0" placeholder="0"
@@ -918,41 +711,32 @@ function applyClosedDayGuard() {
             <button onclick="closeEditOpeningModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
           </div>
           <div class="p-6 space-y-4 overflow-y-auto max-h-[60vh]">
-            <div class="grid grid-cols-3 sm:grid-cols-5 gap-3" id="editOpeningGrid">
-              ${gridHTML}
-            </div>
+            <div class="grid grid-cols-3 sm:grid-cols-5 gap-3" id="editOpeningGrid">${gridHTML}</div>
             <div>
               <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Reason for Edit</label>
-              <input type="text" id="editOpeningNotes" placeholder="e.g. Miscounted ₱500 bills..."
-                class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+              <input type="text" id="editOpeningNotes" placeholder="e.g. Miscounted earlier"
+                class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
             </div>
           </div>
-          <div class="p-4 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-3">
-            <div class="text-sm font-mono text-gray-500">
-              New Total: <span id="editOpeningTotal" class="font-black text-gray-800 text-base">₱0.00</span>
-            </div>
-            <div class="flex gap-3">
-              <button onclick="closeEditOpeningModal()" class="px-5 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
-              <button onclick="saveEditOpening()" class="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition">
-                💾 Save Changes
-              </button>
+          <div class="p-5 border-t border-gray-100 flex justify-between items-center bg-gray-50">
+            <span class="text-sm font-bold text-gray-700">Total: <span id="editOpeningTotal" class="font-mono text-blue-700">₱0.00</span></span>
+            <div class="flex gap-2">
+              <button onclick="closeEditOpeningModal()" class="px-4 py-2 bg-white border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition">Cancel</button>
+              <button onclick="saveEditOpening()" class="px-5 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition">💾 Save Changes</button>
             </div>
           </div>
         </div>`;
       document.body.appendChild(modal);
     }
 
-    // Pre-fill with existing values
     BILLS.forEach(bill => {
       const el = document.getElementById('edit-denom-' + bill);
       if (el) el.value = openingRecord.denominations?.[String(bill)] || '';
       const sub = document.getElementById('edit-dsub-' + bill);
       if (sub) sub.textContent = fmt((parseFloat(openingRecord.denominations?.[String(bill)]) || 0) * bill);
     });
-    const notesEl = document.getElementById('editOpeningNotes');
-    if (notesEl) notesEl.value = '';
+    document.getElementById('editOpeningNotes').value = '';
     calcEditOpeningTotal();
-
     document.getElementById('editOpeningModal').classList.remove('hidden');
   }
 
@@ -981,9 +765,7 @@ function applyClosedDayGuard() {
       if (qty > 0) breakdown[bill] = qty;
       total += qty * bill;
     });
-
     const notes = document.getElementById('editOpeningNotes')?.value.trim() || 'Opening count revised';
-
     const saveBtn = document.querySelector('#editOpeningModal button[onclick="saveEditOpening()"]');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
 
@@ -996,7 +778,6 @@ function applyClosedDayGuard() {
     });
 
     if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 Save Changes'; }
-
     if (res.success) {
       toast('Opening count updated & logged ✓', 'success');
       closeEditOpeningModal();
@@ -1012,4 +793,4 @@ function applyClosedDayGuard() {
   });
 
   window.refreshDenomGrid = buildDenomGrid;
-  </script>
+</script>

@@ -1,58 +1,86 @@
 <!-- DENOMINATIONS: MODERN CARD LAYOUT -->
 <div id="page-denominations" class="page-view hidden space-y-6">
 
-  <!-- Main Count Card -->
-  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden transition-colors duration-500 border-t-4 border-blue-500" id="denomCardContainer">
-
-    <!-- Total Bar -->
-    <div class="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+  <!-- ADMIN ONLY: Opening Card -->
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden border-t-4 border-blue-500" id="denomOpeningCard">
+    <!-- Header -->
+    <div class="px-6 py-4 bg-gradient-to-r from-blue-50 to-gray-100 border-b border-gray-200">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <div class="text-gray-500 text-xs font-bold uppercase tracking-wider mb-1" id="denomLabel">Opening Total</div>
+          <div class="text-blue-600 text-xs font-bold uppercase tracking-wider mb-1">☀️ Opening Total</div>
           <div class="font-black tracking-tight flex items-baseline gap-1 text-gray-800">
             <span class="text-2xl opacity-40">₱</span>
-            <span id="denomTotalDisplay" class="text-4xl md:text-5xl text-gray-400">0.00</span>
+            <span id="openingTotalDisplay" class="text-4xl md:text-5xl text-gray-400">0.00</span>
           </div>
-        </div>
-        <div class="bg-white border border-gray-200 p-1 rounded-xl flex gap-1 shadow-sm">
-          <button id="btn-tab-start" class="px-5 py-2 text-sm font-bold rounded-lg transition-all shadow-sm bg-blue-600 text-white flex items-center gap-2" onclick="switchDenomTab('START')">
-            <span>☀️</span> Opening
-          </button>
-          <button id="btn-tab-end" class="px-5 py-2 text-sm font-bold rounded-lg transition-all text-gray-500 hover:text-gray-700 flex items-center gap-2" onclick="switchDenomTab('END')">
-            <span>🌙</span> Closing
-          </button>
         </div>
       </div>
     </div>
-
-    <!-- Bill Grid -->
-    <div class="p-6 bg-gray-50/30" id="denomGridSection">
-      <input type="hidden" id="denomType" value="START">
-      <!-- Yesterday's closing reference — shown only on Opening tab -->
-      <div id="prevClosingRef" class="hidden mb-4 flex items-center justify-between bg-white border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
-        <div class="flex items-center gap-2 text-sm text-blue-700">
-          <span class="text-base">📋</span>
-          <span>Yesterday's Closing Total:</span>
-          <span class="font-black font-mono text-blue-800" id="prevClosingAmount">₱0.00</span>
-        </div>
-        <div id="prevClosingMatch" class="text-xs font-bold px-2.5 py-1 rounded-full"></div>
+    <!-- Yesterday's closing reference -->
+    <div id="prevClosingRef" class="hidden mx-6 mt-4 flex items-center justify-between bg-white border border-blue-200 rounded-xl px-4 py-3 shadow-sm">
+      <div class="flex items-center gap-2 text-sm text-blue-700">
+        <span class="text-base">📋</span>
+        <span>Yesterday's Closing Total:</span>
+        <span class="font-black font-mono text-blue-800" id="prevClosingAmount">₱0.00</span>
       </div>
+      <div id="prevClosingMatch" class="text-xs font-bold px-2.5 py-1 rounded-full"></div>
+    </div>
+    <!-- Bill Grid -->
+    <div class="p-6 bg-gray-50/30" id="openingGridSection">
+      <input type="hidden" id="denomType" value="START">
       <div class="flex flex-wrap gap-3 pb-2 overflow-x-auto" id="denomGrid">
         <!-- JS Injected -->
       </div>
     </div>
-
     <!-- Notes + Actions -->
-    <div class="p-5 border-t border-gray-100 bg-white" id="denomNotesSection">
+    <div class="p-5 border-t border-gray-100 bg-white" id="openingNotesSection">
       <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
       <div class="flex gap-3 items-center">
         <div class="relative flex-1">
-          <textarea id="denomNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="3" placeholder="Start typing..."></textarea>
+          <textarea id="openingNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="3" placeholder="Start typing..."></textarea>
           <div class="absolute top-3 left-3 text-gray-400 text-sm">📝</div>
         </div>
         <div class="flex gap-2 shrink-0">
           <button onclick="clearDenomForm()" class="px-4 py-2.5 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap">↺ Clear</button>
-          <button onclick="saveDenomination()" class="px-5 py-2.5 bg-gray-900 text-white font-bold rounded-lg shadow hover:bg-gray-800 transform active:scale-95 transition-all text-sm flex items-center gap-2 whitespace-nowrap">
+          <button onclick="saveDenomination()" class="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transform active:scale-95 transition-all text-sm flex items-center gap-2 whitespace-nowrap">
+            <span>💾</span> Save Count
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CASHIER ONLY: Closing Card -->
+  <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden border-t-4 border-amber-500" id="denomClosingCard">
+    <!-- Header -->
+    <div class="px-6 py-4 bg-gradient-to-r from-amber-50 to-gray-100 border-b border-gray-200">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <div class="text-amber-600 text-xs font-bold uppercase tracking-wider mb-1">🌙 Closing Total</div>
+          <div class="font-black tracking-tight flex items-baseline gap-1 text-gray-800">
+            <span class="text-2xl opacity-40">₱</span>
+            <span id="closingTotalDisplay" class="text-4xl md:text-5xl text-gray-400">0.00</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Bill Grid -->
+    <div class="p-6 bg-gray-50/30" id="closingGridSection">
+      <input type="hidden" id="denomTypeClosing" value="END">
+      <div class="flex flex-wrap gap-3 pb-2 overflow-x-auto" id="denomGridClosing">
+        <!-- JS Injected -->
+      </div>
+    </div>
+    <!-- Notes + Actions -->
+    <div class="p-5 border-t border-gray-100 bg-white" id="closingNotesSection">
+      <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
+      <div class="flex gap-3 items-center">
+        <div class="relative flex-1">
+          <textarea id="closingNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="3" placeholder="Start typing..."></textarea>
+          <div class="absolute top-3 left-3 text-gray-400 text-sm">📝</div>
+        </div>
+        <div class="flex gap-2 shrink-0">
+          <button onclick="clearClosingForm()" class="px-4 py-2.5 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap">↺ Clear</button>
+          <button onclick="saveClosing()" class="px-5 py-2.5 bg-amber-500 text-white font-bold rounded-lg shadow hover:bg-amber-600 transform active:scale-95 transition-all text-sm flex items-center gap-2 whitespace-nowrap">
             <span>💾</span> Save Count
           </button>
         </div>
