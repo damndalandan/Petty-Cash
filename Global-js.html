@@ -120,22 +120,15 @@ function applyRoleUI() {
   const navDenom = document.getElementById('nav-denominations');
   if (navDenom && state.userRole === 'Auditor') navDenom.classList.add('hidden');
 
-  // Admin: hide With Receipt / No Receipt stat cards, resize stats grid to match metric card height
-  if (isAdmin()) {
-    document.querySelectorAll('.admin-hide-card').forEach(el => el.classList.add('hidden'));
-
-    // Make remaining stat cards same height as the admin metric cards above them
-    const grid = document.getElementById('dashStatsGrid');
-    if (grid) {
-      // Switch to 4-col grid since 2 cards are hidden
-      grid.classList.remove('lg:grid-cols-6');
-      grid.classList.add('lg:grid-cols-4');
-      // Apply consistent min-height to all stat cards to match metric card height
-      grid.querySelectorAll(':scope > div').forEach(card => {
-        card.style.minHeight = '100px';
-        card.classList.add('flex', 'flex-col', 'justify-between');
-      });
-    }
+  // Resize stats grid to 4-col and match metric card height for all roles
+  const grid = document.getElementById('dashStatsGrid');
+  if (grid) {
+    grid.classList.remove('lg:grid-cols-6');
+    grid.classList.add('lg:grid-cols-4');
+    grid.querySelectorAll(':scope > div').forEach(card => {
+      card.style.minHeight = '100px';
+      card.classList.add('flex', 'flex-col', 'justify-between');
+    });
   }
 } 
 
