@@ -59,7 +59,9 @@ async function loadDayData() {
 
   updateDashStats();
   loadDiscrepancyWidget();
-  if (state.currentDate) checkPreviousDayStatus(state.currentDate);
+  // Always check from TODAY regardless of which date is selected
+  const todayStr = new Date().toISOString().split('T')[0];
+  checkPreviousDayStatus(todayStr);
 }
 
 async function loadDiscrepancyWidget() {
