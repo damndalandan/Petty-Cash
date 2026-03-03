@@ -105,12 +105,17 @@ function updateAuditVariance(actualCash) {
   const summary  = state.summary;
   if (!summary) return;
 
-  const opening       = parseFloat(summary.openingCash       || 0);
-  const expenses      = parseFloat(summary.totalExpenses     || 0);
-  const cashAdvance   = parseFloat(summary.cashAdvance       || 0);
-  const replenishment = parseFloat(summary.totalReplenishment|| 0);
-  const cashOver      = parseFloat(summary.totalCashOver     || 0);
-  const expected      = (opening + replenishment + cashOver) - (expenses + cashAdvance);
+  const opening       = parseFloat(summary.openingCash        || 0);
+  const expenses      = parseFloat(summary.totalExpenses      || 0);
+  const cashAdvance   = parseFloat(summary.cashAdvance        || 0);
+  const replenishment = parseFloat(summary.totalReplenishment || 0);
+  const cashOver      = parseFloat(summary.totalCashOver      || 0);
+  const closing       = parseFloat(summary.closingCash        || 0);
+  // Use the already-computed closing cash as expected (opening + replenish + cashOver - expenses - advances)
+  // Fall back to formula if closing hasn't been saved yet
+  const expected = closing > 0
+    ? closing
+    : (opening + replenishment + cashOver) - (expenses + cashAdvance);
 
   const expEl = document.getElementById('auditExpectedCash');
   if (expEl) expEl.textContent = fmt(expected);
@@ -393,7 +398,10 @@ function openAuditApproveModal(variance, actualCash) {
   const cashAdv    = parseFloat(summary?.cashAdvance        || 0);
   const replenish  = parseFloat(summary?.totalReplenishment || 0);
   const cashOver   = parseFloat(summary?.totalCashOver      || 0);
-  const expected   = (opening + replenish + cashOver) - (expenses + cashAdv);
+  const closing    = parseFloat(summary?.closingCash || 0);
+  const expected   = closing > 0
+    ? closing
+    : (opening + replenish + cashOver) - (expenses + cashAdv);
 
   const isZero    = Math.abs(variance) < 0.01;
   const isOver    = variance > 0.01;
