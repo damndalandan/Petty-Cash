@@ -72,6 +72,13 @@ async function loadDayData() {
       loadAdminMetrics(); // shows skeleton instantly, fetches in background
     }
   }
+
+  // Auditor metrics — load once on first visit
+  if (isAuditor() && !isAdmin()) {
+    if (!auditorMetricsRaw) {
+      loadAuditorMetrics();
+    }
+  }
 }
 
 async function loadDiscrepancyWidget() {
@@ -665,4 +672,197 @@ function goToDateFromModal() {
   navigate('report');
 }
 
+// =============================================
+// AUDITOR METRICS
+// =============================================
+
+let auditorMetricsRaw  = null;
+let auditorActiveCard  = null;
+
+async function loadAuditorMetrics() {
+  // Only for pure Auditors (not Admin — Admin has their own section)
+  if (!isAuditor() || isAdmin()) return;
+
+  const section = document.getElementById('auditorMetricsSection');
+  if (section) section.classList.remove('hidden');
+
+  // Skeleton state
+  ['pendingAudit','flaggedDays','pendingLiquidations','recentClosed'].forEach(key => {
+    const b = document.getElementById('abadge-' + key);
+    if (b) { b.textContent = '…'; b.classList.add('opacity-50'); }
+  });
+
+  const res = await callServer('getAuditorMetrics');
+  if (!res.success) {
+    toast('Failed to load auditor metrics', 'error');
+    return;
+  }
+
+  auditorMetricsRaw = res.data;
+
+  ['pendingAudit','flaggedDays','pendingLiquidations','recentClosed'].forEach(key => {
+    const b = document.getElementById('abadge-' + key);
+    if (b) { b.classList.remove('opacity-50'); }
+  });
+
+  renderAuditorMetricCards();
+  renderAuditorUrgentBanner();
+}
+
+function renderAuditorUrgentBanner() {
+  const banner   = document.getElementById('auditorUrgentBanner');
+  const titleEl  = document.getElementById('auditorUrgentTitle');
+  const subEl    = document.getElementById('auditorUrgentSub');
+  if (!banner || !auditorMetricsRaw) return;
+
+  const pending  = auditorMetricsRaw.pendingAudit  || [];
+  const flagged  = auditorMetricsRaw.flaggedDays   || [];
+
+  if (pending.length > 0) {
+    banner.classList.remove('hidden');
+    titleEl.textContent = `${pending.length} day${pending.length > 1 ? 's' : ''} awaiting your audit review`;
+    const oldest = pending[pending.length - 1]; // sorted desc, so last = oldest
+    subEl.textContent = `Oldest unreviewed: ${formatAuditorDate(oldest.date)}. Cashier cannot proceed until you approve.`;
+  } else if (flagged.length > 0) {
+    banner.classList.remove('hidden');
+    banner.classList.replace('bg-amber-50','bg-red-50');
+    banner.classList.replace('border-amber-400','border-red-400');
+    titleEl.textContent = `${flagged.length} flagged day${flagged.length > 1 ? 's' : ''} waiting for cashier recount`;
+    titleEl.classList.replace('text-amber-800','text-red-800');
+    subEl.textContent   = `You sent these back. Waiting for the cashier to resubmit.`;
+    subEl.classList.replace('text-amber-700','text-red-700');
+    // hide the button since auditor just waits
+    const btn = banner.querySelector('button');
+    if (btn) btn.classList.add('hidden');
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+function renderAuditorMetricCards() {
+  if (!auditorMetricsRaw) return;
+
+  const config = {
+    pendingAudit      : { color: 'amber'  },
+    flaggedDays       : { color: 'red'    },
+    pendingLiquidations:{ color: 'purple' },
+    recentClosed      : { color: 'green'  },
+  };
+
+  Object.entries(config).forEach(([key, { color }]) => {
+    const data  = auditorMetricsRaw[key] || [];
+    const badge = document.getElementById('abadge-' + key);
+    const card  = document.getElementById('acard-' + key);
+    if (badge) badge.textContent = data.length;
+    if (card) {
+      card.classList.remove(
+        'border-amber-200','border-red-200','border-purple-200','border-green-200',
+        'border-amber-500','border-red-500','border-purple-500','border-green-500',
+        'bg-amber-50','bg-red-50','bg-purple-50','bg-green-50'
+      );
+      if (auditorActiveCard === key) {
+        card.classList.add(`border-${color}-500`, `bg-${color}-50`);
+      } else {
+        card.classList.add(`border-${color}-200`);
+      }
+    }
+  });
+}
+
+function toggleAuditorCard(key) {
+  auditorActiveCard = auditorActiveCard === key ? null : key;
+  renderAuditorMetricCards();
+
+  const panel = document.getElementById('auditorDetailPanel');
+  if (!auditorActiveCard) { panel.classList.add('hidden'); return; }
+
+  panel.classList.remove('hidden');
+  renderAuditorDetailPanel(key);
+}
+
+function closeAuditorCard() {
+  auditorActiveCard = null;
+  renderAuditorMetricCards();
+  document.getElementById('auditorDetailPanel')?.classList.add('hidden');
+}
+
+function renderAuditorDetailPanel(key) {
+  const titleEl = document.getElementById('auditorDetailTitle');
+  const listEl  = document.getElementById('auditorDetailList');
+  if (!titleEl || !listEl || !auditorMetricsRaw) return;
+
+  const titles = {
+    pendingAudit      : '🔍 Days Pending Your Review',
+    flaggedDays       : '🚩 Flagged Days (Awaiting Cashier)',
+    pendingLiquidations:'💳 Liquidations Submitted for Review',
+    recentClosed      : '✅ Days Closed in the Last 7 Days',
+  };
+  titleEl.textContent = titles[key] || key;
+
+  const data = auditorMetricsRaw[key] || [];
+  if (!data.length) {
+    listEl.innerHTML = '<div class="p-8 text-center text-gray-400 text-sm">Nothing here — all clear!</div>';
+    return;
+  }
+
+  if (key === 'pendingLiquidations') {
+    listEl.innerHTML = data.map(item => {
+      const urgency = item.daysOut >= 7 ? 'text-red-600' : item.daysOut >= 3 ? 'text-amber-600' : 'text-gray-500';
+      return `
+        <div class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition cursor-pointer"
+          onclick="navigate('advances')">
+          <div>
+            <div class="text-sm font-bold text-gray-700">${item.requestedBy || '—'}</div>
+            <div class="text-xs text-gray-500 truncate max-w-[200px]">${item.description || '—'} · ${formatAuditorDate(item.date)}</div>
+          </div>
+          <div class="text-right">
+            <div class="font-mono font-bold text-sm text-gray-800">${fmt(item.amount)}</div>
+            <div class="text-[10px] ${urgency} font-mono">${item.daysOut}d outstanding</div>
+          </div>
+        </div>`;
+    }).join('');
+    return;
+  }
+
+  // pendingAudit, flaggedDays, recentClosed
+  listEl.innerHTML = data.map(item => {
+    const v = item.variance || 0;
+    const vColor = v < -0.01 ? 'text-red-600' : v > 0.01 ? 'text-blue-600' : 'text-gray-400';
+    const actionBtn = key === 'pendingAudit'
+      ? `<button onclick="goAuditDate('${item.date}')"
+           class="text-[10px] font-bold px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition">
+           Review →
+         </button>`
+      : key === 'flaggedDays'
+      ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-600">Waiting cashier</span>`
+      : `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-100 text-green-600">Closed</span>`;
+
+    return `
+      <div class="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition">
+        <div>
+          <div class="text-sm font-bold text-gray-700">${formatAuditorDate(item.date)}</div>
+          <div class="text-xs text-gray-500 font-mono">
+            Exp: ${fmt(item.expenses)} · Closing: ${fmt(item.closing)}
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-xs font-bold ${vColor}">${v >= 0 ? '+' : ''}${fmt(v)}</span>
+          ${actionBtn}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function goAuditDate(date) {
+  const picker = document.getElementById('globalDate');
+  if (picker) { picker.value = date; onDateChange(); }
+  navigate('auditreview');
+}
+
+function formatAuditorDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 </script>
+

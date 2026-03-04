@@ -2133,3 +2133,85 @@ function getAdminMetrics() {
     return { success: false, message: e.toString() };
   }
 }
+
+// ─────────────────────────────────────────────
+// AUDITOR METRICS DASHBOARD
+// ─────────────────────────────────────────────
+function getAuditorMetrics() {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sumRows = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    const entRows = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const today   = normalizeDate(new Date());
+
+    const pendingAudit = [];   // status === 'PENDING_AUDIT'
+    const flaggedDays  = [];   // status === 'FLAGGED'
+    const recentClosed = [];   // status === 'CLOSED', last 7 days
+
+    for (let i = 1; i < sumRows.length; i++) {
+      const row    = sumRows[i];
+      if (row.length < 12) continue;
+      const rDate  = normalizeDate(row[1]);
+      if (rDate > today) continue;
+      const status   = row[11] || 'OPEN';
+      const variance = parseFloat(row[10]) || 0;
+      const opening  = parseFloat(row[2])  || 0;
+      const expenses = parseFloat(row[6])  || 0;
+      const closing  = parseFloat(row[9])  || 0;
+
+      if (status === 'PENDING_AUDIT') {
+        pendingAudit.push({ date: rDate, variance, opening, expenses, closing });
+      }
+      if (status === 'FLAGGED') {
+        flaggedDays.push({ date: rDate, variance, opening, expenses, closing });
+      }
+      if (status === 'CLOSED') {
+        const msPerDay   = 1000 * 60 * 60 * 24;
+        const daysAgo    = Math.floor((new Date(today) - new Date(rDate)) / msPerDay);
+        if (daysAgo <= 7) {
+          recentClosed.push({ date: rDate, variance, opening, expenses, closing, daysAgo });
+        }
+      }
+    }
+
+    // Pending liquidations (LIQUIDATION_PENDING advances)
+    const pendingLiquidations = [];
+    for (let i = 1; i < entRows.length; i++) {
+      const row    = entRows[i];
+      const type   = row[2];
+      const status = row[10];
+      if (type !== 'CASH_ADVANCE') continue;
+      if (status !== 'LIQUIDATION_PENDING') continue;
+      const issuedDate = normalizeDate(row[1]);
+      const msPerDay   = 1000 * 60 * 60 * 24;
+      const daysOut    = Math.floor((new Date(today) - new Date(issuedDate)) / msPerDay);
+      pendingLiquidations.push({
+        id         : row[0],
+        date       : issuedDate,
+        description: row[4],
+        amount     : row[5],
+        requestedBy: row[8],
+        daysOut
+      });
+    }
+
+    // Sort all by date descending
+    const byDateDesc = (a, b) => b.date > a.date ? 1 : -1;
+    pendingAudit.sort(byDateDesc);
+    flaggedDays.sort(byDateDesc);
+    recentClosed.sort(byDateDesc);
+    pendingLiquidations.sort((a, b) => b.daysOut - a.daysOut);
+
+    return {
+      success: true,
+      data: {
+        pendingAudit,
+        flaggedDays,
+        recentClosed,
+        pendingLiquidations
+      }
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
