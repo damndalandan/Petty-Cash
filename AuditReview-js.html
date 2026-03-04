@@ -513,7 +513,7 @@ async function executeAuditApprove() {
   const btn = document.getElementById('auditApproveConfirmBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Approving...'; }
 
-  const res = await callServer('approveDay', {
+  const res = await callServer('auditApproveDay', {
     date          : state.currentDate,
     actualCash    : actualCash,
     note          : note + (overNote ? ' | Overage note: ' + overNote : ''),
