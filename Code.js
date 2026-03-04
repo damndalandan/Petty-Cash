@@ -440,15 +440,11 @@ function recalculateDailySummary(date) {
 
       const amt = parseFloat(row[5]) || 0;
 
-      // Entries recorded ON this date
       if (rDate === date) {
-        if (type === 'CASH_ADVANCE') {
-          cashAdvance += amt;
-        } else if (type === 'CASH_OVER') {
-          totalCashOver += amt;
-        } else if (type === 'REPLENISHMENT') {
-          totalReplenishment += amt;
-        } else {
+        if (type === 'CASH_ADVANCE')    cashAdvance        += amt;
+        else if (type === 'CASH_OVER')  totalCashOver      += amt;
+        else if (type === 'REPLENISHMENT') totalReplenishment += amt;
+        else {
           totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
           else                  totalNoReceipt += amt;
@@ -457,12 +453,7 @@ function recalculateDailySummary(date) {
       }
 
       // Carried-forward unliquidated advances from BEFORE this date
-      // They still count against the expected balance until liquidated
-      if (
-        type === 'CASH_ADVANCE' &&
-        rDate < date &&
-        status !== 'LIQUIDATED'
-      ) {
+      if (type === 'CASH_ADVANCE' && rDate < date && status !== 'LIQUIDATED') {
         cashAdvance += amt;
       }
     }
@@ -473,36 +464,30 @@ function recalculateDailySummary(date) {
     for (let i = 1; i < denomData.length; i++) {
       if (normalizeDate(denomData[i][1]) !== date) continue;
       const type  = denomData[i][2];
-      const total = parseFloat(denomData[i][13]) || 0; // col 14 = Total (0-indexed: 13)
+      const total = parseFloat(denomData[i][13]) || 0;
       if (type === 'START') openingCash = total;
       if (type === 'END')   { closingCash = total; hasClosing = true; }
     }
 
-    const expected = (openingCash + totalReplenishment) - (totalExp + cashAdvance);
-    const variance = closingCash - expected;
-    // If day was FLAGGED and cashier re-submits closing count → back to PENDING_AUDIT
-    let existingStatus = '';
-    for (let i = 1; i < sumData.length; i++) {
-      if (normalizeDate(sumData[i][1]) === date) {
-        existingStatus = sumData[i][11] || '';
-        break;
-      }
-    }
-    const status = hasClosing
-      ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
-      : 'OPEN';
-
+    // ── FIX: declare sumSheet and sumData BEFORE reading existingStatus ──
     const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
     const sumData  = sumSheet.getDataRange().getValues();
-    let targetRow  = -1, existingClosedBy = '';
 
+    let existingStatus = '', targetRow = -1, existingClosedBy = '';
     for (let i = 1; i < sumData.length; i++) {
       if (normalizeDate(sumData[i][1]) === date) {
-        targetRow = i + 1;
+        existingStatus   = sumData[i][11] || '';
         existingClosedBy = sumData[i][12] || '';
+        targetRow = i + 1;
         break;
       }
     }
+
+    const expected = (openingCash + totalReplenishment) - (totalExp + cashAdvance);
+    const variance = closingCash - expected;
+    const status   = hasClosing
+      ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
+      : 'OPEN';
 
     const summaryRow = [
       openingCash, cashAdvance,
@@ -2214,4 +2199,8 @@ function getAuditorMetrics() {
   } catch(e) {
     return { success: false, message: e.toString() };
   }
+}
+
+function backfillMarch3() {
+  recalculateDailySummary('2026-03-03');
 }
