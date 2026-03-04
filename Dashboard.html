@@ -205,13 +205,19 @@
 
         </div>
 
-        <!-- Expandable Detail Panel -->
-        <div id="auditorDetailPanel" class="hidden bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-          <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-            <span class="text-sm font-bold text-gray-700" id="auditorDetailTitle">—</span>
-            <button onclick="closeAuditorCard()" class="text-xs text-gray-400 hover:text-gray-600 font-medium">✕ Close</button>
+        <!-- Auditor Panel Modal (triggered by card click) -->
+        <div id="auditorPanelModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div class="px-5 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
+              <span class="text-sm font-bold text-gray-700 uppercase tracking-wider" id="auditorDetailTitle">—</span>
+              <button onclick="closeAuditorCard()" class="text-gray-400 hover:text-gray-700 text-2xl font-light leading-none">&times;</button>
+            </div>
+            <div id="auditorDetailList" class="overflow-y-auto flex-1 divide-y divide-gray-100">
+            </div>
+            <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 text-[10px] text-gray-400 text-center">
+              Click any row to go directly to that day's audit review
+            </div>
           </div>
-          <div id="auditorDetailList" class="divide-y divide-gray-100 max-h-72 overflow-y-auto"></div>
         </div>
 
       </div>

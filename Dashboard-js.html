@@ -770,20 +770,20 @@ function renderAuditorMetricCards() {
 }
 
 function toggleAuditorCard(key) {
-  auditorActiveCard = auditorActiveCard === key ? null : key;
+  if (!auditorMetricsRaw) {
+    toast('Data still loading, please wait...', 'warning');
+    return;
+  }
+  auditorActiveCard = key;
   renderAuditorMetricCards();
-
-  const panel = document.getElementById('auditorDetailPanel');
-  if (!auditorActiveCard) { panel.classList.add('hidden'); return; }
-
-  panel.classList.remove('hidden');
   renderAuditorDetailPanel(key);
+  document.getElementById('auditorPanelModal')?.classList.remove('hidden');
 }
 
 function closeAuditorCard() {
   auditorActiveCard = null;
   renderAuditorMetricCards();
-  document.getElementById('auditorDetailPanel')?.classList.add('hidden');
+  document.getElementById('auditorPanelModal')?.classList.add('hidden');
 }
 
 function renderAuditorDetailPanel(key) {
