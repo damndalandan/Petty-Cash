@@ -135,17 +135,10 @@ function updateAuditVariance(actualCash) {
 
   if (actualCash === undefined) return;
 
-  // Verified entries = cash that has already been spent/disbursed.
-  // Physical box has less cash because those amounts were paid out.
-  // Adding verified totals back to physical count lets us check if it balances.
-  const verifiedTotal = Object.entries(auditEntryReviews)
-    .filter(([, r]) => r.status === 'verified')
-    .reduce((sum, [id]) => {
-      const entry = (state.entries || []).find(e => e.id === id);
-      return sum + (entry ? parseFloat(entry.amount || 0) : 0);
-    }, 0);
-
-  const variance = (actualCash + verifiedTotal) - expected;
+  // Variance = physical cash count vs expected closing balance.
+  // The expected value already accounts for all expenses/advances/replenishments
+  // as computed by the server, so verified entries must NOT be added here.
+  const variance = actualCash - expected;
 
   const varEl   = document.getElementById('auditVarianceDisplay');
   const alertEl = document.getElementById('auditVarianceAlert');
