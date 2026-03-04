@@ -2221,63 +2221,31 @@ function getAuditorMetrics() {
   }
 }
 
-function backfillMarch3() {
-  recalculateDailySummary('2026-03-03');
-}
+function getCategories() {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    let sheet   = ss.getSheetByName('PettyCash_Categories');
 
-function fixMissingCarryForward() {
-  const ss         = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sumSheet   = ss.getSheetByName(SHEETS.SUMMARY);
-  const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
-  const sumRows    = sumSheet.getDataRange().getValues();
-  const denomRows  = denomSheet.getDataRange().getValues();
-  const now        = new Date().toISOString();
-
-  // Loop all CLOSED days and carry forward if next day START is missing
-  for (let i = 1; i < sumRows.length; i++) {
-    const date   = normalizeDate(sumRows[i][1]);
-    const status = sumRows[i][11];
-    if (status !== 'CLOSED') continue;
-
-    const nextDate = getNextDate(date);
-
-    // Find END record for this date
-    let endRow = null;
-    for (let j = 1; j < denomRows.length; j++) {
-      if (normalizeDate(denomRows[j][1]) === date && denomRows[j][2] === 'END') {
-        endRow = denomRows[j];
-        break;
-      }
+    // Auto-create the sheet if it doesn't exist yet
+    if (!sheet) {
+      sheet = ss.insertSheet('PettyCash_Categories');
+      sheet.appendRow(['Category']);
+      sheet.getRange('A1').setFontWeight('bold');
+      const defaults = [
+        'Office Supplies','Transportation','Meals & Entertainment',
+        'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
+      ];
+      defaults.forEach(c => sheet.appendRow([c]));
     }
-    if (!endRow) continue;
 
-    // Check if next day START already exists
-    let nextDayStartExists = false;
-    for (let j = 1; j < denomRows.length; j++) {
-      if (normalizeDate(denomRows[j][1]) === nextDate && denomRows[j][2] === 'START') {
-        nextDayStartExists = true;
-        break;
-      }
+    const rows = sheet.getDataRange().getValues();
+    const categories = [];
+    for (let i = 1; i < rows.length; i++) {
+      const val = String(rows[i][0] || '').trim();
+      if (val) categories.push(val);
     }
-    if (nextDayStartExists) continue;
-
-    // Create the carry-forward START for next day
-    const endTotal = parseFloat(endRow[13]) || 0;
-    const newId    = 'DEN-OC-' + nextDate.replace(/-/g,'') + '-CF';
-
-    denomSheet.appendRow([
-      newId, nextDate, 'START',
-      endRow[3], endRow[4], endRow[5], endRow[6],
-      endRow[7], endRow[8], endRow[9], endRow[10],
-      endRow[11], endRow[12],
-      endTotal,
-      'Carried forward from ' + date + ' audit closing count (backfill)',
-      now
-    ]);
-
-    recalculateDailySummary(nextDate);
-    Logger.log('Carried forward: ' + date + ' → ' + nextDate + ' (₱' + endTotal + ')');
+    return { success: true, data: categories };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
   }
-
-  Logger.log('fixMissingCarryForward complete.');
 }

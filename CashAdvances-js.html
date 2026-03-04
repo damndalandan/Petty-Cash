@@ -144,7 +144,7 @@ function renderAdvances() {
 let liqEntries = [];
 let liqAdvanceAmount = 0;
 
-const LIQ_CATEGORIES = [
+const getLiqCategories = window.appCategories || [
   'Office Supplies','Transportation','Meals & Entertainment',
   'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
 ];
@@ -293,7 +293,7 @@ function renderLiqEntries() {
   }
 
   container.innerHTML = liqEntries.map((e, i) => {
-    const catOptions = LIQ_CATEGORIES.map(c =>
+    const catOptions = getLiqCategories().map(c =>
       `<option value="${c}" ${e.category === c ? 'selected' : ''}>${c}</option>`
     ).join('');
 

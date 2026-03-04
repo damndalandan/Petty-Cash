@@ -96,6 +96,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   applyRoleUI();
   buildDenomGrid();
   applyDenomCardVisibility();
+  loadCategories();
   loadDayData();
 
   updateReceiptIndicator();
@@ -134,6 +135,24 @@ function applyRoleUI() {
   const navDenom = document.getElementById('nav-denominations');
   if (navDenom && state.userRole === 'Auditor') navDenom.classList.add('hidden');
 } 
+
+async function loadCategories() {
+  const res = await callServer('getCategories');
+  const cats = (res.success && res.data && res.data.length) ? res.data : [
+    'Office Supplies','Transportation','Meals & Entertainment',
+    'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
+  ];
+
+  // Store globally for use in dynamic dropdowns (liquidation entries etc.)
+  window.appCategories = cats;
+
+  // Populate all static category dropdowns
+  ['entryCategory', 'editCategory'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+  });
+}
 
 function updateDateLabel() {
   const d     = new Date(state.currentDate + 'T00:00:00');
