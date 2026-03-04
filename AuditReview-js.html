@@ -35,6 +35,12 @@ async function loadAuditReviewPage() {
     // 1. Summary → needed for expected cash / variance
     if (summaryRes.success && summaryRes.data) {
       state.summary = summaryRes.data;
+      // Show opening cash in the Physical Cash Count card header
+      const openingEl = document.getElementById('auditOpeningCashHeader');
+      if (openingEl) {
+        const opening = parseFloat(summaryRes.data.openingCash || 0);
+        openingEl.textContent = fmt(opening);
+      }
     }
 
     // 2. Denomination END count → pre-fill the auditor's cash count grid
