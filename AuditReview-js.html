@@ -101,19 +101,26 @@ function updateAuditDenomTotal() {
   updateAuditVariance(total);
 }
 
+// ─────────────────────────────────────────────
+// FIX: Expected = opening - expenses (closing cash already computed by server).
+// Verified entries are physically accounted for as spent cash,
+// so we add them back to what's in the box to check balance.
+// ─────────────────────────────────────────────
 function updateAuditVariance(actualCash) {
-  const summary  = state.summary;
+  const summary = state.summary;
   if (!summary) return;
 
+  // Use server-computed closing cash as the expected amount.
+  // closing = opening + replenishment + cashOver - expenses - cashAdvance
+  // Fall back to formula only if closing hasn't been saved yet (day still OPEN).
+  const closing       = parseFloat(summary.closingCash        || 0);
   const opening       = parseFloat(summary.openingCash        || 0);
   const expenses      = parseFloat(summary.totalExpenses      || 0);
   const cashAdvance   = parseFloat(summary.cashAdvance        || 0);
   const replenishment = parseFloat(summary.totalReplenishment || 0);
   const cashOver      = parseFloat(summary.totalCashOver      || 0);
-  const closing       = parseFloat(summary.closingCash        || 0);
-  // Use the already-computed closing cash as expected (opening + replenish + cashOver - expenses - advances)
-  // Fall back to formula if closing hasn't been saved yet
-  const expected = closing > 0
+
+  const expected = (closing > 0)
     ? closing
     : (opening + replenishment + cashOver) - (expenses + cashAdvance);
 
@@ -122,13 +129,24 @@ function updateAuditVariance(actualCash) {
 
   if (actualCash === undefined) return;
 
-  const variance = actualCash - expected;
-  const varEl    = document.getElementById('auditVarianceDisplay');
-  const alertEl  = document.getElementById('auditVarianceAlert');
+  // Verified entries = cash that has already been spent/disbursed.
+  // Physical box has less cash because those amounts were paid out.
+  // Adding verified totals back to physical count lets us check if it balances.
+  const verifiedTotal = Object.entries(auditEntryReviews)
+    .filter(([, r]) => r.status === 'verified')
+    .reduce((sum, [id]) => {
+      const entry = (state.entries || []).find(e => e.id === id);
+      return sum + (entry ? parseFloat(entry.amount || 0) : 0);
+    }, 0);
+
+  const variance = (actualCash + verifiedTotal) - expected;
+
+  const varEl   = document.getElementById('auditVarianceDisplay');
+  const alertEl = document.getElementById('auditVarianceAlert');
 
   if (varEl) {
-    varEl.textContent  = (variance >= 0 ? '+' : '') + fmt(variance);
-    varEl.className    = 'font-mono text-xs font-bold ' + (
+    varEl.textContent = (variance >= 0 ? '+' : '') + fmt(variance);
+    varEl.className   = 'font-mono text-xs font-bold ' + (
       Math.abs(variance) < 0.01 ? 'text-green-600' :
       variance > 0 ? 'text-blue-600' : 'text-red-600'
     );
@@ -219,7 +237,7 @@ function markEntry(id, status) {
   auditEntryReviews[id] = auditEntryReviews[id] || { status: '', note: '' };
   auditEntryReviews[id].status = status;
 
-  // Update verified button
+  // Update button styles
   const verifiedBtn = document.getElementById('auditBtn-verified-' + id);
   const flaggedBtn  = document.getElementById('auditBtn-flagged-'  + id);
   const noteInput   = document.getElementById('auditNote-' + id);
@@ -242,6 +260,9 @@ function markEntry(id, status) {
     entryRow?.classList.add('bg-red-50');
     entryRow?.classList.remove('bg-green-50');
   }
+
+  // FIX: Recalculate variance live whenever an entry is verified/flagged
+  updateAuditDenomTotal();
 
   // Re-evaluate progress
   const entries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
@@ -280,11 +301,9 @@ function updateAuditProgress(entries) {
   }
 
   if (flagged > 0) {
-    // Has flagged entries — only Send Back is available
     if (approveBtn)  { approveBtn.disabled  = true; }
     if (sendBackBtn) { sendBackBtn.disabled = false; }
   } else {
-    // All verified — only Approve is available
     if (approveBtn)  { approveBtn.disabled  = false; }
     if (sendBackBtn) { sendBackBtn.disabled = true; }
   }
@@ -339,30 +358,40 @@ async function saveAuditDenomCount() {
 
 // ── Approve or Send Back ──
 async function confirmAuditDecision(decision) {
-  const note     = document.getElementById('auditDecisionNote')?.value?.trim() || '';
-  const entries  = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
-  const flagged  = entries.filter(e => auditEntryReviews[e.id]?.status === 'flagged');
+  const note    = document.getElementById('auditDecisionNote')?.value?.trim() || '';
+  const entries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  const flagged = entries.filter(e => auditEntryReviews[e.id]?.status === 'flagged');
 
-  // Variance check for overage — require note
-  const summary     = state.summary;
-  const opening     = parseFloat(summary?.openingCash        || 0);
-  const expenses    = parseFloat(summary?.totalExpenses      || 0);
-  const cashAdv     = parseFloat(summary?.cashAdvance        || 0);
-  const replenish   = parseFloat(summary?.totalReplenishment || 0);
-  const cashOver    = parseFloat(summary?.totalCashOver      || 0);
-  const expected    = (opening + replenish + cashOver) - (expenses + cashAdv);
+  const summary = state.summary;
+
+  // FIX: Use server-computed closing cash as expected
+  const closing    = parseFloat(summary?.closingCash        || 0);
+  const opening    = parseFloat(summary?.openingCash        || 0);
+  const expenses   = parseFloat(summary?.totalExpenses      || 0);
+  const cashAdv    = parseFloat(summary?.cashAdvance        || 0);
+  const replenish  = parseFloat(summary?.totalReplenishment || 0);
+  const cashOver   = parseFloat(summary?.totalCashOver      || 0);
+  const expected   = (closing > 0)
+    ? closing
+    : (opening + replenish + cashOver) - (expenses + cashAdv);
 
   let actualCash = 0;
   AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
-  const variance = actualCash - expected;
+
+  // Include verified entry totals in variance calculation
+  const verifiedTotal = Object.entries(auditEntryReviews)
+    .filter(([, r]) => r.status === 'verified')
+    .reduce((sum, [id]) => {
+      const entry = (state.entries || []).find(e => e.id === id);
+      return sum + (entry ? parseFloat(entry.amount || 0) : 0);
+    }, 0);
+
+  const variance = (actualCash + verifiedTotal) - expected;
 
   if (decision === 'approve') {
-    // Open the approval modal instead of using browser confirm
     openAuditApproveModal(variance, actualCash);
     return;
-
   } else {
-    // Send back — build flagged entry payload
     if (!confirm(`Send back to cashier with ${flagged.length} flagged entr${flagged.length > 1 ? 'ies' : 'y'}? The cashier will be notified to correct them.`)) return;
 
     const flaggedPayload = flagged.map(e => ({
@@ -371,8 +400,8 @@ async function confirmAuditDecision(decision) {
     }));
 
     const res = await callServer('flagDay', {
-      date         : state.currentDate,
-      note         : note,
+      date          : state.currentDate,
+      note          : note,
       flaggedEntries: flaggedPayload
     });
 
@@ -392,21 +421,22 @@ function openAuditApproveModal(variance, actualCash) {
   const flagged  = entries.filter(e => auditEntryReviews[e.id]?.status === 'flagged').length;
   const total    = entries.length;
 
-  const summary    = state.summary;
-  const opening    = parseFloat(summary?.openingCash        || 0);
-  const expenses   = parseFloat(summary?.totalExpenses      || 0);
-  const cashAdv    = parseFloat(summary?.cashAdvance        || 0);
-  const replenish  = parseFloat(summary?.totalReplenishment || 0);
-  const cashOver   = parseFloat(summary?.totalCashOver      || 0);
-  const closing    = parseFloat(summary?.closingCash || 0);
-  const expected   = closing > 0
+  const summary   = state.summary;
+
+  // FIX: Use server-computed closing cash as expected
+  const closing   = parseFloat(summary?.closingCash        || 0);
+  const opening   = parseFloat(summary?.openingCash        || 0);
+  const expenses  = parseFloat(summary?.totalExpenses      || 0);
+  const cashAdv   = parseFloat(summary?.cashAdvance        || 0);
+  const replenish = parseFloat(summary?.totalReplenishment || 0);
+  const cashOver  = parseFloat(summary?.totalCashOver      || 0);
+  const expected  = (closing > 0)
     ? closing
     : (opening + replenish + cashOver) - (expenses + cashAdv);
 
-  const isZero    = Math.abs(variance) < 0.01;
-  const isOver    = variance > 0.01;
-  const isShort   = variance < -0.01;
-  const fmtVar    = (variance >= 0 ? '+' : '') + fmt(variance);
+  const isZero = Math.abs(variance) < 0.01;
+  const isOver = variance > 0.01;
+  const fmtVar = (variance >= 0 ? '+' : '') + fmt(variance);
 
   // Date label
   const d = new Date(state.currentDate + 'T00:00:00');
@@ -440,11 +470,11 @@ function openAuditApproveModal(variance, actualCash) {
 
   // Carry forward notice
   const carryNotice = document.getElementById('auditCarryForwardNotice');
-  carryNotice.classList.toggle('hidden', !isZero || actualCash <= 0);
+  carryNotice?.classList.toggle('hidden', !isZero || actualCash <= 0);
 
   // Overage note field
   const overageBlock = document.getElementById('auditOverageNoteBlock');
-  overageBlock.classList.toggle('hidden', !isOver);
+  overageBlock?.classList.toggle('hidden', !isOver);
 
   // Clear fields
   document.getElementById('auditApproveNote').value = '';
@@ -477,33 +507,32 @@ async function executeAuditApprove() {
   // Require overage explanation
   if (isOver && !overNote) {
     toast('Please explain the cash overage before approving.', 'warning');
-    document.getElementById('auditApproveOverageNote')?.focus();
     return;
   }
 
-  const fullNote = [overNote, note].filter(Boolean).join(' | ');
+  const flaggedEntries = (state.entries || [])
+    .filter(e => auditEntryReviews[e.id]?.status === 'flagged')
+    .map(e => ({ id: e.id, note: auditEntryReviews[e.id]?.note || '' }));
 
-  // Carry forward only if zero variance and actual cash > 0
   const btn = document.getElementById('auditApproveConfirmBtn');
-  btn.disabled    = true;
-  btn.textContent = 'Approving...';
+  if (btn) { btn.disabled = true; btn.textContent = 'Approving...'; }
 
-  const res = await callServer('auditApproveDay', {
-    date : state.currentDate,
-    notes: fullNote
+  const res = await callServer('approveDay', {
+    date          : state.currentDate,
+    actualCash    : actualCash,
+    note          : note + (overNote ? ' | Overage note: ' + overNote : ''),
+    flaggedEntries: flaggedEntries
   });
 
-  btn.disabled  = false;
-  btn.innerHTML = '✅ Confirm Approve & Close';
+  if (btn) { btn.disabled = false; btn.textContent = '✅ Confirm Approval'; }
 
   if (res.success) {
     closeAuditApproveModal();
-    const cashMsg = actualCash > 0 ? ' — tomorrow\'s opening set to ' + fmt(actualCash) : '';
-    toast('Day approved and closed ✓' + cashMsg, 'success');
+    toast('Day approved and closed ✓', 'success');
     loadAuditReviewPage();
     loadDayData();
   } else {
-    toast(res.message || 'Failed to approve', 'error');
+    toast(res.message || 'Approval failed', 'error');
   }
 }
 </script>
