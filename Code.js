@@ -2249,3 +2249,56 @@ function getCategories() {
     return { success: false, message: e.toString(), data: [] };
   }
 }
+
+function syncReceiptsToFinalSheet() {
+  // SOURCE: Your database sheet
+  const SOURCE_SHEET_NAME = "PettyCash_Receipts";
+
+  // DESTINATION spreadsheet ID (from the URL)
+  const DEST_SPREADSHEET_ID = "1p7nptmZh-rJF4gjq1S9ntj4-EwCjtBsu_vTc17wahgw";
+  const DEST_SHEET_NAME = "March sample"; // ← Change this to your destination sheet's tab name
+
+  // Which columns to copy from source (by header name)
+  const COLUMNS_TO_COPY = [
+    "Date",
+    "Supplier_Name",
+    "Receipt_No",
+    "Gross_Amount",
+    "Vatable_Sales",
+    "VAT_Amount",
+    "Created_At"
+  ];
+
+  // Get source data
+  const srcSS = SpreadsheetApp.getActiveSpreadsheet();
+  const srcSheet = srcSS.getSheetByName(SOURCE_SHEET_NAME);
+  const srcData = srcSheet.getDataRange().getValues();
+  const headers = srcData[0];
+
+  // Map column names to indices
+  const colIndices = COLUMNS_TO_COPY.map(col => headers.indexOf(col));
+
+  // Get destination sheet
+  const destSS = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
+  const destSheet = destSS.getSheetByName(DEST_SHEET_NAME);
+
+  // Clear destination and rewrite all data (keeps it in sync)
+  destSheet.clearContents();
+
+  // Write header row
+  destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([COLUMNS_TO_COPY]);
+
+  // Write data rows
+  if (srcData.length > 1) {
+    const rows = srcData.slice(1).map(row => colIndices.map(i => row[i]));
+    destSheet.getRange(2, 1, rows.length, COLUMNS_TO_COPY.length).setValues(rows);
+  }
+}
+
+// This runs automatically when the spreadsheet is edited
+function onEdit(e) {
+  const sheet = e.source.getActiveSheet();
+  if (sheet.getName() === "PettyCash_Receipts") {
+    syncReceiptsToFinalSheet();
+  }
+}
