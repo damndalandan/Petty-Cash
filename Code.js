@@ -2251,54 +2251,70 @@ function getCategories() {
 }
 
 function syncReceiptsToFinalSheet() {
-  // SOURCE: Your database sheet
-  const SOURCE_SHEET_NAME = "PettyCash_Receipts";
-
-  // DESTINATION spreadsheet ID (from the URL)
+  const SOURCE_SHEET_NAME   = "PettyCash_Receipts";
   const DEST_SPREADSHEET_ID = "1p7nptmZh-rJF4gjq1S9ntj4-EwCjtBsu_vTc17wahgw";
-  const DEST_SHEET_NAME = "March sample"; // ← Change this to your destination sheet's tab name
+  const DEST_SHEET_NAME     = "March sample";
 
-  // Which columns to copy from source (by header name)
   const COLUMNS_TO_COPY = [
-    "Date",
-    "Supplier_Name",
-    "Receipt_No",
-    "Gross_Amount",
-    "Vatable_Sales",
-    "VAT_Amount",
-    "Created_At"
+    "Date", "Supplier_Name", "Address",
+    "TIN", "Receipt_No", "Gross_Amount",
+    "Vatable_Sales", "VAT_Amount"
   ];
 
-  // Get source data
-  const srcSS = SpreadsheetApp.getActiveSpreadsheet();
-  const srcSheet = srcSS.getSheetByName(SOURCE_SHEET_NAME);
-  const srcData = srcSheet.getDataRange().getValues();
-  const headers = srcData[0];
-
-  // Map column names to indices
+  const srcSheet   = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SOURCE_SHEET_NAME);
+  const srcData    = srcSheet.getDataRange().getValues();
+  const headers    = srcData[0];
   const colIndices = COLUMNS_TO_COPY.map(col => headers.indexOf(col));
 
-  // Get destination sheet
-  const destSS = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
+  // We still read Receipt_ID from source to use as a hidden tracking key
+  const srcRcpIdIdx = headers.indexOf("Receipt_ID");
+  const srcDateIdx  = headers.indexOf("Date");
+
+  const destSS    = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
   const destSheet = destSS.getSheetByName(DEST_SHEET_NAME);
+  const destData  = destSheet.getDataRange().getValues();
 
-  // Clear destination and rewrite all data (keeps it in sync)
-  destSheet.clearContents();
+  // Write header if destination is empty
+  if (destData.length === 0 || !destData[0][0]) {
+    destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([COLUMNS_TO_COPY]);
+  }
 
-  // Write header row
-  destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([COLUMNS_TO_COPY]);
+  // ── Build a set of already-synced Receipt_IDs stored in a hidden Notes column ──
+  // We store the Receipt_ID in the row's note (invisible to BIR, used for dedup)
+  const destRange     = destSheet.getDataRange();
+  const existingNotes = new Set();
 
-  // Write data rows
-  if (srcData.length > 1) {
-    const rows = srcData.slice(1).map(row => colIndices.map(i => row[i]));
-    destSheet.getRange(2, 1, rows.length, COLUMNS_TO_COPY.length).setValues(rows);
+  if (destSheet.getLastRow() > 1) {
+    const noteRange = destSheet.getRange(2, 1, destSheet.getLastRow() - 1, 1);
+    noteRange.getNotes().forEach(([note]) => {
+      if (note) existingNotes.add(note);
+    });
+  }
+
+  // ── Append only new rows ──
+  const newRows     = [];
+  const newRowIds   = []; // track Receipt_IDs for the notes we'll write
+
+  for (let i = 1; i < srcData.length; i++) {
+    const receiptId = srcData[i][srcRcpIdIdx];
+    if (!receiptId || existingNotes.has(receiptId)) continue;
+    newRows.push(colIndices.map(idx => srcData[i][idx]));
+    newRowIds.push(receiptId);
+  }
+
+  if (newRows.length > 0) {
+    const startRow = destSheet.getLastRow() + 1;
+    destSheet.getRange(startRow, 1, newRows.length, COLUMNS_TO_COPY.length).setValues(newRows);
+
+    // Store Receipt_ID as a hidden cell note on column A for dedup tracking
+    newRowIds.forEach((id, idx) => {
+      destSheet.getRange(startRow + idx, 1).setNote(id);
+    });
   }
 }
 
-// This runs automatically when the spreadsheet is edited
-function onEdit(e) {
-  const sheet = e.source.getActiveSheet();
-  if (sheet.getName() === "PettyCash_Receipts") {
+function onChange(e) {
+  if (e.changeType === "INSERT_ROW" || e.changeType === "EDIT") {
     syncReceiptsToFinalSheet();
   }
 }
