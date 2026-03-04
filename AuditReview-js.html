@@ -107,18 +107,10 @@ function updateAuditDenomTotal() {
   updateAuditVariance(total);
 }
 
-// ─────────────────────────────────────────────
-// FIX: Expected = opening - expenses (closing cash already computed by server).
-// Verified entries are physically accounted for as spent cash,
-// so we add them back to what's in the box to check balance.
-// ─────────────────────────────────────────────
 function updateAuditVariance(actualCash) {
   const summary = state.summary;
   if (!summary) return;
 
-  // Use server-computed closing cash as the expected amount.
-  // closing = opening + replenishment + cashOver - expenses - cashAdvance
-  // Fall back to formula only if closing hasn't been saved yet (day still OPEN).
   const closing       = parseFloat(summary.closingCash        || 0);
   const opening       = parseFloat(summary.openingCash        || 0);
   const expenses      = parseFloat(summary.totalExpenses      || 0);
@@ -135,10 +127,8 @@ function updateAuditVariance(actualCash) {
 
   if (actualCash === undefined) return;
 
-  // Variance = physical count vs expected closing cash.
-  // Expected already accounts for all expenses, so no need to add verified entries.
-  // As entries are verified, the auditor is confirming the cash was spent — 
-  // physical count should simply match expected when all is correct.
+  // Variance: physical count vs expected, adjusted for unverified entries.
+  // As entries get verified, unverifiedTotal shrinks → variance moves toward 0.
   const unverifiedTotal = Object.entries(auditEntryReviews)
     .filter(([, r]) => r.status !== 'verified')
     .reduce((sum, [id]) => {
@@ -268,7 +258,7 @@ function markEntry(id, status) {
     entryRow?.classList.remove('bg-green-50');
   }
 
-  // FIX: Recalculate variance live whenever an entry is verified/flagged
+  // Recalculate variance live whenever an entry is verified/flagged
   updateAuditDenomTotal();
 
   // Re-evaluate progress
@@ -371,7 +361,6 @@ async function confirmAuditDecision(decision) {
 
   const summary = state.summary;
 
-  // FIX: Use server-computed closing cash as expected
   const closing    = parseFloat(summary?.closingCash        || 0);
   const opening    = parseFloat(summary?.openingCash        || 0);
   const expenses   = parseFloat(summary?.totalExpenses      || 0);
@@ -385,15 +374,16 @@ async function confirmAuditDecision(decision) {
   let actualCash = 0;
   AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
 
-  // Include verified entry totals in variance calculation
-  const verifiedTotal = Object.entries(auditEntryReviews)
-    .filter(([, r]) => r.status === 'verified')
+  // Variance: physical count vs expected, adjusted for unverified entries.
+  // As entries get verified, unverifiedTotal shrinks → variance moves toward 0.
+  const unverifiedTotal = Object.entries(auditEntryReviews)
+    .filter(([, r]) => r.status !== 'verified')
     .reduce((sum, [id]) => {
       const entry = (state.entries || []).find(e => e.id === id);
       return sum + (entry ? parseFloat(entry.amount || 0) : 0);
     }, 0);
 
-  const variance = (actualCash + verifiedTotal) - expected;
+  const variance = actualCash - (expected - unverifiedTotal);
 
   if (decision === 'approve') {
     openAuditApproveModal(variance, actualCash);
@@ -430,7 +420,6 @@ function openAuditApproveModal(variance, actualCash) {
 
   const summary   = state.summary;
 
-  // FIX: Use server-computed closing cash as expected
   const closing   = parseFloat(summary?.closingCash        || 0);
   const opening   = parseFloat(summary?.openingCash        || 0);
   const expenses  = parseFloat(summary?.totalExpenses      || 0);
