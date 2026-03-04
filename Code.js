@@ -2225,14 +2225,6 @@ function backfillMarch3() {
   recalculateDailySummary('2026-03-03');
 }
 
-function backfillMarch3() {
-  recalculateDailySummary('2026-03-03');
-}
-
-function backfillMarch3() {
-  recalculateDailySummary('2026-03-03');
-}
-
 function fixMissingCarryForward() {
   const ss         = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sumSheet   = ss.getSheetByName(SHEETS.SUMMARY);
