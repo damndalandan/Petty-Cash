@@ -94,7 +94,11 @@ function renderReportsList(year, month) {
     if (summary || entryTotal > 0) {
       expText = 'Exp: ' + fmt(totalExp);
       if (summary) {
-        if (Math.abs(variance) > 1.00) {
+        if (summary.status === 'OPEN' || summary.status === 'PENDING_AUDIT') {
+          statusDot   = 'bg-amber-400';
+          statusText  = summary.status === 'PENDING_AUDIT' ? 'Pending' : 'Open';
+          statusClass = 'text-amber-500';
+        } else if (Math.abs(variance) > 1.00) {
           statusDot   = 'bg-red-500';
           statusText  = 'Variance';
           statusClass = 'text-red-500 font-bold';
