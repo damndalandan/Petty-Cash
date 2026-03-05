@@ -388,8 +388,10 @@
     const expenses = state.entries
       .filter(e => e.type === 'EXPENSE' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    // Only count advances issued TODAY — carried-forward advances are receivables,
+    // already deducted from the cash box on the day they were issued.
     const cashAdvance = state.entries
-      .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED')
+      .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward)
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
     const replenishment = state.entries
       .filter(e => e.type === 'REPLENISHMENT' && e.status !== 'DELETED')

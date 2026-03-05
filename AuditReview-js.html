@@ -114,9 +114,12 @@ function updateAuditVariance(actualCash) {
   const closing       = parseFloat(summary.closingCash        || 0);
   const opening       = parseFloat(summary.openingCash        || 0);
   const expenses      = parseFloat(summary.totalExpenses      || 0);
-  const cashAdvance   = parseFloat(summary.cashAdvance        || 0);
   const replenishment = parseFloat(summary.totalReplenishment || 0);
   const cashOver      = parseFloat(summary.totalCashOver      || 0);
+
+  // cashAdvance in summary only reflects advances issued ON this date (after Code.js fix).
+  // Carried-forward advances are receivables and must not affect the expected balance.
+  const cashAdvance   = parseFloat(summary.cashAdvance        || 0);
 
   const expected = (closing > 0)
     ? closing
@@ -364,6 +367,7 @@ async function confirmAuditDecision(decision) {
   const closing    = parseFloat(summary?.closingCash        || 0);
   const opening    = parseFloat(summary?.openingCash        || 0);
   const expenses   = parseFloat(summary?.totalExpenses      || 0);
+  // cashAdv from summary is now only same-day advances (carried-forward excluded by backend fix)
   const cashAdv    = parseFloat(summary?.cashAdvance        || 0);
   const replenish  = parseFloat(summary?.totalReplenishment || 0);
   const cashOver   = parseFloat(summary?.totalCashOver      || 0);
