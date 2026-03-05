@@ -1398,13 +1398,6 @@ function getNextDate(dateStr) {
   return d.toISOString().split('T')[0];
 }
 
-// Helper: get next calendar date string
-function getNextDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
-}
-
 function getPreviousDayClosing(date) {
   // Returns the closing total of the most recent day before `date` that is CLOSED
   try {
@@ -2336,5 +2329,31 @@ function syncReceiptsToFinalSheet() {
 function onChange(e) {
   if (e.changeType === "INSERT_ROW" || e.changeType === "EDIT") {
     syncReceiptsToFinalSheet();
+  }
+}
+
+// ─────────────────────────────────────────────
+// RECALCULATE ALL NON-CLOSED SUMMARIES
+// Run once after the carry-forward fix to correct stale variance data
+// ─────────────────────────────────────────────
+function recalculateAllOpenSummaries() {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet   = ss.getSheetByName(SHEETS.SUMMARY);
+    const rows    = sheet.getDataRange().getValues();
+    const dates   = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const status = rows[i][11] || '';
+      // Recalculate everything that is not CLOSED — catches OPEN, PENDING_AUDIT, FLAGGED
+      if (status !== 'CLOSED') {
+        dates.push(normalizeDate(rows[i][1]));
+      }
+    }
+
+    dates.forEach(d => recalculateDailySummary(d));
+    return { success: true, recalculated: dates.length, dates };
+  } catch(e) {
+    return { success: false, message: e.toString() };
   }
 }
