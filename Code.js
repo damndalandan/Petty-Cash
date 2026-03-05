@@ -451,11 +451,6 @@ function recalculateDailySummary(date) {
         }
         continue;
       }
-
-      // Carried-forward unliquidated advances from BEFORE this date
-      if (type === 'CASH_ADVANCE' && rDate < date && status !== 'LIQUIDATED') {
-        cashAdvance += amt;
-      }
     }
 
     const denomData = ss.getSheetByName(SHEETS.DENOMINATIONS).getDataRange().getValues();
@@ -1642,7 +1637,12 @@ function approveLiquidation(data) {
       sheet.getRange(row, 15).setValue(
         (rows[i][14] || '') + ' | [APPROVED BY ' + email + '] ' + (data.note || '')
       );
-      recalculateDailySummary(normalizeDate(rows[i][1]));
+      const advDate = normalizeDate(rows[i][1]);
+      recalculateDailySummary(advDate);
+
+      // Also recalculate today's summary since the outstanding receivable is now cleared
+      const todayDate = normalizeDate(new Date());
+      if (todayDate !== advDate) recalculateDailySummary(todayDate);
 
       writeAuditLog(
         'LIQUIDATION_APPROVED',
