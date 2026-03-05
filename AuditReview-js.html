@@ -517,6 +517,26 @@ async function executeAuditApprove() {
   const btn = document.getElementById('auditApproveConfirmBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Approving...'; }
 
+  // Always save the auditor's physical denom count before approving
+  // so the carry-forward to next day's opening is always reliable
+  const denomBreakdown = {};
+  let denomTotal = 0;
+  AUDIT_BILLS.forEach(bill => {
+    const qty = parseFloat(auditDenomValues[bill]) || 0;
+    if (qty > 0) denomBreakdown[bill] = qty;
+    denomTotal += qty * bill;
+  });
+  // Only save if auditor entered a count; skip if grid is empty (fallback handled server-side)
+  if (denomTotal > 0) {
+    await callServer('saveDenominationRecord', {
+      date     : state.currentDate,
+      type     : 'END',
+      breakdown: JSON.stringify(denomBreakdown),
+      total    : denomTotal,
+      notes    : 'Auto-saved on audit approval'
+    });
+  }
+
   const res = await callServer('auditApproveDay', {
     date          : state.currentDate,
     actualCash    : actualCash,

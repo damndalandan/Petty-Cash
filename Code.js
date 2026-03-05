@@ -1302,8 +1302,9 @@ function auditApproveDay(data) {
       }
     }
 
-    // Fallback: if no END denom record exists but actualCash was passed, create one now
-    if (!endRow && data.actualCash && parseFloat(data.actualCash) > 0) {
+    // Fallback: if no END denom record exists, create one from actualCash
+    // This always runs so next day opening is never left at ₱0
+    if (!endRow && data.actualCash !== undefined) {
       const fallbackId = 'DEN-END-' + data.date.replace(/-/g,'') + '-AU';
       denomSheet.appendRow([
         fallbackId, data.date, 'END',
@@ -1323,10 +1324,13 @@ function auditApproveDay(data) {
     }
 
     if (endRow) {
+      // Re-read fresh to include any fallback row just appended above
+      const freshDenomRows = denomSheet.getDataRange().getValues();
+
       // Check if next day START already exists — don't overwrite
       let nextDayStartExists = false;
-      for (let j = 1; j < denomRows.length; j++) {
-        if (normalizeDate(denomRows[j][1]) === nextDate && denomRows[j][2] === 'START') {
+      for (let j = 1; j < freshDenomRows.length; j++) {
+        if (normalizeDate(freshDenomRows[j][1]) === nextDate && freshDenomRows[j][2] === 'START') {
           nextDayStartExists = true;
           break;
         }
@@ -1356,6 +1360,22 @@ function auditApproveDay(data) {
         ]);
 
         recalculateDailySummary(nextDate);
+
+        // Also write a zero-balance summary row for next date so getDailySummary
+        // always returns a record (prevents dashboard showing ₱0 opening)
+        const nextSumSheet = ss.getSheetByName(SHEETS.SUMMARY);
+        const nextSumData  = nextSumSheet.getDataRange().getValues();
+        let nextSumExists  = false;
+        for (let k = 1; k < nextSumData.length; k++) {
+          if (normalizeDate(nextSumData[k][1]) === nextDate) { nextSumExists = true; break; }
+        }
+        if (!nextSumExists) {
+          const nextSumId = generateId('SUM', nextDate, nextSumSheet);
+          nextSumSheet.appendRow([
+            nextSumId, nextDate,
+            endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
+          ]);
+        }
 
         writeAuditLog(
           'OPENING_SAVED',
