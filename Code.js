@@ -2331,29 +2331,3 @@ function onChange(e) {
     syncReceiptsToFinalSheet();
   }
 }
-
-// ─────────────────────────────────────────────
-// RECALCULATE ALL NON-CLOSED SUMMARIES
-// Run once after the carry-forward fix to correct stale variance data
-// ─────────────────────────────────────────────
-function recalculateAllOpenSummaries() {
-  try {
-    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet   = ss.getSheetByName(SHEETS.SUMMARY);
-    const rows    = sheet.getDataRange().getValues();
-    const dates   = [];
-
-    for (let i = 1; i < rows.length; i++) {
-      const status = rows[i][11] || '';
-      // Recalculate everything that is not CLOSED — catches OPEN, PENDING_AUDIT, FLAGGED
-      if (status !== 'CLOSED') {
-        dates.push(normalizeDate(rows[i][1]));
-      }
-    }
-
-    dates.forEach(d => recalculateDailySummary(d));
-    return { success: true, recalculated: dates.length, dates };
-  } catch(e) {
-    return { success: false, message: e.toString() };
-  }
-}
