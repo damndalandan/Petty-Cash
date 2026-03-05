@@ -443,7 +443,8 @@
 
     const entriesListEl = document.getElementById('closingEntriesList');
     if (entriesListEl) {
-      const dayEntries = state.entries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
+      // Only show entries from today — exclude carried-forward advances from previous days
+      const dayEntries = state.entries.filter(e => e.status !== 'DELETED' && !e.carriedForward && e.date === state.currentDate);
       if (!dayEntries.length) {
         entriesListEl.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400 text-center italic">No entries for today</div>';
       } else {
