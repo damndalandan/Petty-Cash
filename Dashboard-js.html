@@ -102,16 +102,9 @@ function filterDiscrepancies() {
     
     const sexp = document.getElementById('stat-expected');
   if (sexp) {
-    // Only show expected when cashier has entered a closing count
-    const hasClosing = parseFloat(state.summary?.closingCash || 0) > 0;
-    if (hasClosing) {
-      sexp.textContent = fmt(expectedInfo);
-      if (expectedInfo < 0) sexp.classList.add('text-red-500');
-      else sexp.classList.remove('text-red-500');
-    } else {
-      sexp.textContent = '—';
-      sexp.classList.remove('text-red-500');
-    }
+    sexp.textContent = fmt(expectedInfo);
+    if (expectedInfo < 0) sexp.classList.add('text-red-500');
+    else sexp.classList.remove('text-red-500');
   }
     
     if (selMonth !== 'ALL') {
