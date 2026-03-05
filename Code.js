@@ -762,23 +762,24 @@ function getExpenseEntries(date) {
         );
 
         entries.push({
-        id              : row[0],
-        date            : rowDate,
-        type            : type,
-        category        : row[3],
-        description     : row[4],
-        amount          : row[5],
-        hasReceipt      : row[6] === 'YES',
-        referenceNo     : row[7],
-        requestedBy     : row[8],
-        approvedBy      : row[9],
-        status          : status,
-        createdAt       : row[11],
-        updatedAt       : row[12],
-        auditNote       : String(row[14] || '').replace('[AUDITOR FLAG] ', ''),
-        carriedForward  : false,
-        originalDate    : rowDate
-      });
+          id              : row[0],
+          date            : rowDate,
+          type            : type,
+          category        : row[3],
+          description     : row[4],
+          amount          : row[5],
+          hasReceipt      : row[6] === 'YES',
+          referenceNo     : row[7],
+          requestedBy     : row[8],
+          approvedBy      : row[9],
+          status          : status,
+          createdAt       : row[11],
+          updatedAt       : row[12],
+          auditNote       : String(row[14] || '').replace('[AUDITOR FLAG] ', ''),
+          carriedForward  : true,
+          daysOutstanding : daysOut,
+          originalDate    : rowDate
+        });
       }
     }
 
