@@ -109,7 +109,9 @@ function entryTypeBadge(type) {
   const map = {
     CASH_ADVANCE : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-blue-100 text-blue-800">ADVANCE</span>',
     CASH_OVER    : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-emerald-100 text-emerald-800">OVERAGE</span>',
-    REPLENISHMENT: '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800">REPLENISH</span>'
+    REPLENISHMENT: '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-purple-100 text-purple-800">REPLENISH</span>',
+    CASH_RETURN  : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-800">↩ RETURN</span>',
+    LIQ_DETAIL   : '<span class="inline-flex px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-700">LIQ</span>'
   };
   return map[type] || '';
 }
@@ -142,15 +144,13 @@ function renderEntries() {
     return;
   }
 
-  // Build sub-entries map: for each carried advance, find its liquidation expense entries
+  // Build sub-entries map: for each advance (carried or liquidated),
+  // find its LIQ_DETAIL entries linked by referenceNo
   const advanceSubEntries = {};
-  filtered.filter(e => e.carriedForward).forEach(adv => {
-    const advDate = adv.originalDate || adv.date;
+  state.entries.filter(e => e.type === 'CASH_ADVANCE').forEach(adv => {
     const subs = state.entries.filter(sub =>
-      sub.type === 'EXPENSE' &&
-      !sub.carriedForward &&
-      sub.date === advDate &&
-      sub.requestedBy === adv.requestedBy
+      sub.type === 'LIQ_DETAIL' &&
+      sub.referenceNo === adv.id
     );
     if (subs.length) advanceSubEntries[adv.id] = subs;
   });
@@ -158,16 +158,20 @@ function renderEntries() {
   const rows = [];
 
   filtered.forEach(e => {
-    const isSpecial = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
+    // LIQ_DETAIL entries are shown as sub-rows under their parent advance — skip as top-level
+    if (e.type === 'LIQ_DETAIL') return;
+
+    const isSpecial = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT','CASH_RETURN'].includes(e.type);
     const isCarried = !!e.carriedForward;
     const isFlagged = e.status === 'FLAGGED';
 
     const rowBg = isFlagged
       ? 'bg-red-50 border-l-4 border-red-400'
-      : isCarried              ? 'bg-orange-50/60'
+      : isCarried                   ? 'bg-orange-50/60'
       : e.type === 'CASH_OVER'      ? 'bg-emerald-50/40'
       : e.type === 'REPLENISHMENT'  ? 'bg-purple-50/40'
       : e.type === 'CASH_ADVANCE'   ? 'bg-blue-50/40'
+      : e.type === 'CASH_RETURN'    ? 'bg-teal-50/60'
       : '';
 
     const flaggedBadge = isFlagged
@@ -180,18 +184,27 @@ function renderEntries() {
           ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-gray-400 hover:text-gray-600 text-xs">+ Attach</button>'
           : '<span class="text-gray-300 text-xs">—</span>');
 
-    if (isCarried) {
+    if (isCarried || e.type === 'CASH_ADVANCE') {
       const subs       = advanceSubEntries[e.id] || [];
       const isExpanded = expandedAdvances.has(e.id);
       const subCount   = subs.length;
+      const isLiquidated = e.status === 'LIQUIDATED';
 
       const expandBtn = subCount > 0
-        ? '<button onclick="toggleAdvanceExpand(\'' + e.id + '\')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition">'
-            + (isExpanded ? '▼ Hide entries (' + subCount + ')' : '▶ Show entries (' + subCount + ')')
+        ? '<button onclick="toggleAdvanceExpand(\'' + e.id + '\')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 transition">'
+            + (isExpanded ? '▼ Hide breakdown (' + subCount + ')' : '▶ Show breakdown (' + subCount + ')')
           + '</button>'
         : '';
 
-      const actionCell = isCashier()
+      const statusBadge = isLiquidated
+        ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700">✅ Liquidated</span>'
+        : isCarried
+          ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
+          : '';
+
+      const nameColor = isLiquidated ? 'text-gray-600' : isCarried ? 'text-orange-800' : 'text-gray-800';
+
+      const actionCell = (isCashier() && isCarried && !isLiquidated)
         ? '<td class="px-4 py-3 text-right"><button onclick="liquidateFromEntries(\'' + e.id + '\')" class="px-2 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">Liquidate</button></td>'
         : '<td></td>';
 
@@ -200,8 +213,8 @@ function renderEntries() {
         + '<td class="px-4 py-3">'
           + '<div class="flex items-center gap-1 flex-wrap">'
             + entryTypeBadge(e.type)
-            + '<span class="text-sm font-bold text-orange-800">' + e.description + '</span>'
-            + '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
+            + '<span class="text-sm font-bold ' + nameColor + '">' + e.description + '</span>'
+            + statusBadge
             + expandBtn
           + '</div>'
           + '<div class="text-xs text-gray-400 mt-0.5">'
@@ -210,24 +223,24 @@ function renderEntries() {
             + ' &bull; Issued: ' + (e.originalDate || e.date)
           + '</div>'
         + '</td>'
-        + '<td class="px-4 py-3 text-right font-mono text-orange-700 font-bold">' + fmt(e.amount) + '</td>'
-        + '<td class="px-4 py-3 text-center">' + receiptCell + '</td>'
+        + '<td class="px-4 py-3 text-right font-mono ' + (isLiquidated ? 'text-gray-400 line-through' : 'text-orange-700 font-bold') + '">' + fmt(e.amount) + '</td>'
+        + '<td class="px-4 py-3 text-center">' + (isLiquidated ? '<span class="text-gray-300 text-xs">—</span>' : receiptCell) + '</td>'
         + actionCell
         + '</tr>'
       );
 
-      // Sub-entries shown when expanded
+      // LIQ_DETAIL sub-entries shown when expanded
       if (isExpanded && subCount > 0) {
         subs.forEach(sub => {
           const subReceipt = sub.hasReceipt
             ? '<button onclick="viewReceipt(\'' + sub.id + '\')" class="text-green-600 hover:text-green-800 text-xs font-bold">🧾 View</button>'
             : '<span class="text-gray-300 text-xs">—</span>';
           rows.push(
-            '<tr class="bg-blue-50/40 border-l-4 border-blue-200">'
+            '<tr class="bg-amber-50/60 border-l-4 border-amber-200">'
             + '<td class="pl-10 pr-4 py-2">'
               + '<div class="flex items-center gap-1">'
                 + '<span class="text-gray-300 text-xs mr-1">└</span>'
-                + '<span class="text-xs text-gray-700">' + sub.description + '</span>'
+                + '<span class="text-xs font-medium text-gray-700">' + sub.description + '</span>'
               + '</div>'
               + '<div class="text-[10px] text-gray-400 ml-4">' + (sub.category || '') + '</div>'
             + '</td>'

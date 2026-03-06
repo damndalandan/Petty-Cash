@@ -750,17 +750,53 @@ function getExpenseEntries(date) {
         continue;
       }
 
-      // Carry forward unliquidated cash advances from BEFORE this date
+      // Include LIQUIDATION_PENDING advances from BEFORE this date
+      // so auditor sees them in the Audit Review entry list
+      if (
+        type === 'CASH_ADVANCE' &&
+        rowDate < date &&
+        status === 'LIQUIDATION_PENDING'
+      ) {
+        let liqBreakdown   = null;
+        const notesCol     = row[14] || '';
+        try {
+          const jsonStart  = notesCol.indexOf('{');
+          if (jsonStart !== -1) liqBreakdown = JSON.parse(notesCol.substring(jsonStart));
+        } catch(e) { liqBreakdown = null; }
+
+        entries.push({
+          id             : row[0],
+          date           : rowDate,
+          type           : type,
+          category       : row[3],
+          description    : row[4],
+          amount         : row[5],
+          hasReceipt     : row[6] === 'YES',
+          referenceNo    : row[7],
+          requestedBy    : row[8],
+          approvedBy     : row[9],
+          status         : status,
+          createdAt      : row[11],
+          updatedAt      : row[12],
+          carriedForward : false,
+          originalDate   : rowDate,
+          liqBreakdown   : liqBreakdown
+        });
+        continue;
+      }
+
+      // Carry forward unliquidated ACTIVE advances from BEFORE this date
+      // LIQUIDATION_PENDING excluded — handled above
       if (
         type === 'CASH_ADVANCE' &&
         rowDate < date &&
         status !== 'LIQUIDATED' &&
-        status !== 'DELETED'
+        status !== 'DELETED' &&
+        status !== 'LIQUIDATION_PENDING'
       ) {
-        const issuedDate  = rowDate;
-        const msPerDay    = 1000 * 60 * 60 * 24;
-        const daysOut     = Math.floor(
-          (new Date(date) - new Date(issuedDate)) / msPerDay
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const daysOut  = Math.floor(
+          (new Date(date) - new Date(rowDate)) / msPerDay
         );
 
         entries.push({

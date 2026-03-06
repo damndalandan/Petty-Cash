@@ -90,10 +90,50 @@ function renderAdvances() {
           : `<span class="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">${a.daysOutstanding} day${a.daysOutstanding !== 1 ? 's' : ''}</span>`;
 
     const pendingBadge = a.status === 'LIQUIDATION_PENDING'
-      ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 ml-2">Pending Review</span>'
+      ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 ml-2">⏳ Pending Audit Review</span>'
       : '';
 
-    // Action buttons based on role and status
+    // Breakdown preview for LIQUIDATION_PENDING and LIQUIDATED
+    let breakdownHtml = '';
+    if ((a.status === 'LIQUIDATION_PENDING' || a.status === 'LIQUIDATED') && a.liqBreakdown) {
+      const bd       = a.liqBreakdown;
+      const subItems = bd.entries || [];
+      const toggleId = 'liqBreakdown-' + a.id;
+
+      const subRows = subItems.map(sub =>
+        `<div class="flex justify-between text-xs py-0.5 gap-2">
+          <span class="text-gray-600 flex items-center gap-1">
+            <span class="text-gray-300">└</span>
+            ${sub.desc || '—'}
+            <span class="text-gray-400">(${sub.category || ''})</span>
+            ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+          </span>
+          <span class="font-mono text-gray-700 shrink-0">${fmt(parseFloat(sub.amount) || 0)}</span>
+        </div>`
+      ).join('');
+
+      const changeRow = bd.change > 0.005
+        ? `<div class="flex justify-between text-xs pt-1 border-t border-amber-200 mt-1 font-bold">
+             <span class="text-amber-700">↩ Change to Return</span>
+             <span class="font-mono text-amber-700">${fmt(bd.change)}</span>
+           </div>`
+        : `<div class="text-xs text-green-600 pt-1 border-t border-green-200 mt-1 font-medium">✓ Fully spent</div>`;
+
+      breakdownHtml = `
+        <div class="mt-2">
+          <button onclick="document.getElementById('${toggleId}').classList.toggle('hidden')"
+            class="text-[10px] font-bold text-blue-600 hover:text-blue-800 transition">
+            ▼ View Breakdown (${subItems.length} item${subItems.length !== 1 ? 's' : ''})
+          </button>
+          <div id="${toggleId}" class="hidden mt-1 bg-amber-50 border border-amber-200 rounded-lg p-2 space-y-0.5">
+            ${subRows || '<div class="text-xs text-gray-400 italic">No items recorded</div>'}
+            ${changeRow}
+            ${bd.note ? `<div class="text-[10px] text-gray-400 italic mt-1">Note: ${bd.note}</div>` : ''}
+          </div>
+        </div>`;
+    }
+
+    // Action buttons — cashier submit only, no auditor approve/reject here anymore
     let actions = '';
     if (a.status === 'ACTIVE' && isCashier()) {
       actions = `
@@ -102,16 +142,8 @@ function renderAdvances() {
           Submit Liquidation
         </button>`;
     }
-    if (a.status === 'LIQUIDATION_PENDING' && isAuditor()) {
-      actions = `
-        <button onclick="openLiquidationModal('${a.id}', 'approve')"
-          class="px-3 py-1.5 text-xs font-bold bg-green-600 hover:bg-green-700 text-white rounded-lg shadow transition">
-          ✓ Approve
-        </button>
-        <button onclick="openLiquidationModal('${a.id}', 'reject')"
-          class="px-3 py-1.5 text-xs font-bold bg-red-500 hover:bg-red-600 text-white rounded-lg shadow transition">
-          ✕ Reject
-        </button>`;
+    if (a.status === 'LIQUIDATION_PENDING') {
+      actions = `<span class="text-xs text-amber-600 font-medium italic">Awaiting audit review</span>`;
     }
 
     return `
@@ -129,7 +161,7 @@ function renderAdvances() {
               &nbsp;·&nbsp;
               📅 Issued: <span class="font-mono">${a.date}</span>
             </div>
-            ${a.liquidationNote ? `<div class="text-xs text-gray-400 mt-1 italic">${a.liquidationNote}</div>` : ''}
+            ${breakdownHtml}
           </div>
           <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
             <div class="text-right">
@@ -345,38 +377,35 @@ async function confirmLiquidationAction() {
   const noteEls = document.querySelectorAll('#liqNote');
   const note    = Array.from(noteEls).find(el => el.offsetParent !== null)?.value.trim() || '';
 
-  if (action === 'submit') {
-    const valid = liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0);
-    if (!valid.length) { toast('Add at least one entry with a description and amount', 'warning'); return; }
-  } else {
-    if (!note) { toast('Please provide a note', 'warning'); return; }
+  // Only 'submit' is valid now — approve/reject moved to Audit Review page
+  if (action !== 'submit') {
+    toast('This action is no longer supported here.', 'warning');
+    return;
   }
+
+  const valid = liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0);
+  if (!valid.length) { toast('Add at least one entry with a description and amount', 'warning'); return; }
 
   const btn = document.getElementById('liqConfirmBtn');
   btn.disabled = true; btn.textContent = 'Saving...';
 
-  const fnMap = { submit: 'submitLiquidation', approve: 'approveLiquidation', reject: 'rejectLiquidation' };
-
   const payload = {
     id,
     note,
-    entries: action === 'submit'
-      ? liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0).map(e => ({
-          category  : e.category,
-          desc      : e.desc,
-          amount    : parseFloat(e.amount),
-          hasReceipt: !!e.receipt,
-          receipt   : e.receipt || null
-        }))
-      : []
+    entries: valid.map(e => ({
+      category  : e.category,
+      desc      : e.desc,
+      amount    : parseFloat(e.amount),
+      hasReceipt: !!e.receipt,
+      receipt   : e.receipt || null
+    }))
   };
 
-  const res = await callServer(fnMap[action], payload);
+  const res = await callServer('submitLiquidation', payload);
   btn.disabled = false; btn.textContent = 'Confirm';
 
   if (res.success) {
-    const msgs = { submit: 'Liquidation submitted ✓', approve: 'Advance liquidated ✓', reject: 'Sent back to outstanding' };
-    toast(msgs[action], 'success');
+    toast('Liquidation submitted ✓ — pending audit review', 'success');
     closeLiquidationModal();
     loadAdvances();
   } else {
