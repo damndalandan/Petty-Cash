@@ -30,7 +30,7 @@ async function loadAdvances() {
 function updateAdvancesBadge(outstanding) {
   const badge = document.getElementById('advances-badge');
   if (!badge) return;
-  const count = outstanding.filter(a => a.status === 'ACTIVE').length;
+  const count = outstanding.filter(a => a.status === 'ACTIVE' || a.status === 'LIQUIDATION_PENDING').length;
   if (count > 0) {
     badge.textContent = count;
     badge.classList.remove('hidden');
@@ -41,7 +41,7 @@ function updateAdvancesBadge(outstanding) {
 
 function switchAdvanceTab(tab) {
   currentAdvTab = tab;
-  ['outstanding','pending','liquidated'].forEach(t => {
+  ['outstanding','liquidated'].forEach(t => {
     const btn = document.getElementById('adv-tab-' + t);
     if (!btn) return;
     if (t === tab) {
@@ -58,8 +58,7 @@ function renderAdvances() {
   if (!listEl) return;
 
   let filtered = allAdvances.filter(a => {
-    if (currentAdvTab === 'outstanding') return a.status === 'ACTIVE';
-    if (currentAdvTab === 'pending')     return a.status === 'LIQUIDATION_PENDING';
+    if (currentAdvTab === 'outstanding') return a.status === 'ACTIVE' || a.status === 'LIQUIDATION_PENDING';
     if (currentAdvTab === 'liquidated')  return a.status === 'LIQUIDATED';
     return true;
   });
@@ -67,7 +66,6 @@ function renderAdvances() {
   if (!filtered.length) {
     const msgs = {
       outstanding: '🎉 No outstanding cash advances!',
-      pending    : 'No advances pending review.',
       liquidated : 'No liquidated advances yet.'
     };
     listEl.innerHTML = `<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 text-sm">${msgs[currentAdvTab]}</div>`;
