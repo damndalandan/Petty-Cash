@@ -146,10 +146,12 @@ function renderAdvances() {
 let liqEntries = [];
 let liqAdvanceAmount = 0;
 
-const getLiqCategories = window.appCategories || [
-  'Office Supplies','Transportation','Meals & Entertainment',
-  'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
-];
+function getLiqCategories() {
+  return window.appCategories || [
+    'Office Supplies','Transportation','Meals & Entertainment',
+    'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
+  ];
+}
 
 function openLiquidationModal(id, action) {
   let advance = allAdvances.find(a => a.id === id);
