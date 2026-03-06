@@ -1407,23 +1407,28 @@ function auditApproveDay(data) {
           now             // Timestamp
         ]);
 
-        recalculateDailySummary(nextDate);
-
-        // Also write a zero-balance summary row for next date so getDailySummary
-        // always returns a record (prevents dashboard showing ₱0 opening)
+        // Write or update the next day's summary row with the correct openingCash
+        // IMPORTANT: must happen BEFORE recalculateDailySummary so it has a row to update
         const nextSumSheet = ss.getSheetByName(SHEETS.SUMMARY);
         const nextSumData  = nextSumSheet.getDataRange().getValues();
-        let nextSumExists  = false;
+        let nextSumRowIdx  = -1;
         for (let k = 1; k < nextSumData.length; k++) {
-          if (normalizeDate(nextSumData[k][1]) === nextDate) { nextSumExists = true; break; }
+          if (normalizeDate(nextSumData[k][1]) === nextDate) { nextSumRowIdx = k + 1; break; }
         }
-        if (!nextSumExists) {
+        if (nextSumRowIdx === -1) {
+          // No row yet — create one
           const nextSumId = generateId('SUM', nextDate, nextSumSheet);
           nextSumSheet.appendRow([
             nextSumId, nextDate,
             endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
           ]);
+        } else {
+          // Row exists but openingCash may be 0 — force-update it
+          nextSumSheet.getRange(nextSumRowIdx, 3).setValue(endTotal);
         }
+
+        // Now recalculate — opening is already correct in the sheet
+        recalculateDailySummary(nextDate);
 
         writeAuditLog(
           'OPENING_SAVED',
