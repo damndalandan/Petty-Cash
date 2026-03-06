@@ -241,16 +241,29 @@ function resetReportDetailView() {
   });
 }
 
+// Track expanded advances in report view
+const reportExpandedAdvances = new Set();
+
+function toggleReportAdvance(id) {
+  if (reportExpandedAdvances.has(id)) reportExpandedAdvances.delete(id);
+  else reportExpandedAdvances.add(id);
+  renderDetailList();
+}
+
 function renderDetailList() {
   if (!selectedReportDate) return;
 
-  let entries = (currentReportMonthData.entries || []).filter(e => e.date === selectedReportDate);
+  const allEntries = (currentReportMonthData.entries || []);
+  let entries = allEntries.filter(e => e.date === selectedReportDate);
 
   if (currentDetailFilter === 'receipt')    entries = entries.filter(e => e.hasReceipt && e.type === 'EXPENSE');
   if (currentDetailFilter === 'noreceipt')  entries = entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
   if (currentDetailFilter === 'advance')    entries = entries.filter(e => e.type === 'CASH_ADVANCE');
   if (currentDetailFilter === 'over')       entries = entries.filter(e => e.type === 'CASH_OVER');
   if (currentDetailFilter === 'replenish')  entries = entries.filter(e => e.type === 'REPLENISHMENT');
+
+  // Skip LIQ_DETAIL as top-level — shown as sub-rows under advances
+  entries = entries.filter(e => e.type !== 'LIQ_DETAIL');
 
   const tbody = document.getElementById('detailListBody');
   if (entries.length === 0) {
@@ -259,35 +272,124 @@ function renderDetailList() {
     return;
   }
 
+  // Build LIQ_DETAIL sub-entries map (finalized) by referenceNo
+  const liqDetailMap = {};
+  allEntries.filter(e => e.type === 'LIQ_DETAIL').forEach(sub => {
+    if (!liqDetailMap[sub.referenceNo]) liqDetailMap[sub.referenceNo] = [];
+    liqDetailMap[sub.referenceNo].push(sub);
+  });
+
   let total = 0;
-  tbody.innerHTML = entries.map(e => {
+  const rows = [];
+
+  entries.forEach(e => {
     if (['EXPENSE','CASH_OVER','REPLENISHMENT','CASH_ADVANCE'].includes(e.type)) {
       total += (parseFloat(e.amount) || 0);
     }
 
-    let receiptHtml;
-    if (e.type === 'CASH_ADVANCE')
-      receiptHtml = '<span class="text-blue-600 text-xs font-bold bg-blue-100 px-2 py-1 rounded">ADVANCE</span>';
-    else if (e.type === 'CASH_OVER')
-      receiptHtml = '<span class="text-emerald-600 text-xs font-bold bg-emerald-100 px-2 py-1 rounded">OVERAGE</span>';
-    else if (e.type === 'REPLENISHMENT')
-      receiptHtml = '<span class="text-purple-600 text-xs font-bold bg-purple-100 px-2 py-1 rounded">REPLENISH</span>';
-    else
-      receiptHtml = e.hasReceipt
+    const isAdvance = e.type === 'CASH_ADVANCE';
+    const isLiquidated = isAdvance && e.status === 'LIQUIDATED';
+    const isLiqPending = isAdvance && e.status === 'LIQUIDATION_PENDING';
+
+    // Finalized sub-entries (LIQ_DETAIL rows)
+    const liqSubs = liqDetailMap[e.id] || [];
+
+    // Pending breakdown from notes JSON
+    const pendingBreakdown = (isLiqPending && e.liqBreakdown) ? (e.liqBreakdown.entries || []) : [];
+
+    const hasBreakdown = liqSubs.length > 0 || pendingBreakdown.length > 0;
+    const isExpanded = reportExpandedAdvances.has(e.id);
+
+    let typeBadge;
+    if (isAdvance) {
+      if (isLiquidated)
+        typeBadge = '<span class="text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">✅ LIQUIDATED</span>';
+      else if (isLiqPending)
+        typeBadge = '<span class="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">⏳ PENDING</span>';
+      else
+        typeBadge = '<span class="text-blue-600 text-xs font-bold bg-blue-100 px-2 py-1 rounded">ADVANCE</span>';
+    } else if (e.type === 'CASH_OVER') {
+      typeBadge = '<span class="text-emerald-600 text-xs font-bold bg-emerald-100 px-2 py-1 rounded">OVERAGE</span>';
+    } else if (e.type === 'REPLENISHMENT') {
+      typeBadge = '<span class="text-purple-600 text-xs font-bold bg-purple-100 px-2 py-1 rounded">REPLENISH</span>';
+    } else {
+      typeBadge = e.hasReceipt
         ? '<span class="text-green-600 text-xs font-bold bg-green-100 px-2 py-1 rounded">YES</span>'
         : '<span class="text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded">NO</span>';
+    }
 
-    return `
-      <tr class="hover:bg-gray-50">
+    const expandBtn = hasBreakdown
+      ? `<button onclick="toggleReportAdvance('${e.id}')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition">
+           ${isExpanded ? '▼ Hide' : '▶ Breakdown'} (${liqSubs.length || pendingBreakdown.length})
+         </button>`
+      : '';
+
+    const amountClass = isLiquidated ? 'text-gray-400 line-through' : 'text-gray-700';
+
+    rows.push(`
+      <tr class="hover:bg-gray-50 ${isAdvance ? 'bg-blue-50/30' : ''}">
         <td class="px-6 py-3">
-          <div class="font-medium text-gray-900">${e.description}</div>
-          <div class="text-xs text-gray-500">${e.category || e.type}</div>
+          <div class="font-medium text-gray-900 flex items-center flex-wrap gap-1">
+            ${e.description}
+            ${expandBtn}
+          </div>
+          <div class="text-xs text-gray-500 mt-0.5">${e.category || e.type}${e.requestedBy ? ' · ' + e.requestedBy : ''}</div>
+          ${isLiquidated && e.liqBreakdown ? `<div class="text-xs text-green-600 mt-0.5 font-medium">Spent: ${fmt(e.liqBreakdown.totalSpent || 0)}${(e.liqBreakdown.change > 0.005) ? ' · Change: ' + fmt(e.liqBreakdown.change) : ' · Fully spent'}</div>` : ''}
         </td>
-        <td class="px-6 py-3 text-right font-mono text-gray-700">${fmt(e.amount)}</td>
-        <td class="px-6 py-3 text-center">${receiptHtml}</td>
-      </tr>`;
-  }).join('');
+        <td class="px-6 py-3 text-right font-mono ${amountClass}">${fmt(e.amount)}</td>
+        <td class="px-6 py-3 text-center">${typeBadge}</td>
+      </tr>`);
 
+    // Sub-rows when expanded
+    if (isExpanded) {
+      // Finalized LIQ_DETAIL sub-entries
+      liqSubs.forEach(sub => {
+        rows.push(`
+          <tr class="bg-green-50/50 border-l-4 border-green-300">
+            <td class="pl-12 pr-6 py-2">
+              <div class="flex items-center gap-1 text-xs text-gray-700">
+                <span class="text-gray-300">└</span>
+                <span class="font-medium">${sub.description}</span>
+                <span class="text-gray-400">(${sub.category || ''})</span>
+                ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+              </div>
+            </td>
+            <td class="px-6 py-2 text-right font-mono text-xs text-gray-600">${fmt(sub.amount)}</td>
+            <td class="px-6 py-2 text-center"><span class="text-[10px] text-green-600 font-bold">LIQ</span></td>
+          </tr>`);
+      });
+
+      // Pending breakdown sub-entries
+      pendingBreakdown.forEach(sub => {
+        rows.push(`
+          <tr class="bg-amber-50/50 border-l-4 border-amber-300">
+            <td class="pl-12 pr-6 py-2">
+              <div class="flex items-center gap-1 text-xs text-gray-700">
+                <span class="text-gray-300">└</span>
+                <span class="font-medium">${sub.desc || '—'}</span>
+                <span class="text-gray-400">(${sub.category || ''})</span>
+                ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+              </div>
+            </td>
+            <td class="px-6 py-2 text-right font-mono text-xs text-gray-600">${fmt(parseFloat(sub.amount) || 0)}</td>
+            <td class="px-6 py-2 text-center"><span class="text-[10px] text-amber-600 font-bold">PENDING</span></td>
+          </tr>`);
+      });
+
+      // Change to return row
+      const bd = e.liqBreakdown;
+      if (bd && bd.change > 0.005) {
+        rows.push(`
+          <tr class="bg-amber-50/50 border-l-4 border-amber-300">
+            <td class="pl-12 pr-6 py-2 text-xs font-bold text-amber-700">↩ Change to Return</td>
+            <td class="px-6 py-2 text-right font-mono text-xs font-bold text-amber-700">${fmt(bd.change)}</td>
+            <td></td>
+          </tr>`);
+      }
+    }
+  });
+
+  tbody.innerHTML = rows.join('');
   document.getElementById('detailDisplayedTotal').textContent = fmt(total);
 }
 </script>

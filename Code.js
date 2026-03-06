@@ -441,7 +441,13 @@ function recalculateDailySummary(date) {
       const amt = parseFloat(row[5]) || 0;
 
       if (rDate === date) {
-        if (type === 'CASH_ADVANCE')       cashAdvance        += amt;
+        if (type === 'CASH_ADVANCE') {
+          // Only count as cash-out if still ACTIVE (money is out, unaccounted).
+          // LIQUIDATION_PENDING = cashier submitted breakdown but auditor hasn't closed yet —
+          // still treat as outstanding so expected cash isn't reduced prematurely.
+          // LIQUIDATED = finalized by auditor, LIQ_DETAIL entries handle the actual expense amounts.
+          if (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING') cashAdvance += amt;
+        }
         else if (type === 'CASH_OVER')     totalCashOver      += amt;
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
         else if (type === 'CASH_RETURN')   totalReplenishment += amt; // change return adds back to cash like replenishment
