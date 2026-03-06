@@ -19,7 +19,9 @@ async function loadAdvances() {
 
   // Include liquidated ones too for the liquidated tab — fetch all
   const allRes = await callServer('getAllCashAdvances');
-  allAdvances = allRes.success ? allRes.data : res.data;
+  allAdvances = (allRes.success && allRes.data && allRes.data.length)
+    ? allRes.data
+    : res.data;
 
   updateAdvancesBadge(res.data);
   renderAdvances();
@@ -150,8 +152,13 @@ const getLiqCategories = window.appCategories || [
 ];
 
 function openLiquidationModal(id, action) {
-  const advance = allAdvances.find(a => a.id === id);
-  if (!advance) return;
+  let advance = allAdvances.find(a => a.id === id);
+  if (!advance) {
+    // allAdvances may not be populated yet — reload and retry
+    toast('Loading advance data, please try again in a moment.', 'warning');
+    loadAdvances();
+    return;
+  }
 
   liqEntries = [];
   liqAdvanceAmount = parseFloat(advance.amount) || 0;
