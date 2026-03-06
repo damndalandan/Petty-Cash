@@ -332,32 +332,42 @@ async function deleteEntry(id) {
 }
 
 async function liquidateFromEntries(id) {
-  // Build the advance object from state.entries (already loaded) so we don't
-  // depend on allAdvances being populated from the Cash Advances page
   const entry = state.entries.find(e => e.id === id);
   if (!entry) { toast('Advance not found', 'error'); return; }
 
-  // Inject into allAdvances so openLiquidationModal can find it
-  if (typeof allAdvances === 'undefined') window.allAdvances = [];
-  const existing = allAdvances.find(a => a.id === id);
-  if (!existing) {
-    const today = state.currentDate;
-    const issued = entry.originalDate || entry.date;
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const daysOut = Math.floor((new Date(today) - new Date(issued)) / msPerDay);
-    allAdvances.push({
-      id             : entry.id,
-      date           : issued,
-      description    : entry.description,
-      amount         : entry.amount,
-      requestedBy    : entry.requestedBy,
-      status         : 'ACTIVE',
-      daysOutstanding: daysOut,
-      liquidationNote: ''
-    });
-  }
+  // Navigate to Cash Advances page first (where the modal DOM lives),
+  // then wait for allAdvances to load, then open the modal
+  navigate('advances');
 
-  openLiquidationModal(id, 'submit');
+  let attempts = 0;
+  const waitAndOpen = setInterval(() => {
+    attempts++;
+    const found = (typeof allAdvances !== 'undefined') && allAdvances.find(a => a.id === id);
+    if (found) {
+      clearInterval(waitAndOpen);
+      openLiquidationModal(id, 'submit');
+    } else if (attempts > 20) {
+      // Fallback: inject manually if server didn't return it
+      clearInterval(waitAndOpen);
+      if (typeof allAdvances === 'undefined') window.allAdvances = [];
+      if (!allAdvances.find(a => a.id === id)) {
+        const issued   = entry.originalDate || entry.date;
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const daysOut  = Math.floor((new Date(state.currentDate) - new Date(issued)) / msPerDay);
+        allAdvances.push({
+          id             : entry.id,
+          date           : issued,
+          description    : entry.description,
+          amount         : entry.amount,
+          requestedBy    : entry.requestedBy,
+          status         : 'ACTIVE',
+          daysOutstanding: daysOut,
+          liquidationNote: ''
+        });
+      }
+      openLiquidationModal(id, 'submit');
+    }
+  }, 150);
 }
 
 async function viewReceipt(entryId) {
