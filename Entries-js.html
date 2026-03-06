@@ -157,12 +157,16 @@ function renderEntries() {
           ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-gray-400 hover:text-gray-600 text-xs">+ Attach</button>'
           : '<span class="text-gray-300 text-xs">—</span>');
 
-    const actionCell = isCashier() && !isCarried
-      ? '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
-          + '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-sm mr-2" title="Edit">✏️</button>'
-          + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-400 hover:text-red-600 text-sm" title="Delete">🗑️</button>'
+    const actionCell = isCarried && isCashier()
+      ? '<td class="px-4 py-3 text-right">'
+          + '<button onclick="liquidateFromEntries(\'' + e.id + '\')" class="px-2 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">Liquidate</button>'
         + '</td>'
-      : '<td></td>';
+      : isCashier() && !isCarried
+        ? '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
+            + '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-sm mr-2" title="Edit">✏️</button>'
+            + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-400 hover:text-red-600 text-sm" title="Delete">🗑️</button>'
+          + '</td>'
+        : '<td></td>';
 
     return '<tr class="group hover:bg-gray-50 transition ' + rowBg + '">'
       + '<td class="px-4 py-3">'
@@ -244,6 +248,17 @@ async function deleteEntry(id) {
   const res = await callServer('deleteExpenseEntry', id);
   if (res.success) { toast('Entry deleted.'); loadEntries(); loadDayData(); }
   else toast('Error deleting.', 'error');
+}
+
+async function liquidateFromEntries(id) {
+  // If allAdvances isn't loaded yet (user hasn't visited Cash Advances page), fetch it first
+  if (typeof allAdvances === 'undefined' || !allAdvances.find(a => a.id === id)) {
+    const res = await callServer('getAllCashAdvances');
+    if (res.success && res.data) {
+      allAdvances = res.data;
+    }
+  }
+  openLiquidationModal(id, 'submit');
 }
 
 async function viewReceipt(entryId) {
