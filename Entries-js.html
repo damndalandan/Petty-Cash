@@ -190,23 +190,37 @@ function renderEntries() {
       const subCount   = subs.length;
       const isLiquidated = e.status === 'LIQUIDATED';
 
+      const isLiqPending = e.status === 'LIQUIDATION_PENDING';
+
+      // Expand button — show for finalized LIQ_DETAIL subs OR pending breakdown
+      const hasPendingBreakdown = isLiqPending && e.liqBreakdown && (e.liqBreakdown.entries || []).length > 0;
       const expandBtn = subCount > 0
         ? '<button onclick="toggleAdvanceExpand(\'' + e.id + '\')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 transition">'
             + (isExpanded ? '▼ Hide breakdown (' + subCount + ')' : '▶ Show breakdown (' + subCount + ')')
           + '</button>'
-        : '';
+        : hasPendingBreakdown
+          ? '<button onclick="toggleAdvanceExpand(\'' + e.id + '\')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 hover:bg-amber-200 transition">'
+              + (isExpanded ? '▼ Hide breakdown (' + e.liqBreakdown.entries.length + ')' : '▶ View breakdown (' + e.liqBreakdown.entries.length + ')')
+            + '</button>'
+          : '';
 
       const statusBadge = isLiquidated
         ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700">✅ Liquidated</span>'
-        : isCarried
-          ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
-          : '';
+        : isLiqPending
+          ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">⏳ Pending Audit</span>'
+          : isCarried
+            ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
+            : '';
 
       const nameColor = isLiquidated ? 'text-gray-600' : isCarried ? 'text-orange-800' : 'text-gray-800';
 
-      const actionCell = (isCashier() && isCarried && !isLiquidated)
-        ? '<td class="px-4 py-3 text-right"><button onclick="liquidateFromEntries(\'' + e.id + '\')" class="px-2 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">Liquidate</button></td>'
-        : '<td></td>';
+      const actionCell = isLiquidated
+        ? '<td></td>'
+        : isLiqPending
+          ? '<td class="px-4 py-3 text-right"><span class="px-2 py-1 text-xs font-bold bg-amber-100 text-amber-600 rounded-lg">⏳ Awaiting Audit</span></td>'
+          : (isCashier() && isCarried)
+            ? '<td class="px-4 py-3 text-right"><button onclick="liquidateFromEntries(\'' + e.id + '\')" class="px-2 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">Liquidate</button></td>'
+            : '<td></td>';
 
       rows.push(
         '<tr class="group hover:bg-orange-50/80 transition ' + rowBg + '">'
@@ -229,7 +243,7 @@ function renderEntries() {
         + '</tr>'
       );
 
-      // LIQ_DETAIL sub-entries shown when expanded
+      // LIQ_DETAIL sub-entries shown when expanded (finalized/liquidated)
       if (isExpanded && subCount > 0) {
         subs.forEach(sub => {
           const subReceipt = sub.hasReceipt
@@ -250,6 +264,40 @@ function renderEntries() {
             + '</tr>'
           );
         });
+      }
+
+      // Pending liquidation breakdown shown when expanded (not yet finalized by auditor)
+      if (isExpanded && hasPendingBreakdown) {
+        const bd = e.liqBreakdown;
+        (bd.entries || []).forEach(sub => {
+          const receiptIcon = sub.hasReceipt
+            ? '<span class="text-green-600 text-xs">🧾</span>'
+            : '<span class="text-amber-500 text-xs">⚠️</span>';
+          rows.push(
+            '<tr class="bg-amber-50/60 border-l-4 border-amber-200">'
+            + '<td class="pl-10 pr-4 py-2">'
+              + '<div class="flex items-center gap-1">'
+                + '<span class="text-gray-300 text-xs mr-1">└</span>'
+                + receiptIcon
+                + '<span class="text-xs font-medium text-gray-700 ml-1">' + (sub.desc || '—') + '</span>'
+                + '<span class="text-[10px] text-gray-400 ml-1">(' + (sub.category || '') + ')</span>'
+              + '</div>'
+            + '</td>'
+            + '<td class="px-4 py-2 text-right font-mono text-xs text-gray-600">' + fmt(parseFloat(sub.amount) || 0) + '</td>'
+            + '<td class="px-4 py-2 text-center"><span class="text-[10px] text-amber-500 italic">pending</span></td>'
+            + '<td></td>'
+            + '</tr>'
+          );
+        });
+        if (bd.change > 0.005) {
+          rows.push(
+            '<tr class="bg-amber-50/60 border-l-4 border-amber-200">'
+            + '<td class="pl-10 pr-4 py-2 text-xs font-bold text-amber-700">↩ Change to Return</td>'
+            + '<td class="px-4 py-2 text-right font-mono text-xs font-bold text-amber-700">' + fmt(bd.change) + '</td>'
+            + '<td></td><td></td>'
+            + '</tr>'
+          );
+        }
       }
 
     } else {
