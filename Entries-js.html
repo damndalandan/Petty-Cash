@@ -114,6 +114,18 @@ function entryTypeBadge(type) {
   return map[type] || '';
 }
 
+// Track which carried advance rows are expanded
+const expandedAdvances = new Set();
+
+function toggleAdvanceExpand(id) {
+  if (expandedAdvances.has(id)) {
+    expandedAdvances.delete(id);
+  } else {
+    expandedAdvances.add(id);
+  }
+  renderEntries();
+}
+
 function renderEntries() {
   let filtered = state.entries;
   if (state.entryTab === 'withReceipt') filtered = filtered.filter(e => e.hasReceipt && e.type === 'EXPENSE');
@@ -130,21 +142,32 @@ function renderEntries() {
     return;
   }
 
-  tbody.innerHTML = filtered.map(e => {
-    const isSpecial   = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
-    const isCarried   = !!e.carriedForward;
-    const isFlagged   = e.status === 'FLAGGED';
+  // Build sub-entries map: for each carried advance, find its liquidation expense entries
+  const advanceSubEntries = {};
+  filtered.filter(e => e.carriedForward).forEach(adv => {
+    const advDate = adv.originalDate || adv.date;
+    const subs = state.entries.filter(sub =>
+      sub.type === 'EXPENSE' &&
+      !sub.carriedForward &&
+      sub.date === advDate &&
+      sub.requestedBy === adv.requestedBy
+    );
+    if (subs.length) advanceSubEntries[adv.id] = subs;
+  });
+
+  const rows = [];
+
+  filtered.forEach(e => {
+    const isSpecial = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT'].includes(e.type);
+    const isCarried = !!e.carriedForward;
+    const isFlagged = e.status === 'FLAGGED';
 
     const rowBg = isFlagged
       ? 'bg-red-50 border-l-4 border-red-400'
-      : isCarried      ? 'bg-orange-50/60'
-      : e.type === 'CASH_OVER'     ? 'bg-emerald-50/40'
-      : e.type === 'REPLENISHMENT' ? 'bg-purple-50/40'
-      : e.type === 'CASH_ADVANCE'  ? 'bg-blue-50/40'
-      : '';
-
-    const carriedBadge = isCarried
-      ? '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
+      : isCarried              ? 'bg-orange-50/60'
+      : e.type === 'CASH_OVER'      ? 'bg-emerald-50/40'
+      : e.type === 'REPLENISHMENT'  ? 'bg-purple-50/40'
+      : e.type === 'CASH_ADVANCE'   ? 'bg-blue-50/40'
       : '';
 
     const flaggedBadge = isFlagged
@@ -157,38 +180,96 @@ function renderEntries() {
           ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-gray-400 hover:text-gray-600 text-xs">+ Attach</button>'
           : '<span class="text-gray-300 text-xs">—</span>');
 
-    const actionCell = isCarried && isCashier()
-      ? '<td class="px-4 py-3 text-right">'
-          + '<button onclick="liquidateFromEntries(\'' + e.id + '\')" class="px-2 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">Liquidate</button>'
+    if (isCarried) {
+      const subs       = advanceSubEntries[e.id] || [];
+      const isExpanded = expandedAdvances.has(e.id);
+      const subCount   = subs.length;
+
+      const expandBtn = subCount > 0
+        ? '<button onclick="toggleAdvanceExpand(\'' + e.id + '\')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 hover:bg-blue-200 transition">'
+            + (isExpanded ? '▼ Hide entries (' + subCount + ')' : '▶ Show entries (' + subCount + ')')
+          + '</button>'
+        : '';
+
+      const actionCell = isCashier()
+        ? '<td class="px-4 py-3 text-right"><button onclick="liquidateFromEntries(\'' + e.id + '\')" class="px-2 py-1 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition">Liquidate</button></td>'
+        : '<td></td>';
+
+      rows.push(
+        '<tr class="group hover:bg-orange-50/80 transition ' + rowBg + '">'
+        + '<td class="px-4 py-3">'
+          + '<div class="flex items-center gap-1 flex-wrap">'
+            + entryTypeBadge(e.type)
+            + '<span class="text-sm font-bold text-orange-800">' + e.description + '</span>'
+            + '<span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700">Carried</span>'
+            + expandBtn
+          + '</div>'
+          + '<div class="text-xs text-gray-400 mt-0.5">'
+            + e.category
+            + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
+            + ' &bull; Issued: ' + (e.originalDate || e.date)
+          + '</div>'
         + '</td>'
-      : isCashier() && !isCarried
+        + '<td class="px-4 py-3 text-right font-mono text-orange-700 font-bold">' + fmt(e.amount) + '</td>'
+        + '<td class="px-4 py-3 text-center">' + receiptCell + '</td>'
+        + actionCell
+        + '</tr>'
+      );
+
+      // Sub-entries shown when expanded
+      if (isExpanded && subCount > 0) {
+        subs.forEach(sub => {
+          const subReceipt = sub.hasReceipt
+            ? '<button onclick="viewReceipt(\'' + sub.id + '\')" class="text-green-600 hover:text-green-800 text-xs font-bold">🧾 View</button>'
+            : '<span class="text-gray-300 text-xs">—</span>';
+          rows.push(
+            '<tr class="bg-blue-50/40 border-l-4 border-blue-200">'
+            + '<td class="pl-10 pr-4 py-2">'
+              + '<div class="flex items-center gap-1">'
+                + '<span class="text-gray-300 text-xs mr-1">└</span>'
+                + '<span class="text-xs text-gray-700">' + sub.description + '</span>'
+              + '</div>'
+              + '<div class="text-[10px] text-gray-400 ml-4">' + (sub.category || '') + '</div>'
+            + '</td>'
+            + '<td class="px-4 py-2 text-right font-mono text-xs text-gray-600">' + fmt(sub.amount) + '</td>'
+            + '<td class="px-4 py-2 text-center">' + subReceipt + '</td>'
+            + '<td></td>'
+            + '</tr>'
+          );
+        });
+      }
+
+    } else {
+      // Regular entry row
+      const actionCell = isCashier()
         ? '<td class="px-4 py-3 text-right opacity-0 group-hover:opacity-100 transition">'
             + '<button onclick="openEditModal(\'' + e.id + '\')" class="text-blue-400 hover:text-blue-600 text-sm mr-2" title="Edit">✏️</button>'
             + '<button onclick="deleteEntry(\'' + e.id + '\')" class="text-red-400 hover:text-red-600 text-sm" title="Delete">🗑️</button>'
           + '</td>'
         : '<td></td>';
 
-    return '<tr class="group hover:bg-gray-50 transition ' + rowBg + '">'
-      + '<td class="px-4 py-3">'
-        + '<div class="flex items-center gap-1 flex-wrap">'
-          + entryTypeBadge(e.type)
-          + '<span class="text-sm ' + (isSpecial || isCarried ? 'font-bold text-orange-800' : 'text-gray-800') + '">'
-            + e.description
-          + '</span>'
-          + carriedBadge
-        + '</div>'
-        + flaggedBadge
-        + '<div class="text-xs text-gray-400 mt-0.5">'
-          + e.category
-          + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
-        + '</div>'
-      + '</td>'
-      + '<td class="px-4 py-3 text-right font-mono ' + (isSpecial || isCarried ? 'text-orange-700' : 'text-gray-700') + '">'
-        + fmt(e.amount)
-      + '</td>'
-      + '<td class="px-4 py-3 text-center">' + receiptCell + '</td>'
-      + actionCell;
-  }).join('');
+      rows.push(
+        '<tr class="group hover:bg-gray-50 transition ' + rowBg + '">'
+        + '<td class="px-4 py-3">'
+          + '<div class="flex items-center gap-1 flex-wrap">'
+            + entryTypeBadge(e.type)
+            + '<span class="text-sm ' + (isSpecial ? 'font-bold text-gray-800' : 'text-gray-800') + '">' + e.description + '</span>'
+          + '</div>'
+          + flaggedBadge
+          + '<div class="text-xs text-gray-400 mt-0.5">'
+            + e.category
+            + (e.requestedBy ? ' &bull; By: ' + e.requestedBy : '')
+          + '</div>'
+        + '</td>'
+        + '<td class="px-4 py-3 text-right font-mono ' + (isSpecial ? 'font-bold text-gray-700' : 'text-gray-700') + '">' + fmt(e.amount) + '</td>'
+        + '<td class="px-4 py-3 text-center">' + receiptCell + '</td>'
+        + actionCell
+        + '</tr>'
+      );
+    }
+  });
+
+  tbody.innerHTML = rows.join('');
 }
 
 async function saveEntry() {
@@ -251,13 +332,31 @@ async function deleteEntry(id) {
 }
 
 async function liquidateFromEntries(id) {
-  // If allAdvances isn't loaded yet (user hasn't visited Cash Advances page), fetch it first
-  if (typeof allAdvances === 'undefined' || !allAdvances.find(a => a.id === id)) {
-    const res = await callServer('getAllCashAdvances');
-    if (res.success && res.data) {
-      allAdvances = res.data;
-    }
+  // Build the advance object from state.entries (already loaded) so we don't
+  // depend on allAdvances being populated from the Cash Advances page
+  const entry = state.entries.find(e => e.id === id);
+  if (!entry) { toast('Advance not found', 'error'); return; }
+
+  // Inject into allAdvances so openLiquidationModal can find it
+  if (typeof allAdvances === 'undefined') window.allAdvances = [];
+  const existing = allAdvances.find(a => a.id === id);
+  if (!existing) {
+    const today = state.currentDate;
+    const issued = entry.originalDate || entry.date;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysOut = Math.floor((new Date(today) - new Date(issued)) / msPerDay);
+    allAdvances.push({
+      id             : entry.id,
+      date           : issued,
+      description    : entry.description,
+      amount         : entry.amount,
+      requestedBy    : entry.requestedBy,
+      status         : 'ACTIVE',
+      daysOutstanding: daysOut,
+      liquidationNote: ''
+    });
   }
+
   openLiquidationModal(id, 'submit');
 }
 
