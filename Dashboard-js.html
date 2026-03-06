@@ -189,8 +189,12 @@ function auditPreviousDay() {
         if(typeof onDateChange === 'function') onDateChange();
     }
     
-    navigate('denominations');
-    if(typeof switchDenomTab === 'function') switchDenomTab('END');
+    if (isAuditor() && !isAdmin()) {
+        navigate('auditreview');
+    } else {
+        navigate('denominations');
+        if(typeof switchDenomTab === 'function') switchDenomTab('END');
+    }
 }
 
 function updateDashStats() {
