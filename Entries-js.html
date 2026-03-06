@@ -348,39 +348,26 @@ async function liquidateFromEntries(id) {
   const entry = state.entries.find(e => e.id === id);
   if (!entry) { toast('Advance not found', 'error'); return; }
 
-  // Navigate to Cash Advances page first (where the modal DOM lives),
-  // then wait for allAdvances to load, then open the modal
-  navigate('advances');
+  // Ensure allAdvances is populated so the modal can find the advance
+  if (typeof allAdvances === 'undefined') window.allAdvances = [];
+  if (!allAdvances.find(a => a.id === id)) {
+    const issued   = entry.originalDate || entry.date;
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysOut  = Math.floor((new Date(state.currentDate) - new Date(issued)) / msPerDay);
+    allAdvances.push({
+      id             : entry.id,
+      date           : issued,
+      description    : entry.description,
+      amount         : entry.amount,
+      requestedBy    : entry.requestedBy,
+      status         : 'ACTIVE',
+      daysOutstanding: daysOut,
+      liquidationNote: ''
+    });
+  }
 
-  let attempts = 0;
-  const waitAndOpen = setInterval(() => {
-    attempts++;
-    const found = (typeof allAdvances !== 'undefined') && allAdvances.find(a => a.id === id);
-    if (found) {
-      clearInterval(waitAndOpen);
-      openLiquidationModal(id, 'submit');
-    } else if (attempts > 20) {
-      // Fallback: inject manually if server didn't return it
-      clearInterval(waitAndOpen);
-      if (typeof allAdvances === 'undefined') window.allAdvances = [];
-      if (!allAdvances.find(a => a.id === id)) {
-        const issued   = entry.originalDate || entry.date;
-        const msPerDay = 1000 * 60 * 60 * 24;
-        const daysOut  = Math.floor((new Date(state.currentDate) - new Date(issued)) / msPerDay);
-        allAdvances.push({
-          id             : entry.id,
-          date           : issued,
-          description    : entry.description,
-          amount         : entry.amount,
-          requestedBy    : entry.requestedBy,
-          status         : 'ACTIVE',
-          daysOutstanding: daysOut,
-          liquidationNote: ''
-        });
-      }
-      openLiquidationModal(id, 'submit');
-    }
-  }, 150);
+  // Open modal directly — no page navigation needed
+  openLiquidationModal(id, 'submit');
 }
 
 async function viewReceipt(entryId) {

@@ -201,13 +201,9 @@ function openLiquidationModal(id, action) {
   // Clear all liqNote fields
   document.querySelectorAll('#liqNote').forEach(el => el.value = '');
 
-  const titles    = { submit: 'Submit Liquidation', approve: 'Approve Liquidation', reject: 'Reject Liquidation' };
-  const subtitles = { submit: 'Add expense entries to liquidate this advance', approve: 'Confirm this advance has been properly liquidated', reject: 'Send back to outstanding — state the reason' };
-  const btnColors = { submit: 'bg-blue-600 hover:bg-blue-700', approve: 'bg-green-600 hover:bg-green-700', reject: 'bg-red-500 hover:bg-red-600' };
-
-  document.getElementById('liqModalTitle').textContent    = titles[action];
-  document.getElementById('liqModalSubtitle').textContent = subtitles[action];
-  document.getElementById('liqConfirmBtn').className      = `flex-1 py-2.5 text-sm font-bold text-white ${btnColors[action]} rounded-xl shadow transition`;
+  document.getElementById('liqModalTitle').textContent    = 'Submit Liquidation';
+  document.getElementById('liqModalSubtitle').textContent = 'Add expense entries to liquidate this advance';
+  document.getElementById('liqConfirmBtn').className      = 'flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition';
 
   const advanceDetailsHTML = `
     <div class="flex justify-between items-center">
