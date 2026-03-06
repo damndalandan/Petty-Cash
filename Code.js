@@ -441,9 +441,11 @@ function recalculateDailySummary(date) {
       const amt = parseFloat(row[5]) || 0;
 
       if (rDate === date) {
-        if (type === 'CASH_ADVANCE')    cashAdvance        += amt;
-        else if (type === 'CASH_OVER')  totalCashOver      += amt;
+        if (type === 'CASH_ADVANCE')       cashAdvance        += amt;
+        else if (type === 'CASH_OVER')     totalCashOver      += amt;
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
+        else if (type === 'CASH_RETURN')   totalReplenishment += amt; // change return adds back to cash like replenishment
+        else if (type === 'LIQ_DETAIL')    { /* documentation only — ignore in totals */ }
         else {
           totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
@@ -1260,7 +1262,7 @@ function findUnclosedPastDate(beforeDate) {
 // ─────────────────────────────────────────────
 
 function auditApproveDay(data) {
-  // data: { date, notes, carryForward: bool }
+  // data: { date, actualCash, note, flaggedEntries }
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.SUMMARY);
@@ -1277,6 +1279,9 @@ function auditApproveDay(data) {
       sheet.getRange(row, 13).setValue(email);
       sheet.getRange(row, 14).setValue(now);
       found = true;
+
+      // ── Finalize any LIQUIDATION_PENDING advances that were verified ──
+      finalizePendingLiquidations(data.date, data.flaggedEntries || [], email, now);
 
       writeAuditLog(
         'DAY_APPROVED',
@@ -1390,6 +1395,117 @@ function auditApproveDay(data) {
     return { success: true };
   } catch(e) {
     return { success: false, message: e.toString() };
+  }
+}
+
+function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail, now) {
+  // Called during day approval — finalizes all LIQUIDATION_PENDING advances
+  // that were NOT flagged. Saves LIQ_DETAIL entries and CASH_RETURN if change > 0.
+  try {
+    const ss         = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const entryRows  = entrySheet.getDataRange().getValues();
+
+    const flaggedIds = new Set((flaggedEntries || []).map(f => f.id));
+
+    for (let i = 1; i < entryRows.length; i++) {
+      const row    = entryRows[i];
+      const type   = row[2];
+      const status = row[10];
+
+      if (type !== 'CASH_ADVANCE')           continue;
+      if (status !== 'LIQUIDATION_PENDING')  continue;
+
+      const advId       = row[0];
+      const advDate     = normalizeDate(row[1]);
+      const requestedBy = row[8] || '';
+      const advAmount   = parseFloat(row[5]) || 0;
+      const notesCol    = row[14] || '';
+
+      // If this advance was flagged by auditor — reset to ACTIVE, skip finalization
+      if (flaggedIds.has(advId)) {
+        entrySheet.getRange(i + 1, 11).setValue('ACTIVE');
+        entrySheet.getRange(i + 1, 13).setValue(now);
+        entrySheet.getRange(i + 1, 15).setValue(notesCol + ' | [FLAGGED BY AUDITOR] Returned to outstanding.');
+        recalculateDailySummary(advDate);
+        continue;
+      }
+
+      // Parse the breakdown JSON from notes column
+      let breakdown = { entries: [], totalSpent: 0, change: 0, note: '' };
+      try {
+        const jsonStart = notesCol.indexOf('{');
+        if (jsonStart !== -1) {
+          breakdown = JSON.parse(notesCol.substring(jsonStart));
+        }
+      } catch(e) {
+        console.error('Failed to parse liquidation breakdown for ' + advId, e);
+      }
+
+      const totalSpent = parseFloat(breakdown.totalSpent) || 0;
+      const change     = parseFloat(breakdown.change)     || 0;
+
+      // 1. Mark advance as LIQUIDATED
+      entrySheet.getRange(i + 1, 11).setValue('LIQUIDATED');
+      entrySheet.getRange(i + 1, 13).setValue(now);
+      entrySheet.getRange(i + 1, 15).setValue(
+        notesCol + ' | [LIQUIDATED BY ' + approverEmail + ' on ' + approvalDate + ']'
+      );
+
+      // 2. Save LIQ_DETAIL entries on the advance's original date (documentation only)
+      if (breakdown.entries && breakdown.entries.length) {
+        breakdown.entries.forEach(entry => {
+          const liqEntry = saveExpenseEntry({
+            date       : advDate,
+            type       : 'LIQ_DETAIL',
+            category   : entry.category   || 'Miscellaneous',
+            description: entry.desc       || '',
+            amount     : parseFloat(entry.amount) || 0,
+            hasReceipt : !!entry.hasReceipt,
+            referenceNo: advId,
+            requestedBy: requestedBy,
+            approvedBy : approverEmail
+          });
+
+          // Save receipt if attached
+          if (entry.hasReceipt && entry.receipt && liqEntry.id) {
+            saveReceiptRecord({
+              ...entry.receipt,
+              entryId: liqEntry.id,
+              date   : advDate
+            });
+          }
+        });
+      }
+
+      // 3. If there's change, save a CASH_RETURN entry on the APPROVAL date
+      if (change > 0.005) {
+        saveExpenseEntry({
+          date       : approvalDate,
+          type       : 'CASH_RETURN',
+          category   : 'Cash Return',
+          description: 'Change return — ' + (row[4] || 'Cash Advance') + ' (' + advId + ')',
+          amount     : change,
+          hasReceipt : false,
+          referenceNo: advId,
+          requestedBy: requestedBy,
+          approvedBy : approverEmail
+        });
+      }
+
+      // 4. Recalculate summaries for both dates
+      recalculateDailySummary(advDate);
+      if (approvalDate !== advDate) recalculateDailySummary(approvalDate);
+
+      writeAuditLog(
+        'LIQUIDATION_FINALIZED',
+        `Advance ${advId} liquidated on day close. Spent: ₱${totalSpent.toFixed(2)}. Change returned: ₱${change.toFixed(2)}.`,
+        advId,
+        approvalDate
+      );
+    }
+  } catch(e) {
+    console.error('finalizePendingLiquidations error:', e);
   }
 }
 
@@ -1554,6 +1670,16 @@ function getAllCashAdvances() {
         (new Date(today) - new Date(issuedDate)) / msPerDay
       );
 
+      // Parse liquidation breakdown if present
+      let liqBreakdown = null;
+      const notesCol   = row[14] || '';
+      if (row[10] === 'LIQUIDATION_PENDING' || row[10] === 'LIQUIDATED') {
+        try {
+          const jsonStart = notesCol.indexOf('{');
+          if (jsonStart !== -1) liqBreakdown = JSON.parse(notesCol.substring(jsonStart));
+        } catch(e) { liqBreakdown = null; }
+      }
+
       advances.push({
         id             : row[0],
         date           : issuedDate,
@@ -1562,7 +1688,8 @@ function getAllCashAdvances() {
         requestedBy    : row[8],
         status         : row[10],
         daysOutstanding: daysOut,
-        liquidationNote: row[14] || ''
+        liquidationNote: notesCol,
+        liqBreakdown   : liqBreakdown
       });
     }
 
@@ -1574,6 +1701,8 @@ function getAllCashAdvances() {
 }
 
 function submitLiquidation(data) {
+  // Stores breakdown as JSON in the advance's notes column.
+  // No EXPENSE rows created here — those are finalized on audit approval.
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.ENTRIES);
@@ -1584,43 +1713,28 @@ function submitLiquidation(data) {
       if (rows[i][0] !== data.id) continue;
       const row         = i + 1;
       const advanceDate = normalizeDate(rows[i][1]);
-      const requestedBy = rows[i][8] || '';
 
-      // 1. Mark the advance as pending
+      // Calculate change (advance amount - total spent)
+      const advanceAmount = parseFloat(rows[i][5]) || 0;
+      const totalSpent    = (data.entries || []).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+      const change        = advanceAmount - totalSpent;
+
+      // Store breakdown as JSON in the notes column (col 15)
+      const breakdownJson = JSON.stringify({
+        entries    : data.entries || [],
+        note       : data.note   || '',
+        totalSpent : totalSpent,
+        change     : change,
+        submittedAt: now
+      });
+
       sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
       sheet.getRange(row, 13).setValue(now);
-      sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + (data.note || ''));
-
-      // 2. Save each line item entry + receipt if present
-      if (data.entries && data.entries.length) {
-        data.entries.forEach(entry => {
-          // Save to PettyCash_Entries (also auto-saves to PettyCash_NoReceipts if no receipt)
-          const entryResult = saveExpenseEntry({
-            date       : advanceDate,
-            type       : 'EXPENSE',
-            category   : entry.category   || 'Miscellaneous',
-            description: entry.desc       || '',
-            amount     : parseFloat(entry.amount) || 0,
-            hasReceipt : !!entry.hasReceipt,
-            referenceNo: data.id,   // links back to the cash advance
-            requestedBy: requestedBy,
-            approvedBy : ''
-          });
-
-          // Save to PettyCash_Receipts if receipt was attached
-          if (entry.hasReceipt && entry.receipt && entryResult.id) {
-            saveReceiptRecord({
-              ...entry.receipt,
-              entryId: entryResult.id,
-              date   : advanceDate
-            });
-          }
-        });
-      }
+      sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + breakdownJson);
 
       writeAuditLog(
         'LIQUIDATION_SUBMITTED',
-        `Liquidation submitted for advance ${data.id}. ${(data.entries || []).length} entries. Notes: ${data.note || '—'}`,
+        `Liquidation submitted for advance ${data.id}. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)}. Notes: ${data.note || '—'}`,
         data.id,
         advanceDate
       );
