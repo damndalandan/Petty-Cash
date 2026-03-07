@@ -54,8 +54,6 @@ function getUserEmail() {
 function doGet() {
   const email = getUserEmail();
 
-  initializeSheets();
-
   if (!isAuthorized(email)) {
     return HtmlService.createHtmlOutput(`
       <!DOCTYPE html>
