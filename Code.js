@@ -621,6 +621,13 @@ function updateExpenseEntry(payload) {
       recalculateDailySummary(payload.date);
       if (oldDate && oldDate !== payload.date) recalculateDailySummary(oldDate);
 
+      writeAuditLog(
+        'ENTRY_UPDATED',
+        `Entry updated. Desc: ${payload.description || '—'} | Amount: ₱${parseFloat(payload.amount || 0).toFixed(2)} | Category: ${payload.category || '—'} | Type: ${payload.type || '—'}`,
+        payload.id,
+        payload.date
+      );
+
       return { success: true };
     }
     return { success: false, message: 'Entry not found' };
