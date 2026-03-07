@@ -13,7 +13,8 @@ const SHEETS = {
   NO_RECEIPTS  : 'PettyCash_NoReceipts',
   ACCESS       : 'PettyCash_Access',
   AUDIT_LOG    : 'PettyCash_AuditLog',
-  FILING       : 'PettyCash_FilingChecklist'
+  FILING       : 'PettyCash_FilingChecklist',
+  CATEGORIES   : 'PettyCash_Categories'
 };
 
 // ─────────────────────────────────────────────
@@ -412,6 +413,19 @@ function initializeSheets() {
     s.setColumnWidth(6, 100);
     s.setColumnWidth(7, 400);
     s.setColumnWidth(8, 160);
+  }
+
+  if (!ss.getSheetByName(SHEETS.CATEGORIES)) {
+    const s = ss.insertSheet(SHEETS.CATEGORIES);
+    s.appendRow(['Category']);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.setColumnWidth(1, 220);
+    const defaults = [
+      'Office Supplies','Transportation','Meals & Entertainment',
+      'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
+    ];
+    defaults.forEach(c => s.appendRow([c]));
   }
 
   return { success: true };
@@ -2330,19 +2344,8 @@ function getAuditorMetrics() {
 function getCategories() {
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-    let sheet   = ss.getSheetByName('PettyCash_Categories');
-
-    // Auto-create the sheet if it doesn't exist yet
-    if (!sheet) {
-      sheet = ss.insertSheet('PettyCash_Categories');
-      sheet.appendRow(['Category']);
-      sheet.getRange('A1').setFontWeight('bold');
-      const defaults = [
-        'Office Supplies','Transportation','Meals & Entertainment',
-        'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
-      ];
-      defaults.forEach(c => sheet.appendRow([c]));
-    }
+    const sheet = ss.getSheetByName(SHEETS.CATEGORIES);
+    if (!sheet) return { success: false, message: 'Categories sheet not found', data: [] }; 
 
     const rows = sheet.getDataRange().getValues();
     const categories = [];
