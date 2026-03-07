@@ -577,6 +577,16 @@ function saveExpenseEntry(data) {
       );
     }
 
+    // Audit log for cash return
+    if (data.type === 'CASH_RETURN') {
+      writeAuditLog(
+        'CASH_RETURN_RECORDED',
+        `Cash return of ₱${parseFloat(data.amount).toFixed(2)} recorded. Ref: ${data.referenceNo || '—'}. Desc: ${data.description || '—'}`,
+        id,
+        data.date
+      );
+    }
+
     return { success: true, id };
   } catch(e) {
     return { success: false, message: e.toString() };
