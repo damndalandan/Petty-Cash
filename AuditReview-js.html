@@ -580,16 +580,14 @@ async function executeAuditApprove() {
     if (qty > 0) denomBreakdown[bill] = qty;
     denomTotal += qty * bill;
   });
-  // Only save if auditor entered a count; skip if grid is empty (fallback handled server-side)
-  if (denomTotal > 0) {
-    await callServer('saveDenominationRecord', {
-      date     : state.currentDate,
-      type     : 'END',
-      breakdown: JSON.stringify(denomBreakdown),
-      total    : denomTotal,
-      notes    : 'Auto-saved on audit approval'
-    });
-  }
+  // Always save the auditor's physical count — even if zero — so carry-forward is reliable
+  await callServer('saveDenominationRecord', {
+    date     : state.currentDate,
+    type     : 'END',
+    breakdown: JSON.stringify(denomBreakdown),
+    total    : denomTotal,
+    notes    : 'Auto-saved on audit approval'
+  });
 
   const res = await callServer('auditApproveDay', {
     date          : state.currentDate,
