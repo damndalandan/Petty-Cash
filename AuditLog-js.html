@@ -45,14 +45,18 @@ async function loadAuditLog() {
   }
 
   const actionColors = {
-    OPENING_SAVED          : 'bg-blue-100 text-blue-700',
-    CLOSING_SAVED          : 'bg-amber-100 text-amber-700',
-    DAY_APPROVED           : 'bg-green-100 text-green-700',
-    CASH_ADVANCE_ISSUED    : 'bg-purple-100 text-purple-700',
-    LIQUIDATION_SUBMITTED  : 'bg-orange-100 text-orange-700',
-    LIQUIDATION_APPROVED   : 'bg-green-100 text-green-700',
-    LIQUIDATION_REJECTED   : 'bg-red-100 text-red-700',
-    ENTRY_DELETED          : 'bg-red-100 text-red-700'
+    OPENING_SAVED         : 'bg-blue-100 text-blue-700',
+    CLOSING_SAVED         : 'bg-amber-100 text-amber-700',
+    DAY_APPROVED          : 'bg-green-100 text-green-700',
+    DAY_FLAGGED           : 'bg-red-100 text-red-700',
+    CASH_ADVANCE_ISSUED   : 'bg-purple-100 text-purple-700',
+    LIQUIDATION_SUBMITTED : 'bg-orange-100 text-orange-700',
+    LIQUIDATION_FINALIZED : 'bg-green-100 text-green-700',
+    ENTRY_UPDATED         : 'bg-sky-100 text-sky-700',
+    ENTRY_DELETED         : 'bg-red-100 text-red-700',
+    FILING_SAVED          : 'bg-teal-100 text-teal-700',
+    FILING_UPDATED        : 'bg-teal-100 text-teal-700',
+    CASH_RETURN_RECORDED  : 'bg-lime-100 text-lime-700'
   };
 
   const roleColors = {
