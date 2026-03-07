@@ -114,26 +114,29 @@ function applyRoleUI() {
     );
   }
 
-  // Show name in sidebar
-  const nameEl = document.getElementById('user-name');
-  if (nameEl && state.userName) nameEl.textContent = state.userName;
+  // Show name and email in sidebar
+  const nameEl  = document.getElementById('user-name');
+  const emailEl = document.getElementById('user-email');
+  if (nameEl  && state.userName)  nameEl.textContent  = state.userName;
+  if (emailEl && state.userEmail) emailEl.textContent = state.userEmail;
 
-  // Show Audit Log for Auditor and Admin
-  const navAuditLog = document.getElementById('nav-auditlog');
-  if (navAuditLog && (isAuditor() || isAdmin())) navAuditLog.classList.remove('hidden');
+  const isAuditorOnly = state.userRole === 'Auditor'; // pure Auditor, not Admin
 
-  // Show Audit Review for Auditor only (NOT Admin)
+  // ── Audit Review — Admin + Auditor only ──
   const navAuditReview = document.getElementById('nav-auditreview');
-  if (navAuditReview && isAuditor() && !isAdmin()) navAuditReview.classList.remove('hidden');
+  if (navAuditReview && (isAuditorOnly || isAdmin())) navAuditReview.classList.remove('hidden');
 
-  // Hide Filing Checklist from Auditor
-  const navFiling = document.getElementById('nav-filing');
-  if (navFiling && isAuditor()) navFiling.classList.add('hidden');
+  // ── Audit Log — Admin + Auditor only ──
+  const navAuditLog = document.getElementById('nav-auditlog');
+  if (navAuditLog && (isAuditorOnly || isAdmin())) navAuditLog.classList.remove('hidden');
 
-  /// Hide Denominations from sidebar entirely for Auditor
-  // Hide Denominations from Auditor only — Admin can see it
-  const navDenom = document.getElementById('nav-denominations');
-  if (navDenom && state.userRole === 'Auditor') navDenom.classList.add('hidden');
+  // ── Pages hidden from Auditor ──
+  if (isAuditorOnly) {
+    ['nav-entries', 'nav-denominations', 'nav-replenishment', 'nav-filing'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+  }
 } 
 
 async function loadCategories() {
