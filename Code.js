@@ -2352,7 +2352,12 @@ function getCategories() {
 function syncReceiptsToFinalSheet() {
   const SOURCE_SHEET_NAME   = "PettyCash_Receipts";
   const DEST_SPREADSHEET_ID = "1p7nptmZh-rJF4gjq1S9ntj4-EwCjtBsu_vTc17wahgw";
-  const DEST_SHEET_NAME     = "March sample";
+
+  // Dynamic tab name based on the receipt month — e.g. "JANUARY", "FEBRUARY"
+  const MONTHS          = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+                           'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
+  const now             = new Date();
+  const DEST_SHEET_NAME = MONTHS[now.getMonth()];
 
   const COLUMNS_TO_COPY = [
     "Date", "Supplier_Name", "Address",
@@ -2360,7 +2365,8 @@ function syncReceiptsToFinalSheet() {
     "Vatable_Sales", "VAT_Amount"
   ];
 
-  const srcSheet   = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SOURCE_SHEET_NAME);
+  const srcSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SOURCE_SHEET_NAME);
+  if (!srcSheet) return; // safety guard
   const srcData    = srcSheet.getDataRange().getValues();
   const headers    = srcData[0];
   const colIndices = COLUMNS_TO_COPY.map(col => headers.indexOf(col));
@@ -2370,12 +2376,25 @@ function syncReceiptsToFinalSheet() {
   const srcDateIdx  = headers.indexOf("Date");
 
   const destSS    = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
-  const destSheet = destSS.getSheetByName(DEST_SHEET_NAME);
-  const destData  = destSheet.getDataRange().getValues();
+  let   destSheet = destSS.getSheetByName(DEST_SHEET_NAME);
 
-  // Write header if destination is empty
+  // Auto-create the monthly tab if it doesn't exist yet
+  if (!destSheet) {
+    destSheet = destSS.insertSheet(DEST_SHEET_NAME);
+    destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([
+      ['DATE','NAME OF SUPPLIER','ADDRESS','TIN #','RECEIPT No.','AMOUNT','LESS:VAT','VAT-12%']
+    ]);
+    destSheet.setFrozenRows(1);
+    destSheet.getRange('A1:H1').setFontWeight('bold');
+  }
+
+  const destData = destSheet.getDataRange().getValues();
+
+  // Write header if destination sheet exists but is empty
   if (destData.length === 0 || !destData[0][0]) {
-    destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([COLUMNS_TO_COPY]);
+    destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([
+      ['DATE','NAME OF SUPPLIER','ADDRESS','TIN #','RECEIPT No.','AMOUNT','LESS:VAT','VAT-12%']
+    ]);
   }
 
   // ── Build a set of already-synced Receipt_IDs stored in a hidden Notes column ──
