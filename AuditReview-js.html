@@ -41,6 +41,7 @@ async function loadAuditReviewPage() {
         const opening = parseFloat(summaryRes.data.openingCash || 0);
         openingEl.textContent = fmt(opening);
       }
+      updateAuditDaySummaryPanel();
     }
 
     // 2. Denomination END count → pre-fill the auditor's cash count grid
@@ -606,6 +607,44 @@ async function executeAuditApprove() {
     loadDayData();
   } else {
     toast(res.message || 'Approval failed', 'error');
+  }
+}
+
+function updateAuditDaySummaryPanel() {
+  const s = state.summary;
+  if (!s) return;
+
+  const opening   = parseFloat(s.openingCash       || 0);
+  const replenish = parseFloat(s.totalReplenishment || 0);
+  const cashOver  = parseFloat(s.totalCashOver      || 0);
+  const expenses  = parseFloat(s.totalExpenses      || 0);
+  const advance   = parseFloat(s.cashAdvance        || 0);
+  const expected  = (opening + replenish + cashOver) - (expenses + advance);
+  const physical  = parseFloat(s.closingCash        || 0);
+  const variance  = physical - expected;
+
+  const set = (id, val, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = fmt(val);
+    if (color) el.className = `font-mono font-bold ${color}`;
+  };
+
+  set('ads-opening',      opening,   'text-gray-700');
+  set('ads-replenishment',replenish, replenish > 0 ? 'text-green-600' : 'text-gray-400');
+  set('ads-cashover',     cashOver,  cashOver  > 0 ? 'text-green-600' : 'text-gray-400');
+  set('ads-expenses',     expenses,  expenses  > 0 ? 'text-red-600'   : 'text-gray-400');
+  set('ads-advance',      advance,   advance   > 0 ? 'text-red-600'   : 'text-gray-400');
+  set('ads-expected',     expected,  'text-blue-700');
+  set('ads-physical',     physical,  'text-gray-700');
+
+  const varianceEl = document.getElementById('ads-variance');
+  if (varianceEl) {
+    varianceEl.textContent = (variance >= 0 ? '+' : '') + fmt(variance);
+    varianceEl.className = 'font-mono font-bold ' + (
+      Math.abs(variance) < 0.01 ? 'text-green-600' :
+      variance > 0              ? 'text-blue-600'  : 'text-red-600'
+    );
   }
 }
 </script>

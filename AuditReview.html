@@ -48,6 +48,44 @@
             class="mt-3 w-full bg-gray-800 hover:bg-gray-700 text-white text-xs font-bold py-2 rounded-lg transition">
             💾 Save Cash Count
           </button>
+        <!-- Day Summary Panel -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
+          <h2 class="text-sm font-bold text-gray-700">📊 Day Summary</h2>
+        </div>
+        <div class="p-4 space-y-2 text-xs" id="auditDaySummaryPanel">
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500">💰 Opening Cash</span>
+            <span id="ads-opening" class="font-mono font-bold text-gray-700">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500">➕ Replenishment</span>
+            <span id="ads-replenishment" class="font-mono font-bold text-green-600">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500">➕ Cash Over</span>
+            <span id="ads-cashover" class="font-mono font-bold text-green-600">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
+            <span class="text-gray-500">➖ Total Expenses</span>
+            <span id="ads-expenses" class="font-mono font-bold text-red-600">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500">➖ Cash Advance</span>
+            <span id="ads-advance" class="font-mono font-bold text-red-600">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
+            <span class="text-gray-500 font-semibold">💵 Expected Closing</span>
+            <span id="ads-expected" class="font-mono font-bold text-blue-700">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500 font-semibold">🔢 Physical Count</span>
+            <span id="ads-physical" class="font-mono font-bold text-gray-700">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
+            <span class="text-gray-500 font-semibold">✅ Variance</span>
+            <span id="ads-variance" class="font-mono font-bold text-gray-700">—</span>
+          </div>
         </div>
       </div>
 
