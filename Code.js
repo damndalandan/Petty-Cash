@@ -1820,15 +1820,13 @@ function updateDenominationRecord(data) {
       return saveDenominationRecord(data);
     }
 
-    sheet.getRange(targetRow, 4, 1, 11).setValues([[
+    sheet.getRange(targetRow, 4, 1, 13).setValues([[
       denoms['1000'] ||0, denoms['500']||0, denoms['200']||0,
       denoms['100']  ||0, denoms['50'] ||0, denoms['20'] ||0,
       denoms['10']   ||0, denoms['5']  ||0, denoms['1']  ||0,
       denoms['0.25'] ||0,
-      total
+      total, data.notes || '', now
     ]]);
-    sheet.getRange(targetRow, 15).setValue(data.notes || '');
-    sheet.getRange(targetRow, 16).setValue(now);
 
     recalculateDailySummary(data.date);
     return { success: true, id: dataRange[targetRow - 1][0], total };
