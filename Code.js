@@ -1469,6 +1469,12 @@ function auditApproveDay(data) {
       }
     }
 
+    // ── Sync approved day's receipts to BIR final sheet ──
+    try { syncReceiptsToFinalSheet(data.date); } catch(e) {
+      console.error('syncReceiptsToFinalSheet error:', e);
+      // Non-fatal — don't block approval if sync fails
+    }
+
     return { success: true };
   } catch(e) {
     return { success: false, message: e.toString() };
@@ -2370,15 +2376,12 @@ function getCategories() {
   }
 }
 
-function syncReceiptsToFinalSheet() {
+function syncReceiptsToFinalSheet(approvedDate) {
   const SOURCE_SHEET_NAME   = "PettyCash_Receipts";
   const DEST_SPREADSHEET_ID = "1p7nptmZh-rJF4gjq1S9ntj4-EwCjtBsu_vTc17wahgw";
 
-  // Dynamic tab name based on the receipt month — e.g. "JANUARY", "FEBRUARY"
-  const MONTHS          = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
-                           'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
-  const now             = new Date();
-  const DEST_SHEET_NAME = MONTHS[now.getMonth()];
+  const MONTHS = ['JANUARY','FEBRUARY','MARCH','APRIL','MAY','JUNE',
+                  'JULY','AUGUST','SEPTEMBER','OCTOBER','NOVEMBER','DECEMBER'];
 
   const COLUMNS_TO_COPY = [
     "Date", "Supplier_Name", "Address",
@@ -2387,73 +2390,81 @@ function syncReceiptsToFinalSheet() {
   ];
 
   const srcSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SOURCE_SHEET_NAME);
-  if (!srcSheet) return; // safety guard
+  if (!srcSheet) return;
   const srcData    = srcSheet.getDataRange().getValues();
   const headers    = srcData[0];
   const colIndices = COLUMNS_TO_COPY.map(col => headers.indexOf(col));
 
-  // We still read Receipt_ID from source to use as a hidden tracking key
   const srcRcpIdIdx = headers.indexOf("Receipt_ID");
   const srcDateIdx  = headers.indexOf("Date");
 
-  const destSS    = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
-  let   destSheet = destSS.getSheetByName(DEST_SHEET_NAME);
+  const destSS = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
 
-  // Auto-create the monthly tab if it doesn't exist yet
-  if (!destSheet) {
-    destSheet = destSS.insertSheet(DEST_SHEET_NAME);
-    destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([
-      ['DATE','NAME OF SUPPLIER','ADDRESS','TIN #','RECEIPT No.','AMOUNT','LESS:VAT','VAT-12%']
-    ]);
-    destSheet.setFrozenRows(1);
-    destSheet.getRange('A1:H1').setFontWeight('bold');
-  }
-
-  const destData = destSheet.getDataRange().getValues();
-
-  // Write header if destination sheet exists but is empty
-  if (destData.length === 0 || !destData[0][0]) {
-    destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([
-      ['DATE','NAME OF SUPPLIER','ADDRESS','TIN #','RECEIPT No.','AMOUNT','LESS:VAT','VAT-12%']
-    ]);
-  }
-
-  // ── Build a set of already-synced Receipt_IDs stored in a hidden Notes column ──
-  // We store the Receipt_ID in the row's note (invisible to BIR, used for dedup)
-  const destRange     = destSheet.getDataRange();
-  const existingNotes = new Set();
-
-  if (destSheet.getLastRow() > 1) {
-    const noteRange = destSheet.getRange(2, 1, destSheet.getLastRow() - 1, 1);
-    noteRange.getNotes().forEach(([note]) => {
-      if (note) existingNotes.add(note);
-    });
-  }
-
-  // ── Append only new rows ──
-  const newRows     = [];
-  const newRowIds   = []; // track Receipt_IDs for the notes we'll write
+  // ── Group source receipts by their actual receipt month ──
+  // Only process receipts matching the approved date
+  const receiptsByMonth = {};
 
   for (let i = 1; i < srcData.length; i++) {
-    const receiptId = srcData[i][srcRcpIdIdx];
-    if (!receiptId || existingNotes.has(receiptId)) continue;
-    newRows.push(colIndices.map(idx => srcData[i][idx]));
-    newRowIds.push(receiptId);
+    const receiptId   = srcData[i][srcRcpIdIdx];
+    const receiptDate = normalizeDate(srcData[i][srcDateIdx]);
+
+    if (!receiptId)                          continue;
+    if (approvedDate && receiptDate !== approvedDate) continue; // only this day's receipts
+
+    // Determine which monthly tab this receipt belongs to
+    const dateObj   = new Date(receiptDate + 'T00:00:00');
+    const tabName   = MONTHS[dateObj.getMonth()];
+
+    if (!receiptsByMonth[tabName]) receiptsByMonth[tabName] = [];
+    receiptsByMonth[tabName].push({ row: srcData[i], id: receiptId });
   }
 
-  if (newRows.length > 0) {
-    const startRow = destSheet.getLastRow() + 1;
-    destSheet.getRange(startRow, 1, newRows.length, COLUMNS_TO_COPY.length).setValues(newRows);
+  // ── For each monthly tab, append only new receipts ──
+  for (const [tabName, receipts] of Object.entries(receiptsByMonth)) {
+    let destSheet = destSS.getSheetByName(tabName);
 
-    // Store Receipt_ID as a hidden cell note on column A for dedup tracking
-    newRowIds.forEach((id, idx) => {
-      destSheet.getRange(startRow + idx, 1).setNote(id);
-    });
-  }
-}
+    // Auto-create the monthly tab if it doesn't exist yet
+    if (!destSheet) {
+      destSheet = destSS.insertSheet(tabName);
+      destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([
+        ['DATE','NAME OF SUPPLIER','ADDRESS','TIN #','RECEIPT No.','AMOUNT','LESS:VAT','VAT-12%']
+      ]);
+      destSheet.setFrozenRows(1);
+      destSheet.getRange('A1:H1').setFontWeight('bold');
+    }
 
-function onChange(e) {
-  if (e.changeType === "INSERT_ROW" || e.changeType === "EDIT") {
-    syncReceiptsToFinalSheet();
+    // Write header if sheet is empty
+    const destData = destSheet.getDataRange().getValues();
+    if (destData.length === 0 || !destData[0][0]) {
+      destSheet.getRange(1, 1, 1, COLUMNS_TO_COPY.length).setValues([
+        ['DATE','NAME OF SUPPLIER','ADDRESS','TIN #','RECEIPT No.','AMOUNT','LESS:VAT','VAT-12%']
+      ]);
+    }
+
+    // Build set of already-synced Receipt_IDs from hidden cell notes
+    const existingNotes = new Set();
+    if (destSheet.getLastRow() > 1) {
+      destSheet.getRange(2, 1, destSheet.getLastRow() - 1, 1)
+        .getNotes()
+        .forEach(([note]) => { if (note) existingNotes.add(note); });
+    }
+
+    // Append only new rows
+    const newRows   = [];
+    const newRowIds = [];
+
+    for (const { row, id } of receipts) {
+      if (existingNotes.has(id)) continue;
+      newRows.push(colIndices.map(idx => row[idx]));
+      newRowIds.push(id);
+    }
+
+    if (newRows.length > 0) {
+      const startRow = destSheet.getLastRow() + 1;
+      destSheet.getRange(startRow, 1, newRows.length, COLUMNS_TO_COPY.length).setValues(newRows);
+      newRowIds.forEach((id, idx) => {
+        destSheet.getRange(startRow + idx, 1).setNote(id);
+      });
+    }
   }
 }
