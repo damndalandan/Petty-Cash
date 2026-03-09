@@ -47,13 +47,14 @@
               oninput="syncReceiptAmount()"
               class="w-full p-2 border border-gray-300 rounded font-mono focus:ring-2 focus:ring-blue-500 outline-none text-sm">
           </div>
-          <div>
+          <div class="relative">
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested By</label>
-            <input type="text" id="entryRequested" placeholder="Name or type to search..."
-              list="employeeList"
+            <input type="text" id="entryRequested" placeholder="Type to search name..."
               autocomplete="off"
+              oninput="filterEmployees(this)"
+              onblur="hideEmployeeSuggestions()"
               class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 outline-none text-sm">
-            <datalist id="employeeList"></datalist>
+            <div id="employeeSuggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto"></div>
           </div>
 
           <!-- Receipt indicator — shows after receipt is attached -->

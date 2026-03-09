@@ -42,6 +42,48 @@ function showCategoryDescription(selectEl) {
   }
 }
 
+function filterEmployees(input) {
+  const query = input.value.trim().toLowerCase();
+  const box   = document.getElementById('employeeSuggestions');
+  if (!box) return;
+
+  // Hide if less than 1 character typed
+  if (query.length < 1) {
+    box.classList.add('hidden');
+    return;
+  }
+
+  const employees = window.appEmployees || [];
+  const matches   = employees
+    .filter(name => name.toLowerCase().includes(query))
+    .slice(0, 6); // max 6 suggestions
+
+  if (!matches.length) {
+    box.classList.add('hidden');
+    return;
+  }
+
+  box.innerHTML = matches.map(name =>
+    `<div class="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer"
+      onmousedown="selectEmployee('${name.replace(/'/g, "\\'")}')">${name}</div>`
+  ).join('');
+  box.classList.remove('hidden');
+}
+
+function selectEmployee(name) {
+  const input = document.getElementById('entryRequested');
+  if (input) input.value = name;
+  hideEmployeeSuggestions();
+}
+
+function hideEmployeeSuggestions() {
+  // Small delay so onmousedown fires before blur hides the list
+  setTimeout(() => {
+    const box = document.getElementById('employeeSuggestions');
+    if (box) box.classList.add('hidden');
+  }, 150);
+}
+
 function updateReceiptIndicator() {
   const indicator = document.getElementById('receiptIndicator');
   const addBtn    = document.getElementById('addReceiptBtn');
