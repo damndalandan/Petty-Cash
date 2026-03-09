@@ -450,6 +450,7 @@ function recalculateDailySummary(date) {
       const status = row[10];
 
       if (status === 'DELETED') continue;
+      if (rDate !== date) continue; // ── Skip ALL entries not on this date — no carry-forward in summary
 
       const amt = parseFloat(row[5]) || 0;
 
