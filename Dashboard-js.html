@@ -201,20 +201,26 @@ function updateDashStats() {
   const noReceipt     = state.entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   const totalExp      = withReceipt + noReceipt;
   const totalReplenish = state.entries
-    .filter(e => (e.type === 'REPLENISHMENT' || e.type === 'CASH_RETURN') && e.status !== 'DELETED')
+    .filter(e => e.type === 'REPLENISHMENT' && !e.carriedForward)
+    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+
+  const totalCashReturn = state.entries
+    .filter(e => e.type === 'CASH_RETURN' && !e.carriedForward)
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
   const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
   const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExp);
   const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
-  const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish);
+  const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish + totalCashReturn);
+  const srpsub = document.getElementById('stat-replenishment-sub');
+  if (srpsub) srpsub.textContent = totalCashReturn > 0 ? `incl. ${fmt(totalCashReturn)} returned` : '';
 
   // Expected = opening + replenishment - expenses - advances
     const liveCashAdv = state.entries
     .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward)
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  const expectedInfo = (opening + totalReplenish) - (totalExp + liveCashAdv);
+  const expectedInfo = (opening + totalReplenish + totalCashReturn) - (totalExp + liveCashAdv);
 
   const sexp = document.getElementById('stat-expected');
   if (sexp) {
