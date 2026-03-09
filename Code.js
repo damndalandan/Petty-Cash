@@ -2385,6 +2385,229 @@ function getCategories() {
   }
 }
 
+// ─────────────────────────────────────────────
+// SUMMARY REPORT DATA
+// ─────────────────────────────────────────────
+function getSummaryReportData(params) {
+  // params: { month: 0-11, year: YYYY }
+  try {
+    const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const year     = parseInt(params.year);
+    const month    = parseInt(params.month); // 0-indexed
+    const from     = new Date(year, month, 1);
+    const to       = new Date(year, month + 1, 0);
+    const fromStr  = normalizeDate(from);
+    const toStr    = normalizeDate(to);
+
+    // ── Read all entries in range ──
+    const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const categoryTotals   = {};
+    let totalWithReceipt   = 0;
+    let totalWithoutReceipt= 0;
+    let totalExpenses      = 0;
+    let advancesIssued     = 0;
+    let advancesLiquidated = 0;
+    let advancesOutstanding= 0;
+    let totalReplenishment = 0;
+
+    for (let i = 1; i < entryData.length; i++) {
+      const row    = entryData[i];
+      if (row.length < 11) continue;
+      const rowDate = normalizeDate(row[1]);
+      const type    = row[2];
+      const status  = row[10];
+      const amount  = parseFloat(row[5]) || 0;
+
+      if (rowDate < fromStr || rowDate > toStr) continue;
+      if (status === 'DELETED' || type === 'LIQ_DETAIL') continue;
+
+      if (type === 'EXPENSE') {
+        const cat = String(row[3] || 'Miscellaneous').trim();
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+        totalExpenses += amount;
+        if (row[6] === 'YES') totalWithReceipt    += amount;
+        else                  totalWithoutReceipt += amount;
+      } else if (type === 'CASH_ADVANCE') {
+        advancesIssued += amount;
+        if (status === 'LIQUIDATED')           advancesLiquidated  += amount;
+        else if (status !== 'DELETED')         advancesOutstanding += amount;
+      } else if (type === 'REPLENISHMENT') {
+        totalReplenishment += amount;
+      }
+    }
+
+    // ── Read summaries in range (for daily breakdown) ──
+    const sumData  = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    const dailyRows = [];
+    for (let i = 1; i < sumData.length; i++) {
+      const rowDate = normalizeDate(sumData[i][1]);
+      if (rowDate < fromStr || rowDate > toStr) continue;
+      const expenses = parseFloat(sumData[i][6]) || 0;
+      const opening  = parseFloat(sumData[i][2]) || 0;
+      const replenish= parseFloat(sumData[i][8]) || 0;
+      const closing  = parseFloat(sumData[i][9]) || 0;
+      const status   = sumData[i][11] || 'OPEN';
+      // Only include days with actual activity
+      if (expenses === 0 && opening === 0 && replenish === 0) continue;
+      dailyRows.push({
+        date        : rowDate,
+        opening     : opening,
+        expenses    : expenses,
+        replenishment: replenish,
+        closing     : closing,
+        status      : status
+      });
+    }
+    dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
+
+    // ── Find latest closing cash (cash on hand) ──
+    let cashOnHand = 0;
+    if (dailyRows.length > 0) {
+      const lastClosed = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
+      cashOnHand = lastClosed ? lastClosed.closing : 0;
+    }
+
+    // ── Compute amount to replenish ──
+    const FUND_CEILING    = 28000;
+    const accounted       = cashOnHand + advancesOutstanding;
+    const toReplenish     = Math.max(0, FUND_CEILING - accounted);
+
+    // ── Format category breakdown ──
+    const categories = Object.entries(categoryTotals)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        percent: totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return {
+      success: true,
+      data: {
+        period             : { from: fromStr, to: toStr },
+        fundCeiling        : FUND_CEILING,
+        totalExpenses,
+        totalWithReceipt,
+        totalWithoutReceipt,
+        totalReplenishment,
+        cashOnHand,
+        advancesIssued,
+        advancesLiquidated,
+        advancesOutstanding,
+        accounted,
+        toReplenish,
+        categories,
+        dailyRows
+      }
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// REPLENISHMENT PERIOD REPORT
+// ─────────────────────────────────────────────
+function getReplenishmentPeriodReport() {
+  try {
+    const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const today     = normalizeDate(new Date());
+
+    // ── Find the last REPLENISHMENT entry date ──
+    let lastReplenishDate = null;
+    for (let i = 1; i < entryData.length; i++) {
+      const row    = entryData[i];
+      const type   = row[2];
+      const status = row[10];
+      const date   = normalizeDate(row[1]);
+      if (type !== 'REPLENISHMENT' || status === 'DELETED') continue;
+      if (!lastReplenishDate || date > lastReplenishDate) {
+        lastReplenishDate = date;
+      }
+    }
+
+    // ── If no replenishment found, use earliest summary date ──
+    const sumData = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    if (!lastReplenishDate && sumData.length > 1) {
+      const dates = [];
+      for (let i = 1; i < sumData.length; i++) {
+        const d = normalizeDate(sumData[i][1]);
+        if (d) dates.push(d);
+      }
+      dates.sort();
+      lastReplenishDate = dates[0] || today;
+    }
+
+    const fromStr = lastReplenishDate || today;
+    const toStr   = today;
+
+    // ── Collect all entries in period ──
+    let totalExpenses       = 0;
+    let totalReplenishment  = 0;
+    let advancesOutstanding = 0;
+
+    for (let i = 1; i < entryData.length; i++) {
+      const row    = entryData[i];
+      if (row.length < 11) continue;
+      const rowDate = normalizeDate(row[1]);
+      const type    = row[2];
+      const status  = row[10];
+      const amount  = parseFloat(row[5]) || 0;
+
+      if (rowDate < fromStr || rowDate > toStr) continue;
+      if (status === 'DELETED' || type === 'LIQ_DETAIL') continue;
+
+      if (type === 'EXPENSE')          totalExpenses      += amount;
+      else if (type === 'REPLENISHMENT') totalReplenishment += amount;
+      else if (type === 'CASH_ADVANCE' &&
+              (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING')) {
+        advancesOutstanding += amount;
+      }
+    }
+
+    // ── Daily breakdown from summary ──
+    const dailyRows = [];
+    for (let i = 1; i < sumData.length; i++) {
+      const rowDate = normalizeDate(sumData[i][1]);
+      if (rowDate < fromStr || rowDate > toStr) continue;
+      const expenses  = parseFloat(sumData[i][6]) || 0;
+      const opening   = parseFloat(sumData[i][2]) || 0;
+      const replenish = parseFloat(sumData[i][8]) || 0;
+      const closing   = parseFloat(sumData[i][9]) || 0;
+      const status    = sumData[i][11] || 'OPEN';
+      if (expenses === 0 && opening === 0 && replenish === 0) continue;
+      dailyRows.push({ date: rowDate, opening, expenses, replenishment: replenish, closing, status });
+    }
+    dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
+
+    // ── Cash on hand = latest closed day's closing ──
+    const lastClosed   = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
+    const cashOnHand   = lastClosed ? lastClosed.closing : 0;
+    const FUND_CEILING = 28000;
+    const accounted    = cashOnHand + advancesOutstanding;
+    const toReplenish  = Math.max(0, FUND_CEILING - accounted);
+
+    return {
+      success: true,
+      data: {
+        periodFrom         : fromStr,
+        periodTo           : toStr,
+        fundCeiling        : FUND_CEILING,
+        totalExpenses,
+        totalReplenishment,
+        cashOnHand,
+        advancesOutstanding,
+        accounted,
+        toReplenish,
+        dailyRows
+      }
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
 function syncReceiptsToFinalSheet(approvedDate) {
   const SOURCE_SHEET_NAME   = "PettyCash_Receipts";
   const DEST_SPREADSHEET_ID = "1p7nptmZh-rJF4gjq1S9ntj4-EwCjtBsu_vTc17wahgw";
