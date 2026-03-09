@@ -2456,12 +2456,13 @@ function getSummaryReportData(params) {
       // Only include days with actual activity
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
       dailyRows.push({
-        date        : rowDate,
-        opening     : opening,
-        expenses    : expenses,
+        date         : rowDate,
+        opening      : opening,
+        cashAdvance  : parseFloat(sumData[i][3]) || 0,
+        expenses     : expenses,
         replenishment: replenish,
-        closing     : closing,
-        status      : status
+        closing      : closing,
+        status       : status
       });
     }
     dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
