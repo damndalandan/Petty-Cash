@@ -130,6 +130,8 @@ function toggleAdvanceExpand(id) {
 
 function renderEntries() {
   let filtered = state.entries;
+  // All tab: show expenses and advances only — replenishments have their own page
+  if (state.entryTab === 'all')         filtered = filtered.filter(e => e.type !== 'REPLENISHMENT' && e.type !== 'CASH_RETURN' && e.type !== 'LIQ_DETAIL');
   if (state.entryTab === 'withReceipt') filtered = filtered.filter(e => e.hasReceipt && e.type === 'EXPENSE');
   if (state.entryTab === 'noReceipt')   filtered = filtered.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
 
