@@ -99,6 +99,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   loadCategories();
   loadDayData();
 
+  // Hide cashier stat cards for pure auditors — not relevant to their workflow
+  if (isAuditor() && !isAdmin()) {
+    document.getElementById('dashStatsGrid')?.classList.add('hidden');
+    // Load auditor metrics immediately on first paint instead of waiting for loadDayData
+    loadAuditorMetrics();
+  }
+
+  // Admin metrics also kicked off early
+  if (isAdmin()) {
+    initAdminMetricYears();
+    loadAdminMetrics();
+  }
+
   updateReceiptIndicator();
 });
 
