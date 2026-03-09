@@ -17,7 +17,7 @@ async function loadFilingPage() {
   if (isCashier() || isAdmin()) loadFilingDateList();
 
   const submitPanel = document.getElementById('filingSubmitPanel');
-  if (submitPanel) submitPanel.classList.toggle('hidden', isAdmin());
+  if (submitPanel) submitPanel.classList.remove('hidden');
 
   const histRes = await callServer('getFilingChecklists', { from, to });
   renderFilingHistory(histRes.success ? histRes.data : []);
