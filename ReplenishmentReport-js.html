@@ -96,20 +96,25 @@ function renderRrDailyTable(rows) {
 
   let totExpenses  = 0;
   let totReplenish = 0;
+  let totCashAdv   = 0;
 
   tbody.innerHTML = rows.map((r, idx) => {
     totExpenses  += r.expenses;
     totReplenish += r.replenishment;
+    totCashAdv   += r.cashAdvance || 0;
 
     const d      = new Date(r.date + 'T00:00:00');
     const label  = d.toLocaleDateString('en-PH', {
       weekday: 'short', month: 'short', day: 'numeric'
     });
     const badge  = statusMap[r.status] || statusMap['OPEN'];
-    const expCls = r.expenses      > 0 ? 'font-bold text-red-600'    : 'text-gray-300';
-    const repCls = r.replenishment > 0 ? 'font-bold text-purple-600' : 'text-gray-300';
+    const expCls  = r.expenses      > 0 ? 'font-bold text-red-600'    : 'text-gray-300';
+    const advCls  = r.cashAdvance   > 0 ? 'font-bold text-orange-500' : 'text-gray-300';
+    const repCls  = r.replenishment > 0 ? 'font-bold text-purple-600' : 'text-gray-300';
+    const isClosed = r.status === 'CLOSED';
+    const closingDisplay = isClosed ? fmt(r.closing) : '—';
+    const closingCls     = isClosed ? 'text-gray-700' : 'text-gray-300';
 
-    // Highlight row if it has a replenishment (marks start of new fund period)
     const rowCls = r.replenishment > 0
       ? 'bg-purple-50 border-l-4 border-purple-400'
       : 'hover:bg-gray-50';
@@ -128,11 +133,14 @@ function renderRrDailyTable(rows) {
         <td class="px-4 py-3 text-right font-mono text-sm ${expCls}">
           ${r.expenses > 0 ? fmt(r.expenses) : '—'}
         </td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${advCls}">
+          ${r.cashAdvance > 0 ? fmt(r.cashAdvance) : '—'}
+        </td>
         <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">
           ${r.replenishment > 0 ? fmt(r.replenishment) : '—'}
         </td>
-        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">
-          ${fmt(r.closing)}
+        <td class="px-4 py-3 text-right font-mono text-sm ${closingCls}">
+          ${closingDisplay}
         </td>
         <td class="px-4 py-3 text-center">${badge}</td>
       </tr>`;
@@ -140,16 +148,11 @@ function renderRrDailyTable(rows) {
 
   tfoot.innerHTML = `
     <tr>
-      <td class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">
-        Period Totals
-      </td>
+      <td class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">Period Totals</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-red-600">
-        ${fmt(totExpenses)}
-      </td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-purple-600">
-        ${totReplenish > 0 ? fmt(totReplenish) : '—'}
-      </td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-red-600">${fmt(totExpenses)}</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-orange-500">${totCashAdv > 0 ? fmt(totCashAdv) : '—'}</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-purple-600">${totReplenish > 0 ? fmt(totReplenish) : '—'}</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
       <td></td>
     </tr>`;

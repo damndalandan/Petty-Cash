@@ -1619,10 +1619,10 @@ function getPreviousDayClosing(date) {
 
     for (let i = 1; i < rows.length; i++) {
       const rDate  = normalizeDate(rows[i][1]);
-      const status = rows[i][11];
+      const status = rows[i][12];
       if (rDate < date && status === 'CLOSED') {
         if (!best || rDate > best.date) {
-          best = { date: rDate, closingCash: parseFloat(rows[i][9]) || 0 };
+          best = { date: rDate, closingCash: parseFloat(rows[i][10]) || 0 };
         }
       }
     }
@@ -1644,9 +1644,9 @@ function getDayStatus(date) {
 
     for (let i = 1; i < sumRows.length; i++) {
       if (normalizeDate(sumRows[i][1]) !== date) continue;
-      summaryStatus = sumRows[i][11] || 'OPEN';
+      summaryStatus = sumRows[i][12] || 'OPEN';
       openingCash   = parseFloat(sumRows[i][2])  || 0;
-      closingCash   = parseFloat(sumRows[i][9])  || 0;
+      closingCash   = parseFloat(sumRows[i][10]) || 0;
       replenishment = parseFloat(sumRows[i][8])  || 0;
       break;
     }
@@ -2522,33 +2522,41 @@ function getReplenishmentPeriodReport() {
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
     const today     = normalizeDate(new Date());
 
-    // ── Find the last REPLENISHMENT entry date ──
-    let lastReplenishDate = null;
+    // ── Collect all unique replenishment dates (sorted) ──
+    const replenishDates = [];
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
       const type   = row[2];
       const status = row[10];
       const date   = normalizeDate(row[1]);
       if (type !== 'REPLENISHMENT' || status === 'DELETED') continue;
-      if (!lastReplenishDate || date > lastReplenishDate) {
-        lastReplenishDate = date;
-      }
+      if (!replenishDates.includes(date)) replenishDates.push(date);
     }
+    replenishDates.sort();
 
-    // ── If no replenishment found, use earliest summary date ──
+    // ── Determine period start ──
+    // If 2+ replenishments: period starts day AFTER the second-to-last one
+    // If only 1: period starts from the earliest summary date
+    // If none: show everything
     const sumData = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
-    if (!lastReplenishDate && sumData.length > 1) {
+    let fromStr = null;
+
+    if (replenishDates.length >= 2) {
+      const prevReplenish = replenishDates[replenishDates.length - 2];
+      const d = new Date(prevReplenish + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      fromStr = normalizeDate(d);
+    } else {
       const dates = [];
       for (let i = 1; i < sumData.length; i++) {
         const d = normalizeDate(sumData[i][1]);
         if (d) dates.push(d);
       }
       dates.sort();
-      lastReplenishDate = dates[0] || today;
+      fromStr = dates[0] || today;
     }
 
-    const fromStr = lastReplenishDate || today;
-    const toStr   = today;
+    const toStr = today;
 
     // ── Collect all entries in period ──
     let totalExpenses       = 0;
@@ -2556,7 +2564,7 @@ function getReplenishmentPeriodReport() {
     let advancesOutstanding = 0;
 
     for (let i = 1; i < entryData.length; i++) {
-      const row    = entryData[i];
+      const row     = entryData[i];
       if (row.length < 11) continue;
       const rowDate = normalizeDate(row[1]);
       const type    = row[2];
@@ -2566,30 +2574,41 @@ function getReplenishmentPeriodReport() {
       if (rowDate < fromStr || rowDate > toStr) continue;
       if (status === 'DELETED' || type === 'LIQ_DETAIL') continue;
 
-      if (type === 'EXPENSE')          totalExpenses      += amount;
-      else if (type === 'REPLENISHMENT') totalReplenishment += amount;
-      else if (type === 'CASH_ADVANCE' &&
-              (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING')) {
+      if (type === 'EXPENSE') {
+        totalExpenses += amount;
+      } else if (type === 'REPLENISHMENT') {
+        totalReplenishment += amount;
+      } else if (type === 'CASH_ADVANCE' &&
+                (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING')) {
         advancesOutstanding += amount;
       }
     }
 
-    // ── Daily breakdown from summary ──
+    // ── Daily breakdown from summary — correct column indexes ──
     const dailyRows = [];
     for (let i = 1; i < sumData.length; i++) {
-      const rowDate = normalizeDate(sumData[i][1]);
+      const rowDate   = normalizeDate(sumData[i][1]);
       if (rowDate < fromStr || rowDate > toStr) continue;
-      const expenses  = parseFloat(sumData[i][6]) || 0;
-      const opening   = parseFloat(sumData[i][2]) || 0;
-      const replenish = parseFloat(sumData[i][8]) || 0;
+      const opening   = parseFloat(sumData[i][2])  || 0;
+      const cashAdv   = parseFloat(sumData[i][3])  || 0;
+      const expenses  = parseFloat(sumData[i][6])  || 0;
+      const replenish = parseFloat(sumData[i][8])  || 0;
       const closing   = parseFloat(sumData[i][10]) || 0;
-      const status    = sumData[i][12] || 'OPEN';
+      const status    = String(sumData[i][12] || 'OPEN');
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
-      dailyRows.push({ date: rowDate, opening, expenses, replenishment: replenish, closing, status });
+      dailyRows.push({
+        date         : rowDate,
+        opening,
+        cashAdvance  : cashAdv,
+        expenses,
+        replenishment: replenish,
+        closing,
+        status
+      });
     }
     dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
 
-    // ── Cash on hand = latest closed day's closing ──
+    // ── Cash on hand = latest CLOSED day's closing ──
     const lastClosed   = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
     const cashOnHand   = lastClosed ? lastClosed.closing : 0;
     const FUND_CEILING = 28000;
