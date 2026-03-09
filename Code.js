@@ -1371,17 +1371,20 @@ function auditApproveDay(data) {
     const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
     const denomRows  = denomSheet.getDataRange().getValues();
 
-    // Find auditor's END count for this date
+    // Always re-read denominations fresh — the frontend already saved the END row
+    // just before calling this function, so we need the latest data
+    const freshDenomRows = denomSheet.getDataRange().getValues();
+
+    // Find auditor's END count for this date (fresh read)
     let endRow = null;
-    for (let j = 1; j < denomRows.length; j++) {
-      if (normalizeDate(denomRows[j][1]) === data.date && denomRows[j][2] === 'END') {
-        endRow = denomRows[j];
+    for (let j = 1; j < freshDenomRows.length; j++) {
+      if (normalizeDate(freshDenomRows[j][1]) === data.date && freshDenomRows[j][2] === 'END') {
+        endRow = freshDenomRows[j];
         break;
       }
     }
 
-    // Fallback: if no END denom record exists, create one from actualCash
-    // This always runs so next day opening is never left at ₱0
+    // Fallback: if still no END row found, create one from actualCash
     if (!endRow && data.actualCash !== undefined) {
       const fallbackId = 'DEN-END-' + data.date.replace(/-/g,'') + '-AU';
       denomSheet.appendRow([
@@ -1391,20 +1394,17 @@ function auditApproveDay(data) {
         'Auto-saved on audit approval',
         now
       ]);
-      // Re-read to get the row we just appended
-      const refreshed = denomSheet.getDataRange().getValues();
-      for (let j = 1; j < refreshed.length; j++) {
-        if (normalizeDate(refreshed[j][1]) === data.date && refreshed[j][2] === 'END') {
-          endRow = refreshed[j];
+      // Re-read again to get the fallback row just appended
+      const refreshed2 = denomSheet.getDataRange().getValues();
+      for (let j = 1; j < refreshed2.length; j++) {
+        if (normalizeDate(refreshed2[j][1]) === data.date && refreshed2[j][2] === 'END') {
+          endRow = refreshed2[j];
           break;
         }
       }
     }
 
     if (endRow) {
-      // Re-read fresh to include any fallback row just appended above
-      const freshDenomRows = denomSheet.getDataRange().getValues();
-
       // Check if next day START already exists — don't overwrite
       let nextDayStartExists = false;
       for (let j = 1; j < freshDenomRows.length; j++) {
