@@ -12,11 +12,34 @@ function clearEntryForm() {
   });
   const cat = document.getElementById('entryCategory');
   if (cat) cat.selectedIndex = 0;
+  // Hide description box on form clear
+  const box = document.getElementById('categoryDescBox');
+  if (box) box.className = 'hidden mt-2 p-3 rounded-lg border text-xs leading-relaxed';
   const typ = document.getElementById('entryType');
   if (typ) typ.value = 'EXPENSE';
 
   _pendingReceipt = null;
   updateReceiptIndicator();
+}
+
+function showCategoryDescription(selectEl) {
+  const box  = document.getElementById('categoryDescBox');
+  if (!box) return;
+  const desc = selectEl.options[selectEl.selectedIndex]?.dataset?.description || '';
+
+  if (!desc) {
+    box.className = 'hidden mt-2 p-3 rounded-lg border text-xs leading-relaxed';
+    return;
+  }
+
+  const isWarning = selectEl.value === 'Other Expense';
+  if (isWarning) {
+    box.className = 'mt-2 p-3 rounded-lg border text-xs leading-relaxed bg-amber-50 border-amber-200 text-amber-800';
+    box.innerHTML = '<span class="font-bold">⚠️ Use with caution:</span> ' + desc;
+  } else {
+    box.className = 'mt-2 p-3 rounded-lg border text-xs leading-relaxed bg-blue-50 border-blue-200 text-blue-800';
+    box.innerHTML = '<span class="font-bold">ℹ️ Guide:</span> ' + desc;
+  }
 }
 
 function updateReceiptIndicator() {

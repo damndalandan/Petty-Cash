@@ -180,7 +180,11 @@ async function loadCategories() {
   ['entryCategory', 'editCategory'].forEach(id => {
     const sel = document.getElementById(id);
     if (!sel) return;
-    sel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    sel.innerHTML = cats.map(c => {
+      const name = c.name || c;
+      const desc = c.description || '';
+      return `<option value="${name}" data-description="${desc}">${name}</option>`;
+    }).join('');
   });
 }
 

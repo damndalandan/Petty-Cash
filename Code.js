@@ -2374,13 +2374,14 @@ function getCategories() {
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.CATEGORIES);
-    if (!sheet) return { success: false, message: 'Categories sheet not found', data: [] }; 
+    if (!sheet) return { success: false, message: 'Categories sheet not found', data: [] };
 
     const rows = sheet.getDataRange().getValues();
     const categories = [];
     for (let i = 1; i < rows.length; i++) {
-      const val = String(rows[i][0] || '').trim();
-      if (val) categories.push(val);
+      const name = String(rows[i][0] || '').trim();
+      const desc = String(rows[i][1] || '').trim();
+      if (name) categories.push({ name, description: desc });
     }
     return { success: true, data: categories };
   } catch(e) {
