@@ -1466,6 +1466,11 @@ function auditApproveDay(data) {
           newId,
           nextDate
         );
+
+        // ── Auto-close Sunday if next day is a non-working day ──
+        try { autoCloseNonWorkingDays(nextDate, endTotal, ss, now); } catch(e) {
+          console.error('autoCloseNonWorkingDays error:', e);
+        }
       }
     }
 
@@ -2467,4 +2472,128 @@ function syncReceiptsToFinalSheet(approvedDate) {
       });
     }
   }
+}
+
+// ─────────────────────────────────────────────
+// AUTO-CLOSE NON-WORKING DAYS (Sundays)
+// ─────────────────────────────────────────────
+function autoCloseNonWorkingDays(startDate, openingCash, ss, now) {
+  try {
+    let checkDate = startDate;
+
+    while (true) {
+      const dateObj  = new Date(checkDate + 'T00:00:00');
+      const isSunday = dateObj.getDay() === 0; // 0 = Sunday
+
+      if (!isSunday) break;
+
+      const sumSheet   = ss.getSheetByName(SHEETS.SUMMARY);
+      const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+      const sumData    = sumSheet.getDataRange().getValues();
+
+      // Skip if summary record already exists for this date
+      let alreadyExists = false;
+      for (let i = 1; i < sumData.length; i++) {
+        if (normalizeDate(sumData[i][1]) === checkDate) {
+          alreadyExists = true;
+          break;
+        }
+      }
+
+      if (!alreadyExists) {
+        // ── Create Summary row — CLOSED, zero activity ──
+        const sumId = generateId('SUM', checkDate, sumSheet);
+        sumSheet.appendRow([
+          sumId,        // Summary_ID
+          checkDate,    // Date
+          openingCash,  // Opening_Cash
+          0,            // Cash_Advance
+          0,            // Total_Exp_With_Receipt
+          0,            // Total_Exp_No_Receipt
+          0,            // Total_Expenses
+          0,            // Total_Cash_Over
+          0,            // Total_Replenishment
+          openingCash,  // Closing_Cash (same as opening)
+          0,            // Variance
+          'CLOSED',     // Status
+          'system',     // Closed_By
+          now           // Updated_At
+        ]);
+
+        // ── Create Denomination START row (carry-forward from previous day END) ──
+        const prevDate   = getPreviousDate(checkDate);
+        const denomData  = denomSheet.getDataRange().getValues();
+        let   prevEndRow = null;
+
+        for (let i = 1; i < denomData.length; i++) {
+          if (normalizeDate(denomData[i][1]) === prevDate && denomData[i][2] === 'END') {
+            prevEndRow = denomData[i];
+            break;
+          }
+        }
+
+        if (prevEndRow) {
+          const startId = 'DEN-OC-' + checkDate.replace(/-/g,'') + '-CF';
+          denomSheet.appendRow([
+            startId,         // Record_ID
+            checkDate,       // Date
+            'START',         // Type
+            prevEndRow[3],   // ₱1000
+            prevEndRow[4],   // ₱500
+            prevEndRow[5],   // ₱200
+            prevEndRow[6],   // ₱100
+            prevEndRow[7],   // ₱50
+            prevEndRow[8],   // ₱20
+            prevEndRow[9],   // ₱10
+            prevEndRow[10],  // ₱5
+            prevEndRow[11],  // ₱1
+            prevEndRow[12],  // ₱0.25
+            openingCash,     // Total
+            'Auto-closed: Non-working day (Sunday)',
+            now
+          ]);
+
+          // ── Create Denomination END row (same as START — no activity) ──
+          const endId = 'DEN-CC-' + checkDate.replace(/-/g,'') + '-CF';
+          denomSheet.appendRow([
+            endId,           // Record_ID
+            checkDate,       // Date
+            'END',           // Type
+            prevEndRow[3],   // ₱1000
+            prevEndRow[4],   // ₱500
+            prevEndRow[5],   // ₱200
+            prevEndRow[6],   // ₱100
+            prevEndRow[7],   // ₱50
+            prevEndRow[8],   // ₱20
+            prevEndRow[9],   // ₱10
+            prevEndRow[10],  // ₱5
+            prevEndRow[11],  // ₱1
+            prevEndRow[12],  // ₱0.25
+            openingCash,     // Total
+            'Auto-closed: Non-working day (Sunday)',
+            now
+          ]);
+        }
+
+        writeAuditLog(
+          'DAY_APPROVED',
+          `Sunday auto-closed as non-working day. Opening/Closing: ₱${openingCash.toFixed(2)}`,
+          sumId,
+          checkDate
+        );
+      }
+
+      // Move to next day and keep checking
+      // (handles holiday Monday after Sunday, etc.)
+      checkDate = getNextDate(checkDate);
+    }
+  } catch(e) {
+    console.error('autoCloseNonWorkingDays error:', e);
+  }
+}
+
+function getPreviousDate(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split('T')[0];
 }
