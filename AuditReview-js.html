@@ -132,13 +132,13 @@ function updateAuditVariance(actualCash) {
   if (actualCash === undefined) return;
 
   // Variance: physical count vs expected, adjusted for unverified entries.
-  // As entries get verified, unverifiedTotal shrinks → variance moves toward 0.
-  const unverifiedTotal = Object.entries(auditEntryReviews)
-    .filter(([, r]) => r.status !== 'verified')
-    .reduce((sum, [id]) => {
-      const entry = (state.entries || []).find(e => e.id === id);
-      return sum + (entry ? parseFloat(entry.amount || 0) : 0);
-    }, 0);
+  // Start with ALL reviewable entries as unverified, subtract only explicitly verified ones.
+  const reviewableEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  const verifiedTotal = reviewableEntries
+    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
+    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const allEntriesTotal = reviewableEntries.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const unverifiedTotal = allEntriesTotal - verifiedTotal;
 
   const variance = actualCash - (expected - unverifiedTotal);
 
@@ -433,13 +433,13 @@ async function confirmAuditDecision(decision) {
   AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
 
   // Variance: physical count vs expected, adjusted for unverified entries.
-  // As entries get verified, unverifiedTotal shrinks → variance moves toward 0.
-  const unverifiedTotal = Object.entries(auditEntryReviews)
-    .filter(([, r]) => r.status !== 'verified')
-    .reduce((sum, [id]) => {
-      const entry = (state.entries || []).find(e => e.id === id);
-      return sum + (entry ? parseFloat(entry.amount || 0) : 0);
-    }, 0);
+  // Start with ALL reviewable entries as unverified, subtract only explicitly verified ones.
+  const reviewableEntries = entries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  const verifiedTotal = reviewableEntries
+    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
+    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const allEntriesTotal = reviewableEntries.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
+  const unverifiedTotal = allEntriesTotal - verifiedTotal;
 
   const variance = actualCash - (expected - unverifiedTotal);
 

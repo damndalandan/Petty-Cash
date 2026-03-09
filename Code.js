@@ -462,7 +462,7 @@ function recalculateDailySummary(date) {
         }
         else if (type === 'CASH_OVER')     totalCashOver      += amt;
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
-        else if (type === 'CASH_RETURN')   totalReplenishment += amt; // change return adds back to cash like replenishment
+        else if (type === 'CASH_RETURN')   totalReplenishment += amt; // cash return adds back to available cash — intentionally grouped with replenishment for expected-cash formula
         else if (type === 'LIQ_DETAIL')    { /* documentation only — ignore in totals */ }
         else {
           totalExp += amt;
@@ -499,7 +499,7 @@ function recalculateDailySummary(date) {
     }
 
     const expected = (openingCash + totalReplenishment) - (totalExp + cashAdvance);
-    const variance = closingCash - expected;
+    const variance = hasClosing ? (closingCash - expected) : 0;
     const status   = hasClosing
       ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
       : 'OPEN';
@@ -538,20 +538,21 @@ function saveExpenseEntry(data) {
     const id         = generateId('EXP', data.date, entrySheet);
 
     entrySheet.appendRow([
-      id,
-      data.date,
-      data.type        || 'EXPENSE',
-      data.category    || 'Miscellaneous',
-      data.description || '',
-      parseFloat(data.amount) || 0,
-      data.hasReceipt ? 'YES' : 'NO',
-      data.referenceNo || '',
-      data.requestedBy || '',
-      data.approvedBy  || '',
-      'ACTIVE',
-      now,
-      now,
-      ''
+      id,                          // col 1  — Entry_ID
+      data.date,                   // col 2  — Date
+      data.type        || 'EXPENSE',// col 3  — Type
+      data.category    || 'Miscellaneous', // col 4 — Category
+      data.description || '',      // col 5  — Description
+      parseFloat(data.amount) || 0,// col 6  — Amount
+      data.hasReceipt ? 'YES' : 'NO', // col 7 — Has_Receipt
+      data.referenceNo || '',      // col 8  — Reference_No
+      data.requestedBy || '',      // col 9  — Requested_By
+      data.approvedBy  || '',      // col 10 — Approved_By
+      'ACTIVE',                    // col 11 — Status
+      now,                         // col 12 — Created_At
+      now,                         // col 13 — Updated_At
+      '',                          // col 14 — (reserved / blank)
+      ''                           // col 15 — Notes/Remarks
     ]);
 
     // ── Auto-log to PettyCash_NoReceipts if no receipt and type is EXPENSE ──
@@ -728,8 +729,8 @@ function deleteExpenseEntry(entryId) {
       const row  = i + 1;
 
       sheet.getRange(row, 11).setValue('DELETED');
-      sheet.getRange(row, 13).setValue(now);
-      sheet.getRange(row, 14).setValue(`${userEmail} @ ${now}`);
+      sheet.getRange(row, 13).setValue(now);  // updatedAt (col 13)
+      sheet.getRange(row, 15).setValue(`[DELETED BY ${userEmail} @ ${now}]`);  // notes (col 15)
 
       markNoReceiptDeleted(entryId);
       recalculateDailySummary(date);

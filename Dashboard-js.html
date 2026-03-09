@@ -205,7 +205,9 @@ function updateDashStats() {
   const withReceipt   = state.entries.filter(e => e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   const noReceipt     = state.entries.filter(e => !e.hasReceipt && e.type === 'EXPENSE').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   const totalExp      = withReceipt + noReceipt;
-  const totalReplenish = state.entries.filter(e => e.type === 'REPLENISHMENT' && e.status !== 'DELETED').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  const totalReplenish = state.entries
+    .filter(e => (e.type === 'REPLENISHMENT' || e.type === 'CASH_RETURN') && e.status !== 'DELETED')
+    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
   const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
   const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExp);
@@ -386,6 +388,18 @@ function renderAdminMetricCards() {
     { key: 'cashOver',       badge: 'badge-cashOver',       card: 'card-cashOver',       activeClass: 'border-blue-500 bg-blue-50'  },
     { key: 'pendingAdvances',badge: 'badge-pendingAdvances',card: 'card-pendingAdvances',activeClass: 'border-purple-500 bg-purple-50'},
   ];
+
+  // ── Update sidebar nav badge (Admin sees unclosed days as audit pending) ──
+  const navBadge     = document.getElementById('audit-review-badge');
+  const unclosedCount = getAdminFilteredData('unclosed').length;
+  if (navBadge) {
+    if (unclosedCount > 0) {
+      navBadge.textContent = unclosedCount;
+      navBadge.classList.remove('hidden');
+    } else {
+      navBadge.classList.add('hidden');
+    }
+  }
 
   keys.forEach(({ key, badge, card, activeClass }) => {
     const data  = getAdminFilteredData(key);
@@ -750,6 +764,18 @@ function renderAuditorUrgentBanner() {
 
 function renderAuditorMetricCards() {
   if (!auditorMetricsRaw) return;
+
+  // ── Update sidebar nav badge ──
+  const navBadge     = document.getElementById('audit-review-badge');
+  const pendingCount = (auditorMetricsRaw.pendingAudit || []).length;
+  if (navBadge) {
+    if (pendingCount > 0) {
+      navBadge.textContent = pendingCount;
+      navBadge.classList.remove('hidden');
+    } else {
+      navBadge.classList.add('hidden');
+    }
+  }
 
   const config = {
     pendingAudit      : { color: 'amber'  },
