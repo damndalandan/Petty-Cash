@@ -591,7 +591,7 @@ async function executeAuditApprove() {
 
   const res = await callServer('auditApproveDay', {
     date          : state.currentDate,
-    actualCash    : actualCash,
+    actualCash    : denomTotal,
     note          : note + (overNote ? ' | Overage note: ' + overNote : ''),
     flaggedEntries: flaggedEntries
   });
