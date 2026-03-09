@@ -133,8 +133,9 @@ function renderEntries() {
   if (state.entryTab === 'withReceipt') filtered = filtered.filter(e => e.hasReceipt && e.type === 'EXPENSE');
   if (state.entryTab === 'noReceipt')   filtered = filtered.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
 
+  const AMOUNT_TYPES = ['EXPENSE', 'CASH_ADVANCE', 'CASH_OVER', 'REPLENISHMENT', 'CASH_RETURN'];
   const total = filtered
-    .filter(e => e.type === 'EXPENSE')
+    .filter(e => AMOUNT_TYPES.includes(e.type) && e.type !== 'LIQ_DETAIL')
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
   document.getElementById('entries-total').textContent = fmt(total);
 
