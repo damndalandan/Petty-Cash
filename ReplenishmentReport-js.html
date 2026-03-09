@@ -1,0 +1,165 @@
+<script>
+// =============================================
+// REPLENISHMENT PERIOD REPORT LOGIC
+// =============================================
+
+let rrData = null;
+
+async function loadReplenishReport() {
+  document.getElementById('rrEmpty').classList.add('hidden');
+  document.getElementById('rrContent').classList.add('hidden');
+  document.getElementById('rrLoading').classList.remove('hidden');
+
+  const res = await callServer('getReplenishmentPeriodReport');
+
+  document.getElementById('rrLoading').classList.add('hidden');
+
+  if (!res.success) {
+    toast('Failed to load replenishment report: ' + (res.message || ''), 'error');
+    document.getElementById('rrEmpty').classList.remove('hidden');
+    return;
+  }
+
+  if (!res.data || !res.data.dailyRows || res.data.dailyRows.length === 0) {
+    document.getElementById('rrEmpty').classList.remove('hidden');
+    return;
+  }
+
+  rrData = res.data;
+  renderReplenishReport(rrData);
+}
+
+function renderReplenishReport(d) {
+  // ── Period Banner ──
+  const fromDate = new Date(d.periodFrom + 'T00:00:00');
+  const toDate   = new Date(d.periodTo   + 'T00:00:00');
+
+  const fmtDate  = (dt) => dt.toLocaleDateString('en-PH', {
+    month: 'long', day: 'numeric', year: 'numeric'
+  });
+
+  document.getElementById('rr-periodLabel').textContent =
+    `${fmtDate(fromDate)} — ${fmtDate(toDate)}`;
+
+  // Day count
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const dayCount = Math.round((toDate - fromDate) / msPerDay) + 1;
+  document.getElementById('rr-dayCount').textContent = dayCount;
+  document.getElementById('rr-tableSubtitle').textContent =
+    `${d.dailyRows.length} active day${d.dailyRows.length !== 1 ? 's' : ''}`;
+
+  // ── Replenishment Calculation ──
+  document.getElementById('rr-cashOnHand').textContent      = fmt(d.cashOnHand);
+  document.getElementById('rr-advOutstanding').textContent  = fmt(d.advancesOutstanding);
+  document.getElementById('rr-accounted').textContent       = fmt(d.accounted);
+  document.getElementById('rr-fundCeiling').textContent     = fmt(d.fundCeiling);
+  document.getElementById('rr-toReplenish').textContent     = fmt(d.toReplenish);
+
+  // ── Period Stats ──
+  document.getElementById('rr-totalExpenses').textContent     = fmt(d.totalExpenses);
+  document.getElementById('rr-totalReplenishment').textContent = fmt(d.totalReplenishment);
+
+  const net    = d.totalReplenishment - d.totalExpenses;
+  const netEl  = document.getElementById('rr-netMovement');
+  netEl.textContent = (net >= 0 ? '+' : '') + fmt(net);
+  netEl.className   = 'text-xl font-black font-mono ' +
+    (net >= 0 ? 'text-green-600' : 'text-red-600');
+
+  // ── Daily Table ──
+  renderRrDailyTable(d.dailyRows);
+
+  // Show content
+  document.getElementById('rrContent').classList.remove('hidden');
+}
+
+function renderRrDailyTable(rows) {
+  const tbody = document.getElementById('rrDailyBody');
+  const tfoot = document.getElementById('rrDailyFoot');
+
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="px-4 py-8 text-center text-gray-400 italic text-sm">
+          No activity in this period
+        </td>
+      </tr>`;
+    tfoot.innerHTML = '';
+    return;
+  }
+
+  const statusMap = {
+    CLOSED       : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">✅ Closed</span>',
+    PENDING_AUDIT: '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">🔍 Pending</span>',
+    FLAGGED      : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700">🚩 Flagged</span>',
+    OPEN         : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600">⚪ Open</span>',
+  };
+
+  let totExpenses  = 0;
+  let totReplenish = 0;
+
+  tbody.innerHTML = rows.map((r, idx) => {
+    totExpenses  += r.expenses;
+    totReplenish += r.replenishment;
+
+    const d      = new Date(r.date + 'T00:00:00');
+    const label  = d.toLocaleDateString('en-PH', {
+      weekday: 'short', month: 'short', day: 'numeric'
+    });
+    const badge  = statusMap[r.status] || statusMap['OPEN'];
+    const expCls = r.expenses      > 0 ? 'font-bold text-red-600'    : 'text-gray-300';
+    const repCls = r.replenishment > 0 ? 'font-bold text-purple-600' : 'text-gray-300';
+
+    // Highlight row if it has a replenishment (marks start of new fund period)
+    const rowCls = r.replenishment > 0
+      ? 'bg-purple-50 border-l-4 border-purple-400'
+      : 'hover:bg-gray-50';
+
+    return `
+      <tr class="transition ${rowCls}">
+        <td class="px-4 py-3 text-sm font-medium text-gray-700">
+          ${label}
+          ${r.replenishment > 0
+            ? '<span class="ml-1 text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">TOP-UP</span>'
+            : ''}
+        </td>
+        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">
+          ${fmt(r.opening)}
+        </td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${expCls}">
+          ${r.expenses > 0 ? fmt(r.expenses) : '—'}
+        </td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">
+          ${r.replenishment > 0 ? fmt(r.replenishment) : '—'}
+        </td>
+        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">
+          ${fmt(r.closing)}
+        </td>
+        <td class="px-4 py-3 text-center">${badge}</td>
+      </tr>`;
+  }).join('');
+
+  tfoot.innerHTML = `
+    <tr>
+      <td class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">
+        Period Totals
+      </td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-red-600">
+        ${fmt(totExpenses)}
+      </td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-purple-600">
+        ${totReplenish > 0 ? fmt(totReplenish) : '—'}
+      </td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
+      <td></td>
+    </tr>`;
+}
+
+function printReplenishReport() {
+  if (!rrData) {
+    toast('No report data to export', 'warning');
+    return;
+  }
+  window.print();
+}
+</script>

@@ -1,0 +1,140 @@
+<!-- REPLENISHMENT PERIOD REPORT PAGE -->
+<div id="page-replenishreport" class="page-view hidden space-y-6">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Replenishment Report</h1>
+      <p class="text-sm text-gray-500 mt-1">Transaction history from last top-up to today</p>
+    </div>
+    <button onclick="printReplenishReport()"
+      class="mt-3 md:mt-0 flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow transition">
+      <span>⬇️</span> Export PDF
+    </button>
+  </div>
+
+  <!-- Loading State -->
+  <div id="rrLoading" class="text-center py-16">
+    <div class="loader inline-block mb-3"></div>
+    <p class="text-sm text-gray-400">Loading period data...</p>
+  </div>
+
+  <!-- Report Content -->
+  <div id="rrContent" class="hidden space-y-6">
+
+    <!-- Period Banner -->
+    <div class="flex items-center gap-3 bg-blue-50 border border-blue-200 rounded-xl px-5 py-3">
+      <span class="text-xl">📅</span>
+      <div>
+        <div class="text-xs font-bold text-blue-500 uppercase tracking-wider">Reporting Period</div>
+        <div class="text-sm font-bold text-blue-800 font-mono" id="rr-periodLabel">—</div>
+      </div>
+      <div class="ml-auto text-right">
+        <div class="text-xs text-blue-400">Days in period</div>
+        <div class="text-lg font-black font-mono text-blue-700" id="rr-dayCount">—</div>
+      </div>
+    </div>
+
+    <!-- Replenishment Calculation Card -->
+    <div class="bg-white rounded-xl border-2 border-amber-200 shadow-sm p-5">
+      <h2 class="text-sm font-bold text-gray-700 mb-4">💰 Replenishment Calculation</h2>
+      <div class="space-y-2">
+
+        <div class="flex justify-between items-center py-2 border-b border-gray-100">
+          <span class="text-sm text-gray-500">Cash on Hand</span>
+          <span class="font-mono font-bold text-blue-600" id="rr-cashOnHand">—</span>
+        </div>
+        <div class="flex justify-between items-center py-2 border-b border-gray-100">
+          <span class="text-sm text-gray-500">Unliquidated Advances</span>
+          <span class="font-mono font-bold text-amber-600" id="rr-advOutstanding">—</span>
+        </div>
+        <div class="flex justify-between items-center py-2 border-b-2 border-gray-300">
+          <span class="text-sm font-bold text-gray-700">Accounted Cash</span>
+          <span class="font-mono font-bold text-gray-800" id="rr-accounted">—</span>
+        </div>
+        <div class="flex justify-between items-center py-2 border-b border-gray-100">
+          <span class="text-sm text-gray-500">Fund Ceiling</span>
+          <span class="font-mono font-bold text-gray-600" id="rr-fundCeiling">—</span>
+        </div>
+
+        <!-- Amount to Replenish — highlighted -->
+        <div class="flex justify-between items-center mt-2 p-4 bg-amber-50 rounded-xl border border-amber-300">
+          <div>
+            <div class="text-sm font-bold text-amber-800">Amount to Replenish</div>
+            <div class="text-xs text-amber-600 mt-0.5">To bring fund back to ₱28,000</div>
+          </div>
+          <div class="text-3xl font-black font-mono text-amber-700" id="rr-toReplenish">—</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Period Summary Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">Total Expenses</div>
+        <div class="text-xl font-black font-mono text-red-600" id="rr-totalExpenses">—</div>
+        <div class="text-xs text-gray-400 mt-1">This period</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">Replenishments</div>
+        <div class="text-xl font-black font-mono text-purple-600" id="rr-totalReplenishment">—</div>
+        <div class="text-xs text-gray-400 mt-1">Funds received</div>
+      </div>
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 col-span-2 md:col-span-1">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">Net Movement</div>
+        <div class="text-xl font-black font-mono" id="rr-netMovement">—</div>
+        <div class="text-xs text-gray-400 mt-1">Replenish minus expenses</div>
+      </div>
+    </div>
+
+    <!-- Daily Breakdown Table -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <h2 class="text-sm font-bold text-gray-700">📅 Daily Transactions</h2>
+        <span class="text-xs text-gray-400" id="rr-tableSubtitle">Active days only</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Opening</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Expenses</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Replenishment</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Closing</th>
+              <th class="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">Status</th>
+            </tr>
+          </thead>
+          <tbody id="rrDailyBody" class="divide-y divide-gray-50"></tbody>
+          <tfoot id="rrDailyFoot" class="bg-gray-50 border-t-2 border-gray-200"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- Refresh button -->
+    <div class="flex justify-center pb-4">
+      <button onclick="loadReplenishReport()"
+        class="text-sm text-blue-600 hover:text-blue-800 font-medium transition">
+        ↺ Refresh Report
+      </button>
+    </div>
+
+  </div><!-- end rrContent -->
+
+  <!-- Empty State -->
+  <div id="rrEmpty" class="hidden text-center py-16 text-gray-400">
+    <span class="text-5xl block mb-3 grayscale opacity-40">📋</span>
+    <p class="text-sm">No replenishment data found</p>
+  </div>
+
+</div>
+
+<!-- PRINT STYLES for Replenishment Report -->
+<style>
+  @media print {
+    #page-replenishreport .hidden { display: none !important; }
+    button, [onclick] { display: none !important; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
