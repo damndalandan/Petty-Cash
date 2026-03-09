@@ -498,7 +498,7 @@ function recalculateDailySummary(date) {
       }
     }
 
-    const expected = (openingCash + totalReplenishment) - (totalExp + cashAdvance);
+    const expected = (openingCash + totalReplenishment + totalCashOver) - (totalExp + cashAdvance);
     const variance = hasClosing ? (closingCash - expected) : 0;
     const status   = hasClosing
       ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
