@@ -91,7 +91,7 @@ function buildAuditDenomGrid() {
       <div class="flex items-center gap-1.5">
         <span class="text-[10px] font-bold text-gray-500 w-10 shrink-0">${label}</span>
         <input type="number" min="0" id="auditDenom-${bill}"
-          oninput="auditDenomValues['${bill}'] = parseFloat(this.value)||0; updateAuditDenomTotal()"
+          oninput="auditDenomValues[String(${bill})] = parseFloat(this.value)||0; updateAuditDenomTotal()"
           class="w-full text-xs text-center border border-gray-200 rounded-lg py-1.5 px-1 outline-none focus:ring-2 focus:ring-gray-400 bg-gray-50"
           placeholder="0">
       </div>`;
@@ -101,7 +101,7 @@ function buildAuditDenomGrid() {
 function updateAuditDenomTotal() {
   let total = 0;
   AUDIT_BILLS.forEach(bill => {
-    total += (parseFloat(auditDenomValues[bill]) || 0) * bill;
+    total += (parseFloat(auditDenomValues[String(bill)]) || 0) * bill;
   });
   const totalEl = document.getElementById('auditDenomTotal');
   if (totalEl) totalEl.textContent = fmt(total);
