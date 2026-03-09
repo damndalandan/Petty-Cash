@@ -70,10 +70,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   updateDateLabel();
 
-  // ── Apply grid layout immediately — no need to wait for role ──
-  // This ensures the dashboard looks correct on first paint
+  // ── Hide stat grid immediately — role unknown yet, prevent flash for auditors ──
   const grid = document.getElementById('dashStatsGrid');
   if (grid) {
+    grid.classList.add('hidden'); // hide until role confirmed
     grid.classList.remove('lg:grid-cols-6');
     grid.classList.add('lg:grid-cols-4');
     grid.querySelectorAll(':scope > div').forEach(card => {
@@ -94,6 +94,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   applyRoleUI();
+
+  // ── Reveal stat grid only for non-auditors (Cashier / Admin) ──
+  if (grid && !(isAuditor() && !isAdmin())) {
+    grid.classList.remove('hidden');
+  }
   buildDenomGrid();
   applyDenomCardVisibility();
   loadCategories();
