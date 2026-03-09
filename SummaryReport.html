@@ -1,0 +1,208 @@
+<!-- SUMMARY REPORT PAGE -->
+<div id="page-summaryreport" class="page-view hidden space-y-6">
+
+  <!-- Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+    <div>
+      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Summary Report</h1>
+      <p class="text-sm text-gray-500 mt-1">Monthly expense breakdown and fund overview</p>
+    </div>
+    <button onclick="printSummaryReport()"
+      class="mt-3 md:mt-0 flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow transition">
+      <span>⬇️</span> Export PDF
+    </button>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="flex items-center gap-3 flex-wrap">
+    <div>
+      <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Month</label>
+      <select id="srMonth"
+        class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+        <option value="0">January</option>
+        <option value="1">February</option>
+        <option value="2">March</option>
+        <option value="3">April</option>
+        <option value="4">May</option>
+        <option value="5">June</option>
+        <option value="6">July</option>
+        <option value="7">August</option>
+        <option value="8">September</option>
+        <option value="9">October</option>
+        <option value="10">November</option>
+        <option value="11">December</option>
+      </select>
+    </div>
+    <div>
+      <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Year</label>
+      <select id="srYear"
+        class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+      </select>
+    </div>
+    <div class="flex items-end">
+      <button onclick="loadSummaryReport()"
+        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow transition">
+        Generate
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="srLoading" class="hidden text-center py-16">
+    <div class="loader inline-block mb-3"></div>
+    <p class="text-sm text-gray-400">Loading report data...</p>
+  </div>
+
+  <!-- Empty State -->
+  <div id="srEmpty" class="text-center py-16 text-gray-400">
+    <span class="text-5xl block mb-3 grayscale opacity-40">📊</span>
+    <p class="text-sm">Select a month and click Generate</p>
+  </div>
+
+  <!-- Report Content (hidden until loaded) -->
+  <div id="srContent" class="hidden space-y-6">
+
+    <!-- Period Label -->
+    <div class="text-xs font-mono text-gray-400 uppercase tracking-wider" id="srPeriodLabel"></div>
+
+    <!-- Fund Overview Cards -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">Starting Fund</div>
+        <div class="text-2xl font-black font-mono text-gray-800" id="sr-fundCeiling">—</div>
+        <div class="text-xs text-gray-400 mt-1">Target ceiling</div>
+      </div>
+      <div class="bg-white rounded-xl border border-red-100 shadow-sm p-4">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">Total Expenses</div>
+        <div class="text-2xl font-black font-mono text-red-600" id="sr-totalExpenses">—</div>
+        <div class="text-xs text-gray-400 mt-1">This month</div>
+      </div>
+      <div class="bg-white rounded-xl border border-blue-100 shadow-sm p-4">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">Cash on Hand</div>
+        <div class="text-2xl font-black font-mono text-blue-600" id="sr-cashOnHand">—</div>
+        <div class="text-xs text-gray-400 mt-1">Latest closing</div>
+      </div>
+      <div class="bg-white rounded-xl border border-amber-100 shadow-sm p-4">
+        <div class="text-xs font-bold text-gray-400 uppercase mb-1">To Replenish</div>
+        <div class="text-2xl font-black font-mono text-amber-600" id="sr-toReplenish">—</div>
+        <div class="text-xs text-gray-400 mt-1" id="sr-replenishNote">—</div>
+      </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="grid lg:grid-cols-2 gap-6">
+
+      <!-- Bar Chart -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h2 class="text-sm font-bold text-gray-700 mb-4">📊 Expenses by Category</h2>
+        <div id="srBarChart" class="space-y-3"></div>
+      </div>
+
+      <!-- Pie Chart -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h2 class="text-sm font-bold text-gray-700 mb-4">🥧 Category Proportions</h2>
+        <div class="flex flex-col items-center">
+          <canvas id="srPieCanvas" width="220" height="220"></canvas>
+          <div id="srPieLegend" class="mt-4 w-full grid grid-cols-2 gap-x-4 gap-y-1.5"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Receipt Compliance + Cash Advances -->
+    <div class="grid md:grid-cols-2 gap-6">
+
+      <!-- Receipt Compliance -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h2 class="text-sm font-bold text-gray-700 mb-4">🧾 Receipt Compliance</h2>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between p-3 bg-green-50 rounded-lg border border-green-100">
+            <div>
+              <div class="text-xs font-bold text-green-700">With Receipt</div>
+              <div class="text-xl font-black font-mono text-green-700" id="sr-withReceipt">—</div>
+            </div>
+            <div class="text-2xl font-black text-green-400" id="sr-withReceiptPct">—</div>
+          </div>
+          <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
+            <div>
+              <div class="text-xs font-bold text-red-700">Without Receipt</div>
+              <div class="text-xl font-black font-mono text-red-700" id="sr-withoutReceipt">—</div>
+            </div>
+            <div class="text-2xl font-black text-red-400" id="sr-withoutReceiptPct">—</div>
+          </div>
+          <!-- Compliance bar -->
+          <div class="mt-2">
+            <div class="flex justify-between text-xs text-gray-400 mb-1">
+              <span>Receipt compliance rate</span>
+              <span id="sr-complianceRate">—</span>
+            </div>
+            <div class="w-full bg-gray-100 rounded-full h-2">
+              <div id="sr-complianceBar" class="bg-green-500 h-2 rounded-full transition-all duration-500" style="width:0%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cash Advances -->
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <h2 class="text-sm font-bold text-gray-700 mb-4">💳 Cash Advances</h2>
+        <div class="space-y-3">
+          <div class="flex justify-between items-center py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500">Total Issued</span>
+            <span class="font-mono font-bold text-gray-800" id="sr-advIssued">—</span>
+          </div>
+          <div class="flex justify-between items-center py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500">Liquidated</span>
+            <span class="font-mono font-bold text-green-600" id="sr-advLiquidated">—</span>
+          </div>
+          <div class="flex justify-between items-center py-2 border-b border-gray-100">
+            <span class="text-sm text-gray-500">Outstanding</span>
+            <span class="font-mono font-bold text-amber-600" id="sr-advOutstanding">—</span>
+          </div>
+          <div class="flex justify-between items-center py-2">
+            <span class="text-sm text-gray-500">Replenishments Received</span>
+            <span class="font-mono font-bold text-purple-600" id="sr-totalReplenishment">—</span>
+          </div>
+        </div>
+        <!-- Outstanding alert -->
+        <div id="sr-advAlert" class="hidden mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700 font-medium"></div>
+      </div>
+    </div>
+
+    <!-- Daily Breakdown Table -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <h2 class="text-sm font-bold text-gray-700">📅 Daily Breakdown</h2>
+        <span class="text-xs text-gray-400">Active days only</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Opening</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Expenses</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Replenishment</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Closing</th>
+              <th class="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase">Status</th>
+            </tr>
+          </thead>
+          <tbody id="srDailyBody" class="divide-y divide-gray-50"></tbody>
+          <tfoot id="srDailyFoot" class="bg-gray-50 border-t-2 border-gray-200"></tfoot>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- end srContent -->
+</div>
+
+<!-- PRINT STYLES -->
+<style>
+  @media print {
+    body > * { display: none !important; }
+    #page-summaryreport { display: block !important; }
+    #page-summaryreport .hidden { display: none !important; }
+    button, [onclick] { display: none !important; }
+    .page-view { display: block !important; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>

@@ -1,0 +1,261 @@
+<script>
+// =============================================
+// SUMMARY REPORT LOGIC
+// =============================================
+
+let srData = null;
+
+const SR_COLORS = [
+  '#3b82f6','#10b981','#f59e0b','#ef4444',
+  '#8b5cf6','#06b6d4','#f97316','#84cc16',
+  '#ec4899','#6b7280'
+];
+
+function initSummaryReport() {
+  // Populate year selector
+  const yEl = document.getElementById('srYear');
+  if (yEl && yEl.options.length === 0) {
+    const cur = new Date().getFullYear();
+    for (let y = cur; y >= 2025; y--) {
+      const o = document.createElement('option');
+      o.value = y; o.textContent = y;
+      if (y === cur) o.selected = true;
+      yEl.appendChild(o);
+    }
+  }
+  // Default month to current
+  const mEl = document.getElementById('srMonth');
+  if (mEl) mEl.value = new Date().getMonth();
+
+  loadSummaryReport();
+}
+
+async function loadSummaryReport() {
+  const month = parseInt(document.getElementById('srMonth').value);
+  const year  = parseInt(document.getElementById('srYear').value);
+
+  document.getElementById('srEmpty').classList.add('hidden');
+  document.getElementById('srContent').classList.add('hidden');
+  document.getElementById('srLoading').classList.remove('hidden');
+
+  const res = await callServer('getSummaryReportData', { month, year });
+
+  document.getElementById('srLoading').classList.add('hidden');
+
+  if (!res.success) {
+    toast('Failed to load report: ' + (res.message || ''), 'error');
+    document.getElementById('srEmpty').classList.remove('hidden');
+    return;
+  }
+
+  srData = res.data;
+  renderSummaryReport(srData);
+}
+
+function renderSummaryReport(d) {
+  const monthNames = ['January','February','March','April','May','June',
+                      'July','August','September','October','November','December'];
+  const month = parseInt(document.getElementById('srMonth').value);
+  const year  = parseInt(document.getElementById('srYear').value);
+
+  // Period label
+  document.getElementById('srPeriodLabel').textContent =
+    `Period: ${monthNames[month]} ${year}`;
+
+  // Fund overview cards
+  document.getElementById('sr-fundCeiling').textContent    = fmt(d.fundCeiling);
+  document.getElementById('sr-totalExpenses').textContent  = fmt(d.totalExpenses);
+  document.getElementById('sr-cashOnHand').textContent     = fmt(d.cashOnHand);
+  document.getElementById('sr-toReplenish').textContent    = fmt(d.toReplenish);
+  document.getElementById('sr-replenishNote').textContent  =
+    `Cash ₱${fmtShort(d.cashOnHand)} + Advances ₱${fmtShort(d.advancesOutstanding)}`;
+
+  // Receipt compliance
+  const total = d.totalExpenses || 1;
+  const wrPct = Math.round((d.totalWithReceipt    / total) * 100);
+  const nrPct = Math.round((d.totalWithoutReceipt / total) * 100);
+  document.getElementById('sr-withReceipt').textContent       = fmt(d.totalWithReceipt);
+  document.getElementById('sr-withoutReceipt').textContent    = fmt(d.totalWithoutReceipt);
+  document.getElementById('sr-withReceiptPct').textContent    = wrPct + '%';
+  document.getElementById('sr-withoutReceiptPct').textContent = nrPct + '%';
+  document.getElementById('sr-complianceRate').textContent    = wrPct + '%';
+  document.getElementById('sr-complianceBar').style.width     = wrPct + '%';
+
+  // Cash advances
+  document.getElementById('sr-advIssued').textContent       = fmt(d.advancesIssued);
+  document.getElementById('sr-advLiquidated').textContent   = fmt(d.advancesLiquidated);
+  document.getElementById('sr-advOutstanding').textContent  = fmt(d.advancesOutstanding);
+  document.getElementById('sr-totalReplenishment').textContent = fmt(d.totalReplenishment);
+
+  const advAlert = document.getElementById('sr-advAlert');
+  if (d.advancesOutstanding > 0) {
+    advAlert.textContent = `⚠️ ₱${fmt(d.advancesOutstanding)} in cash advances still unliquidated — included in accounted cash.`;
+    advAlert.classList.remove('hidden');
+  } else {
+    advAlert.classList.add('hidden');
+  }
+
+  // Charts
+  renderBarChart(d.categories);
+  renderPieChart(d.categories);
+
+  // Daily breakdown
+  renderSrDailyTable(d.dailyRows, d.totalExpenses);
+
+  // Show content
+  document.getElementById('srContent').classList.remove('hidden');
+}
+
+// ── Horizontal Bar Chart (pure CSS/HTML) ──
+function renderBarChart(categories) {
+  const container = document.getElementById('srBarChart');
+  if (!categories || categories.length === 0) {
+    container.innerHTML = '<p class="text-xs text-gray-400 italic">No expense data</p>';
+    return;
+  }
+
+  const max = categories[0].amount; // already sorted descending
+
+  container.innerHTML = categories.map((c, i) => {
+    const barPct = max > 0 ? Math.round((c.amount / max) * 100) : 0;
+    const color  = SR_COLORS[i % SR_COLORS.length];
+    return `
+      <div class="space-y-1">
+        <div class="flex justify-between items-center">
+          <span class="text-xs font-medium text-gray-700 truncate max-w-[180px]">${c.name}</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-xs font-mono font-bold text-gray-800">${fmt(c.amount)}</span>
+            <span class="text-[10px] text-gray-400 w-8 text-right">${c.percent}%</span>
+          </div>
+        </div>
+        <div class="w-full bg-gray-100 rounded-full h-2">
+          <div class="h-2 rounded-full transition-all duration-700"
+            style="width:${barPct}%; background:${color}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── Pie Chart (Canvas) ──
+function renderPieChart(categories) {
+  const canvas = document.getElementById('srPieCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const cx  = canvas.width  / 2;
+  const cy  = canvas.height / 2;
+  const r   = Math.min(cx, cy) - 10;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!categories || categories.length === 0) return;
+
+  const total = categories.reduce((s, c) => s + c.amount, 0);
+  if (total === 0) return;
+
+  let startAngle = -Math.PI / 2;
+  categories.forEach((c, i) => {
+    const slice = (c.amount / total) * 2 * Math.PI;
+    const color = SR_COLORS[i % SR_COLORS.length];
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, startAngle + slice);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    startAngle += slice;
+  });
+
+  // Center donut hole
+  ctx.beginPath();
+  ctx.arc(cx, cy, r * 0.5, 0, 2 * Math.PI);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+
+  // Center text
+  ctx.fillStyle = '#374151';
+  ctx.font = 'bold 11px DM Sans, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Total', cx, cy - 8);
+  ctx.font = 'bold 13px DM Mono, monospace';
+  ctx.fillText(fmtShort(total), cx, cy + 8);
+
+  // Legend
+  const legend = document.getElementById('srPieLegend');
+  legend.innerHTML = categories.slice(0, 8).map((c, i) => `
+    <div class="flex items-center gap-1.5">
+      <div class="w-2.5 h-2.5 rounded-sm shrink-0" style="background:${SR_COLORS[i % SR_COLORS.length]}"></div>
+      <span class="text-[10px] text-gray-600 truncate">${c.name}</span>
+      <span class="text-[10px] font-mono text-gray-500 ml-auto shrink-0">${c.percent}%</span>
+    </div>`).join('');
+}
+
+// ── Daily Breakdown Table ──
+function renderSrDailyTable(rows, totalExpenses) {
+  const tbody = document.getElementById('srDailyBody');
+  const tfoot = document.getElementById('srDailyFoot');
+
+  if (!rows || rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 italic text-sm">No activity this month</td></tr>`;
+    tfoot.innerHTML = '';
+    return;
+  }
+
+  const statusMap = {
+    CLOSED       : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">✅ Closed</span>',
+    PENDING_AUDIT: '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">🔍 Pending</span>',
+    FLAGGED      : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700">🚩 Flagged</span>',
+    OPEN         : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600">⚪ Open</span>',
+  };
+
+  let totOpening = 0, totExpenses = 0, totReplenish = 0;
+
+  tbody.innerHTML = rows.map(r => {
+    totOpening   += r.opening;
+    totExpenses  += r.expenses;
+    totReplenish += r.replenishment;
+    const d       = new Date(r.date + 'T00:00:00');
+    const label   = d.toLocaleDateString('en-PH', { weekday:'short', month:'short', day:'numeric' });
+    const badge   = statusMap[r.status] || statusMap['OPEN'];
+    const expCls  = r.expenses > 0 ? 'text-red-600' : 'text-gray-400';
+    const repCls  = r.replenishment > 0 ? 'text-purple-600' : 'text-gray-300';
+    return `
+      <tr class="hover:bg-gray-50 transition">
+        <td class="px-4 py-3 text-sm font-medium text-gray-700">${label}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">${fmt(r.opening)}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm font-bold ${expCls}">${r.expenses > 0 ? fmt(r.expenses) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">${r.replenishment > 0 ? fmt(r.replenishment) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">${fmt(r.closing)}</td>
+        <td class="px-4 py-3 text-center">${badge}</td>
+      </tr>`;
+  }).join('');
+
+  tfoot.innerHTML = `
+    <tr>
+      <td class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">Totals</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-gray-700">—</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-red-600">${fmt(totExpenses)}</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-purple-600">${fmt(totReplenish)}</td>
+      <td class="px-4 py-3 text-right font-mono font-bold text-gray-700">—</td>
+      <td></td>
+    </tr>`;
+}
+
+// ── PDF Export (browser print) ──
+function printSummaryReport() {
+  if (!srData) { toast('Generate a report first', 'warning'); return; }
+  window.print();
+}
+
+// ── Helper: short format e.g. ₱24.7k ──
+function fmtShort(val) {
+  const n = parseFloat(val) || 0;
+  if (n >= 1000) return '₱' + (n / 1000).toFixed(1) + 'k';
+  return '₱' + n.toFixed(0);
+}
+</script>
