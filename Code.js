@@ -229,6 +229,7 @@ function writeAuditLog(action, details, referenceId, date) {
     const role     = roleInfo.success ? roleInfo.role : 'Unknown';
     const now      = new Date().toISOString();
     const logDate  = date || normalizeDate(new Date());
+    SpreadsheetApp.flush();
     const id       = generateId('LOG', logDate, sheet);
 
     sheet.appendRow([
@@ -874,6 +875,7 @@ function saveNoReceiptRecord(data) {
     const nrSheet = ss.getSheetByName(SHEETS.NO_RECEIPTS);
     const user    = getUserEmail();
     const now     = new Date().toISOString();
+    SpreadsheetApp.flush();
     const nrId    = generateId('NRC', data.date, nrSheet);
 
     nrSheet.appendRow([
@@ -959,6 +961,7 @@ function saveReceiptRecord(data) {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.RECEIPTS);
     const vat   = computeVAT(data.grossAmount);
+    SpreadsheetApp.flush();
     const id    = generateId('RCP', data.date, sheet);
     const user  = getUserEmail();
     const now   = new Date().toISOString();
