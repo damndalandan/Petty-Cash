@@ -99,14 +99,9 @@ async function loadDiscrepancyWidget() {
 function filterDiscrepancies() {
     const mElem = document.getElementById('discMonth');
     const selMonth = mElem ? mElem.value : 'ALL';
-    
-    const sexp = document.getElementById('stat-expected');
-  if (sexp) {
-    sexp.textContent = fmt(expectedInfo);
-    if (expectedInfo < 0) sexp.classList.add('text-red-500');
-    else sexp.classList.remove('text-red-500');
-  }
-    
+
+    let filtered = rawDiscrepancies.filter(s => Math.abs(s.variance || 0) > 0.01);
+
     if (selMonth !== 'ALL') {
         const mInt = parseInt(selMonth);
         filtered = filtered.filter(d => {
