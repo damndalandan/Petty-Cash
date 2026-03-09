@@ -674,7 +674,7 @@ function syncNoReceiptOnUpdate(newPayload, oldRow) {
     if (!nrSheet) return;
 
     const wasReceipted = oldRow[6] === 'YES';
-    const nowReceipted = !!newPayload.hasReceipt;
+    const nowReceipted = newPayload.hasReceipt === true || newPayload.hasReceipt === 'YES';
     const entryId      = newPayload.id;
     const isExpense    = (newPayload.type === 'EXPENSE' || !newPayload.type);
 
