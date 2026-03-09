@@ -2451,8 +2451,8 @@ function getSummaryReportData(params) {
       const expenses = parseFloat(sumData[i][6]) || 0;
       const opening  = parseFloat(sumData[i][2]) || 0;
       const replenish= parseFloat(sumData[i][8]) || 0;
-      const closing  = parseFloat(sumData[i][9]) || 0;
-      const status   = sumData[i][11] || 'OPEN';
+      const closing  = parseFloat(sumData[i][10]) || 0;
+      const status   = sumData[i][12] || 'OPEN';
       // Only include days with actual activity
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
       dailyRows.push({
@@ -2581,8 +2581,8 @@ function getReplenishmentPeriodReport() {
       const expenses  = parseFloat(sumData[i][6]) || 0;
       const opening   = parseFloat(sumData[i][2]) || 0;
       const replenish = parseFloat(sumData[i][8]) || 0;
-      const closing   = parseFloat(sumData[i][9]) || 0;
-      const status    = sumData[i][11] || 'OPEN';
+      const closing   = parseFloat(sumData[i][10]) || 0;
+      const status    = sumData[i][12] || 'OPEN';
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
       dailyRows.push({ date: rowDate, opening, expenses, replenishment: replenish, closing, status });
     }
