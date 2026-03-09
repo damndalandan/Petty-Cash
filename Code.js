@@ -324,12 +324,12 @@ function initializeSheets() {
     s.appendRow([
       'Summary_ID','Date','Opening_Cash','Cash_Advance',
       'Total_Exp_With_Receipt','Total_Exp_No_Receipt','Total_Expenses',
-      'Total_Cash_Over','Total_Replenishment',
+      'Total_Cash_Over','Total_Replenishment','Total_Cash_Return',
       'Closing_Cash','Variance','Status','Closed_By','Updated_At'
     ]);
     s.setFrozenRows(1);
     formatHeaderRow(s);
-    s.getRange('C2:K').setNumberFormat('₱#,##0.00');
+    s.getRange('C2:L').setNumberFormat('₱#,##0.00');
   }
 
   // ── PettyCash_Receipts (BIR Purchases Journal) ──────
@@ -440,8 +440,8 @@ function recalculateDailySummary(date) {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
-    let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0,
-        cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0;
+    let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0;
+    let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0;
 
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
@@ -464,7 +464,7 @@ function recalculateDailySummary(date) {
         }
         else if (type === 'CASH_OVER')     totalCashOver      += amt;
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
-        else if (type === 'CASH_RETURN')   totalReplenishment += amt; // cash return adds back to available cash — intentionally grouped with replenishment for expected-cash formula
+        else if (type === 'CASH_RETURN')   totalCashReturn    += amt;
         else if (type === 'LIQ_DETAIL')    { /* documentation only — ignore in totals */ }
         else {
           totalExp += amt;
@@ -500,7 +500,7 @@ function recalculateDailySummary(date) {
       }
     }
 
-    const expected = (openingCash + totalReplenishment + totalCashOver) - (totalExp + cashAdvance);
+    const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (totalExp + cashAdvance);
     const variance = hasClosing ? (closingCash - expected) : 0;
     const status   = hasClosing
       ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
@@ -509,7 +509,7 @@ function recalculateDailySummary(date) {
     const summaryRow = [
       openingCash, cashAdvance,
       totalReceipt, totalNoReceipt, totalExp,
-      totalCashOver, totalReplenishment,
+      totalCashOver, totalReplenishment, totalCashReturn,
       closingCash, variance, status,
       existingClosedBy,
       new Date().toISOString()
@@ -1188,11 +1188,12 @@ function getDailySummary(date) {
           totalExpenses      : row[6],
           totalCashOver      : row[7],
           totalReplenishment : row[8],
-          closingCash        : row[9],
-          variance           : row[10],
-          status             : row[11],
-          closedBy           : row[12],
-          updatedAt          : row[13]
+          totalCashReturn    : row[9],
+          closingCash        : row[10],
+          variance           : row[11],
+          status             : row[12],
+          closedBy           : row[13],
+          updatedAt          : row[14]
         }
       };
     }
@@ -1225,6 +1226,7 @@ function getDailySummary(date) {
           totalExpenses      : 0,
           totalCashOver      : 0,
           totalReplenishment : 0,
+          totalCashReturn    : 0,
           closingCash        : 0,
           variance           : 0,
           status             : 'OPEN',
@@ -1274,7 +1276,8 @@ function generateReportData(params) {
         date:sDate, opening:sRow[2], cashAdvance:sRow[3],
         totalWithReceipt:sRow[4], totalWithoutReceipt:sRow[5],
         expenses:sRow[6], cashOver:sRow[7], replenishment:sRow[8],
-        closing:sRow[9], variance:sRow[10], status:sRow[11]
+        cashReturn:sRow[9], closing:sRow[10], variance:sRow[11],
+        status:sRow[12]
       });
     }
 
@@ -2409,6 +2412,7 @@ function getSummaryReportData(params) {
     let advancesLiquidated = 0;
     let advancesOutstanding= 0;
     let totalReplenishment = 0;
+    let totalCashReturn    = 0;
 
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
@@ -2429,10 +2433,12 @@ function getSummaryReportData(params) {
         else                  totalWithoutReceipt += amount;
       } else if (type === 'CASH_ADVANCE') {
         advancesIssued += amount;
-        if (status === 'LIQUIDATED')           advancesLiquidated  += amount;
-        else if (status !== 'DELETED')         advancesOutstanding += amount;
+        if (status === 'LIQUIDATED')   advancesLiquidated  += amount;
+        else if (status !== 'DELETED') advancesOutstanding += amount;
       } else if (type === 'REPLENISHMENT') {
         totalReplenishment += amount;
+      } else if (type === 'CASH_RETURN') {
+        totalCashReturn += amount;
       }
     }
 
@@ -2490,6 +2496,7 @@ function getSummaryReportData(params) {
         totalWithReceipt,
         totalWithoutReceipt,
         totalReplenishment,
+        totalCashReturn,
         cashOnHand,
         advancesIssued,
         advancesLiquidated,

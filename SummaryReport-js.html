@@ -82,9 +82,10 @@ function renderSummaryReport(d) {
   document.getElementById('sr-complianceBar').style.width     = wrPct + '%';
 
   // Cash advances
-  document.getElementById('sr-advIssued').textContent       = fmt(d.advancesIssued);
-  document.getElementById('sr-advLiquidated').textContent   = fmt(d.advancesLiquidated);
-  document.getElementById('sr-advOutstanding').textContent  = fmt(d.advancesOutstanding);
+    document.getElementById('sr-advIssued').textContent          = fmt(d.advancesIssued);
+  document.getElementById('sr-advLiquidated').textContent      = fmt(d.advancesLiquidated);
+  document.getElementById('sr-advOutstanding').textContent     = fmt(d.advancesOutstanding);
+  document.getElementById('sr-totalCashReturn').textContent    = fmt(d.totalCashReturn || 0);
   document.getElementById('sr-totalReplenishment').textContent = fmt(d.totalReplenishment);
 
   const advAlert = document.getElementById('sr-advAlert');
