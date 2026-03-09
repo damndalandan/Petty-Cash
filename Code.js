@@ -2389,6 +2389,24 @@ function getCategories() {
   }
 }
 
+function getEmployees() {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('PettyCash_Employees');
+    if (!sheet) return { success: false, message: 'Employees sheet not found', data: [] };
+
+    const rows = sheet.getDataRange().getValues();
+    const employees = [];
+    for (let i = 1; i < rows.length; i++) {
+      const name = String(rows[i][0] || '').trim();
+      if (name) employees.push(name);
+    }
+    return { success: true, data: employees };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
 // ─────────────────────────────────────────────
 // SUMMARY REPORT DATA
 // ─────────────────────────────────────────────

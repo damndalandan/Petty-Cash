@@ -102,6 +102,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   buildDenomGrid();
   applyDenomCardVisibility();
   loadCategories();
+  loadEmployees();
   loadDayData();
 
   // Hide cashier stat cards for pure auditors — not relevant to their workflow
@@ -186,6 +187,17 @@ async function loadCategories() {
       return `<option value="${name}" data-description="${desc}">${name}</option>`;
     }).join('');
   });
+}
+
+async function loadEmployees() {
+  const res = await callServer('getEmployees');
+  const employees = (res.success && res.data && res.data.length) ? res.data : [];
+  window.appEmployees = employees;
+
+  // Populate the datalist
+  const datalist = document.getElementById('employeeList');
+  if (!datalist) return;
+  datalist.innerHTML = employees.map(name => `<option value="${name}">`).join('');
 }
 
 function updateDateLabel() {
