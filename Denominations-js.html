@@ -329,6 +329,10 @@
       toast('This day is already CLOSED.', 'warning');
       return;
     }
+    if (state.summary && state.summary.status === 'PENDING_AUDIT') {
+      toast('This day is under audit review. You cannot modify the closing count.', 'warning');
+      return;
+    }
     const breakdown = {};
     let total = 0;
     BILLS.forEach(bill => {

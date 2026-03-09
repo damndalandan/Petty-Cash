@@ -591,6 +591,16 @@ function openEditModal(id) {
   const entry = state.entries.find(e => e.id === id);
   if (!entry) return;
 
+  // Block editing of cash advances that are in-progress or finalized
+  if (entry.type === 'CASH_ADVANCE' && entry.status === 'LIQUIDATION_PENDING') {
+    toast('This advance is awaiting audit liquidation and cannot be edited.', 'warning');
+    return;
+  }
+  if (entry.type === 'CASH_ADVANCE' && entry.status === 'LIQUIDATED') {
+    toast('This advance has already been liquidated and cannot be edited.', 'warning');
+    return;
+  }
+
   document.getElementById('editEntryId').value  = entry.id;
   document.getElementById('editType').value     = entry.type;
   document.getElementById('editCategory').value = entry.category;
