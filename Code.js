@@ -2179,12 +2179,12 @@ function getAdminMetrics() {
       if (row.length < 12) continue;
       const rDate  = normalizeDate(row[1]);
       if (rDate > today) continue;         // skip future dates
-      const status   = row[11] || 'OPEN';
-      const variance = parseFloat(row[10]) || 0;
+      const status   = row[12] || 'OPEN';
+      const variance = parseFloat(row[11]) || 0;
       const cashOver = parseFloat(row[7])  || 0;
       const opening  = parseFloat(row[2])  || 0;
       const expenses = parseFloat(row[6])  || 0;
-      const closing  = parseFloat(row[9])  || 0;
+      const closing  = parseFloat(row[10]) || 0;
 
       // Unclosed = anything not CLOSED
       if (status !== 'CLOSED') {
