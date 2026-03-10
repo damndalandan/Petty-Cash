@@ -157,12 +157,10 @@ function applyRoleUI() {
     });
   }
 
-  // ── Report pages — hide from pure Auditor ──
-  // Summary and Replenishment reports are for Admin/Cashier use
-  const navSummary     = document.querySelector('[data-page="summaryreport"]');
-  const navReplenish   = document.querySelector('[data-page="replenishreport"]');
+  // ── Report pages — hide Replenishment Report from pure Auditor only ──
+  // Summary Report is visible to Auditor (they need it for review)
+  const navReplenish = document.querySelector('[data-page="replenishreport"]');
   if (isAuditorOnly) {
-    if (navSummary)   navSummary.classList.add('hidden');
     if (navReplenish) navReplenish.classList.add('hidden');
   }
 } 
