@@ -74,6 +74,11 @@ async function loadAuditReviewPage() {
     updateAuditProgress(entries);
     updateAuditStatusBanner();
 
+    // Re-run after entries are loaded so the Day Summary panel shows live entry totals
+    // and the variance display reflects the initial unverified state correctly.
+    updateAuditDaySummaryPanel();
+    updateAuditDenomTotal();
+
   } catch(e) {
     console.error('loadAuditReviewPage error:', e);
     if (entryList) entryList.innerHTML = '<div class="px-4 py-8 text-center text-red-400 text-sm">Failed to load entries. Please refresh.</div>';
@@ -112,35 +117,33 @@ function updateAuditVariance(actualCash) {
   const summary = state.summary;
   if (!summary) return;
 
-  const closing       = parseFloat(summary.closingCash        || 0);
-  const opening       = parseFloat(summary.openingCash        || 0);
-  const expenses      = parseFloat(summary.totalExpenses      || 0);
-  const replenishment = parseFloat(summary.totalReplenishment || 0);
-  const cashOver      = parseFloat(summary.totalCashOver      || 0);
+  const opening = parseFloat(summary.openingCash || 0);
 
-  // cashAdvance in summary only reflects advances issued ON this date (after Code.js fix).
-  // Carried-forward advances are receivables and must not affect the expected balance.
-  const cashAdvance   = parseFloat(summary.cashAdvance        || 0);
-
-  const expected = (closing > 0)
-    ? closing
-    : (opening + replenishment + cashOver) - (expenses + cashAdvance);
+  // Expected starts at opening cash only.
+  // Each verified entry moves the expected toward the fully-accounted value:
+  //   verified outflow (EXPENSE, CASH_ADVANCE, LIQ_DETAIL) → expected decreases
+  //   verified inflow  (REPLENISHMENT, CASH_OVER, CASH_RETURN) → expected increases
+  // Result: variance = −totalEntries when nothing verified, → ₱0 when all verified.
+  const reviewableEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  let expectedAdj = 0;
+  reviewableEntries
+    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
+    .forEach(e => {
+      const amt = parseFloat(e.amount || 0);
+      if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
+        expectedAdj += amt;
+      } else {
+        expectedAdj -= amt;
+      }
+    });
+  const expected = opening + expectedAdj;
 
   const expEl = document.getElementById('auditExpectedCash');
   if (expEl) expEl.textContent = fmt(expected);
 
   if (actualCash === undefined) return;
 
-  // Variance: physical count vs expected, adjusted for unverified entries.
-  // Start with ALL reviewable entries as unverified, subtract only explicitly verified ones.
-  const reviewableEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
-  const verifiedTotal = reviewableEntries
-    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
-    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-  const allEntriesTotal = reviewableEntries.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-  const unverifiedTotal = allEntriesTotal - verifiedTotal;
-
-  const variance = actualCash - (expected - unverifiedTotal);
+  const variance = actualCash - expected;
 
   const varEl   = document.getElementById('auditVarianceDisplay');
   const alertEl = document.getElementById('auditVarianceAlert');
@@ -418,30 +421,25 @@ async function confirmAuditDecision(decision) {
 
   const summary = state.summary;
 
-  const closing    = parseFloat(summary?.closingCash        || 0);
-  const opening    = parseFloat(summary?.openingCash        || 0);
-  const expenses   = parseFloat(summary?.totalExpenses      || 0);
-  // cashAdv from summary is now only same-day advances (carried-forward excluded by backend fix)
-  const cashAdv    = parseFloat(summary?.cashAdvance        || 0);
-  const replenish  = parseFloat(summary?.totalReplenishment || 0);
-  const cashOver   = parseFloat(summary?.totalCashOver      || 0);
-  const expected   = (closing > 0)
-    ? closing
-    : (opening + replenish + cashOver) - (expenses + cashAdv);
+  const opening = parseFloat(summary?.openingCash || 0);
 
   let actualCash = 0;
   AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
 
-  // Variance: physical count vs expected, adjusted for unverified entries.
-  // Start with ALL reviewable entries as unverified, subtract only explicitly verified ones.
-  const reviewableEntries = entries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
-  const verifiedTotal = reviewableEntries
-    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
-    .reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-  const allEntriesTotal = reviewableEntries.reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
-  const unverifiedTotal = allEntriesTotal - verifiedTotal;
+  // Same formula as the live variance display: opening + verified adjustments.
+  // At approval time all entries must be verified, so this equals the full expected.
+  let expectedAdj = 0;
+  entries.forEach(e => {
+    const amt = parseFloat(e.amount || 0);
+    if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
+      expectedAdj += amt;
+    } else {
+      expectedAdj -= amt;
+    }
+  });
+  const expected = opening + expectedAdj;
 
-  const variance = actualCash - (expected - unverifiedTotal);
+  const variance = actualCash - expected;
 
   if (decision === 'approve') {
     openAuditApproveModal(variance, actualCash);
@@ -478,15 +476,17 @@ function openAuditApproveModal(variance, actualCash) {
 
   const summary   = state.summary;
 
-  const closing   = parseFloat(summary?.closingCash        || 0);
-  const opening   = parseFloat(summary?.openingCash        || 0);
-  const expenses  = parseFloat(summary?.totalExpenses      || 0);
-  const cashAdv   = parseFloat(summary?.cashAdvance        || 0);
-  const replenish = parseFloat(summary?.totalReplenishment || 0);
-  const cashOver  = parseFloat(summary?.totalCashOver      || 0);
-  const expected  = (closing > 0)
-    ? closing
-    : (opening + replenish + cashOver) - (expenses + cashAdv);
+  const opening = parseFloat(summary?.openingCash || 0);
+  let expectedAdjModal = 0;
+  entries.forEach(e => {
+    const amt = parseFloat(e.amount || 0);
+    if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
+      expectedAdjModal += amt;
+    } else {
+      expectedAdjModal -= amt;
+    }
+  });
+  const expected = opening + expectedAdjModal;
 
   const isZero = Math.abs(variance) < 0.01;
   const isOver = variance > 0.01;
@@ -612,13 +612,35 @@ function updateAuditDaySummaryPanel() {
   const s = state.summary;
   if (!s) return;
 
-  const opening   = parseFloat(s.openingCash       || 0);
-  const replenish = parseFloat(s.totalReplenishment || 0);
-  const cashOver  = parseFloat(s.totalCashOver      || 0);
-  const expenses  = parseFloat(s.totalExpenses      || 0);
-  const advance   = parseFloat(s.cashAdvance        || 0);
-  const expected  = (opening + replenish + cashOver) - (expenses + advance);
-  const physical  = parseFloat(s.closingCash        || 0);
+  const opening = parseFloat(s.openingCash || 0);
+
+  // Compute totals from live entries when available; fall back to summary before entries load.
+  const liveEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
+  let replenish = 0, cashOver = 0, expenses = 0, advance = 0, cashReturn = 0;
+
+  if (liveEntries.length > 0 || state.entries !== undefined) {
+    liveEntries.forEach(e => {
+      const amt = parseFloat(e.amount || 0);
+      if      (e.type === 'REPLENISHMENT') replenish  += amt;
+      else if (e.type === 'CASH_OVER')     cashOver   += amt;
+      else if (e.type === 'CASH_RETURN')   cashReturn += amt;
+      else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) advance += amt;
+      else if (e.type === 'EXPENSE' || e.type === 'LIQ_DETAIL') expenses += amt;
+    });
+  } else {
+    replenish = parseFloat(s.totalReplenishment || 0);
+    cashOver  = parseFloat(s.totalCashOver      || 0);
+    expenses  = parseFloat(s.totalExpenses      || 0);
+    advance   = parseFloat(s.cashAdvance        || 0);
+  }
+
+  const expected = (opening + replenish + cashOver + cashReturn) - (expenses + advance);
+
+  // Physical: use live denomination inputs; fall back to saved closingCash
+  let physical = 0;
+  AUDIT_BILLS.forEach(bill => { physical += (parseFloat(auditDenomValues[String(bill)]) || 0) * bill; });
+  if (physical === 0) physical = parseFloat(s.closingCash || 0);
+
   const variance  = physical - expected;
 
   const set = (id, val, color) => {
