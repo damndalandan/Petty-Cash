@@ -111,9 +111,9 @@ function renderAdvances() {
       ).join('');
 
       const changeRow = bd.change > 0.005
-        ? `<div class="flex justify-between text-xs pt-1 border-t border-amber-200 mt-1 font-bold">
-             <span class="text-amber-700">↩ Change to Return</span>
-             <span class="font-mono text-amber-700">${fmt(bd.change)}</span>
+        ? `<div class="flex justify-between text-xs pt-1 border-t border-green-200 mt-1 font-bold">
+             <span class="text-green-700">✅ Change Returned</span>
+             <span class="font-mono text-green-700">${fmt(bd.change)}</span>
            </div>`
         : `<div class="text-xs text-green-600 pt-1 border-t border-green-200 mt-1 font-medium">✓ Fully spent</div>`;
 

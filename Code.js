@@ -1572,19 +1572,24 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
         });
       }
 
-      // 3. If there's change, save a CASH_RETURN entry on the APPROVAL date
+      // 3. If there's change, save a CASH_RETURN entry — but only if not already recorded at submission time
       if (change > 0.005) {
-        saveExpenseEntry({
-          date       : approvalDate,
-          type       : 'CASH_RETURN',
-          category   : 'Cash Return',
-          description: 'Change return — ' + (row[4] || 'Cash Advance') + ' (' + advId + ')',
-          amount     : change,
-          hasReceipt : false,
-          referenceNo: advId,
-          requestedBy: requestedBy,
-          approvedBy : approverEmail
-        });
+        const alreadyReturned = entryRows.slice(1).some(r =>
+          r[2] === 'CASH_RETURN' && String(r[7]) === String(advId) && r[10] !== 'DELETED'
+        );
+        if (!alreadyReturned) {
+          saveExpenseEntry({
+            date       : approvalDate,
+            type       : 'CASH_RETURN',
+            category   : 'Cash Return',
+            description: 'Change return — ' + (row[4] || 'Cash Advance') + ' (' + advId + ')',
+            amount     : change,
+            hasReceipt : false,
+            referenceNo: advId,
+            requestedBy: requestedBy,
+            approvedBy : approverEmail
+          });
+        }
       }
 
       // 4. Recalculate summaries for both dates
@@ -1826,9 +1831,27 @@ function submitLiquidation(data) {
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + breakdownJson);
 
+      // Immediately record the change as CASH_RETURN — cashier has physically returned it on submission
+      const today = normalizeDate(new Date());
+      if (change > 0.005) {
+        saveExpenseEntry({
+          date       : today,
+          type       : 'CASH_RETURN',
+          category   : 'Cash Return',
+          description: 'Change return — ' + (rows[i][4] || 'Cash Advance') + ' (' + data.id + ')',
+          amount     : change,
+          hasReceipt : false,
+          referenceNo: data.id,
+          requestedBy: rows[i][8] || '',
+          approvedBy : ''
+        });
+      }
+      recalculateDailySummary(advanceDate);
+      if (today !== advanceDate) recalculateDailySummary(today);
+
       writeAuditLog(
         'LIQUIDATION_SUBMITTED',
-        `Liquidation submitted for advance ${data.id}. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)}. Notes: ${data.note || '—'}`,
+        `Liquidation submitted for advance ${data.id}. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)} (immediately returned). Notes: ${data.note || '—'}`,
         data.id,
         advanceDate
       );

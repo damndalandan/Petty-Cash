@@ -201,9 +201,16 @@ function renderEntries() {
   if (state.entryTab === 'noReceipt')   filtered = filtered.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
 
   const AMOUNT_TYPES = ['EXPENSE', 'CASH_ADVANCE', 'CASH_OVER', 'REPLENISHMENT', 'CASH_RETURN'];
-  const total = filtered
+  let total = filtered
     .filter(e => AMOUNT_TYPES.includes(e.type) && e.type !== 'LIQ_DETAIL')
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  // On 'all' tab, net out cash returns (change physically returned from liquidated advances)
+  if (state.entryTab === 'all') {
+    const returned = state.entries
+      .filter(e => e.type === 'CASH_RETURN' && e.status !== 'DELETED')
+      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    total = Math.max(0, total - returned);
+  }
   document.getElementById('entries-total').textContent = fmt(total);
 
   const tbody = document.getElementById('entriesBody');
@@ -359,9 +366,9 @@ function renderEntries() {
         });
         if (bd.change > 0.005) {
           rows.push(
-            '<tr class="bg-amber-50/60 border-l-4 border-amber-200">'
-            + '<td class="pl-10 pr-4 py-2 text-xs font-bold text-amber-700">↩ Change to Return</td>'
-            + '<td class="px-4 py-2 text-right font-mono text-xs font-bold text-amber-700">' + fmt(bd.change) + '</td>'
+            '<tr class="bg-green-50/60 border-l-4 border-green-200">'
+            + '<td class="pl-10 pr-4 py-2 text-xs font-bold text-green-700">✅ Change Returned</td>'
+            + '<td class="px-4 py-2 text-right font-mono text-xs font-bold text-green-700">' + fmt(bd.change) + '</td>'
             + '<td></td><td></td>'
             + '</tr>'
           );
