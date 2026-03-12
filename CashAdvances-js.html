@@ -177,10 +177,17 @@ let liqEntries = [];
 let liqAdvanceAmount = 0;
 
 function getLiqCategories() {
-  return window.appCategories || [
-    'Office Supplies','Transportation','Meals & Entertainment',
-    'Utilities','Repairs & Maintenance','Postage & Courier','Miscellaneous'
+  const cats = window.appCategories || [
+    { name: 'Office Supplies',        description: '' },
+    { name: 'Transportation',         description: '' },
+    { name: 'Meals & Entertainment',  description: '' },
+    { name: 'Utilities',              description: '' },
+    { name: 'Repairs & Maintenance',  description: '' },
+    { name: 'Postage & Courier',      description: '' },
+    { name: 'Miscellaneous',          description: '' }
   ];
+  // Normalise: appCategories may be objects {name,description} or plain strings
+  return cats.map(c => typeof c === 'string' ? { name: c, description: '' } : c);
 }
 
 function openLiquidationModal(id, action) {
@@ -328,9 +335,20 @@ function renderLiqEntries() {
   }
 
   container.innerHTML = liqEntries.map((e, i) => {
-    const catOptions = getLiqCategories().map(c =>
-      `<option value="${c}" ${e.category === c ? 'selected' : ''}>${c}</option>`
+    const cats = getLiqCategories();
+    const catOptions = cats.map(c =>
+      `<option value="${c.name}" ${e.category === c.name ? 'selected' : ''} data-description="${c.description || ''}">${c.name}</option>`
     ).join('');
+
+    // Guide description for the currently selected category
+    const selectedCat = cats.find(c => c.name === e.category);
+    const catDesc = selectedCat?.description || '';
+    const guideHtml = catDesc
+      ? `<div class="mt-1 p-2 rounded-lg bg-blue-50 border border-blue-200 text-[10px] text-blue-800 leading-snug">
+           <span class="font-bold">ℹ️ Guide:</span> ${catDesc}
+         </div>`
+      : '';
+
 
     const receiptBtn = e.receipt
       ? `<div class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
@@ -346,12 +364,13 @@ function renderLiqEntries() {
     return `
       <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
         <div class="flex gap-2">
-          <select onchange="updateLiqEntry(${i}, 'category', this.value)"
+          <select onchange="updateLiqEntry(${i}, 'category', this.value); renderLiqEntries()"
             class="flex-1 p-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none">
             ${catOptions}
           </select>
           <button onclick="removeLiqEntry(${i})" class="text-red-400 hover:text-red-600 text-lg leading-none px-1 shrink-0">×</button>
         </div>
+        ${guideHtml}
         <input type="text" placeholder="Description" value="${e.desc}"
           oninput="updateLiqEntry(${i}, 'desc', this.value)"
           class="w-full p-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none">
