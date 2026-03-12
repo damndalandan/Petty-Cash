@@ -504,9 +504,6 @@ function recalculateDailySummary(date) {
       }
     }
 
-    // Never overwrite a day that has already been closed by the auditor
-    if (existingStatus === 'CLOSED') return { success: true };
-
     const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (totalExp + cashAdvance);
     const variance = hasClosing ? (closingCash - expected) : 0;
     const status   = hasClosing
@@ -1364,6 +1361,7 @@ function auditApproveDay(data) {
       sheet.getRange(row, 13).setValue('CLOSED');
       sheet.getRange(row, 14).setValue(email);
       sheet.getRange(row, 15).setValue(now);
+      SpreadsheetApp.flush(); // commit CLOSED status before any recalculation reads it
       found = true;
 
       // ── Finalize any LIQUIDATION_PENDING advances that were verified ──
@@ -1383,13 +1381,12 @@ function auditApproveDay(data) {
     // ── Always carry forward the auditor's END count as next day's START ──
     const nextDate   = getNextDate(data.date);
     const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
-    const denomRows  = denomSheet.getDataRange().getValues();
 
-    // Always re-read denominations fresh — the frontend already saved the END row
-    // just before calling this function, so we need the latest data
+    // Flush so the END row saved by the frontend just before this call is committed
+    SpreadsheetApp.flush();
     const freshDenomRows = denomSheet.getDataRange().getValues();
 
-    // Find auditor's END count for this date (fresh read)
+    // Find auditor's END count for this date
     let endRow = null;
     for (let j = 1; j < freshDenomRows.length; j++) {
       if (normalizeDate(freshDenomRows[j][1]) === data.date && freshDenomRows[j][2] === 'END') {
@@ -1408,7 +1405,7 @@ function auditApproveDay(data) {
         'Auto-saved on audit approval',
         now
       ]);
-      // Re-read again to get the fallback row just appended
+      SpreadsheetApp.flush();
       const refreshed2 = denomSheet.getDataRange().getValues();
       for (let j = 1; j < refreshed2.length; j++) {
         if (normalizeDate(refreshed2[j][1]) === data.date && refreshed2[j][2] === 'END') {
@@ -1419,72 +1416,67 @@ function auditApproveDay(data) {
     }
 
     if (endRow) {
-      // Check if next day START already exists — don't overwrite
-      let nextDayStartExists = false;
-      for (let j = 1; j < freshDenomRows.length; j++) {
-        if (normalizeDate(freshDenomRows[j][1]) === nextDate && freshDenomRows[j][2] === 'START') {
-          nextDayStartExists = true;
+      const endTotal = parseFloat(endRow[13]) || 0;
+      const cfNote   = 'Carried forward from ' + data.date + ' audit closing count';
+
+      // Auditor's count always takes priority — overwrite any existing next-day START
+      SpreadsheetApp.flush();
+      const latestDenomRows     = denomSheet.getDataRange().getValues();
+      let nextDayStartRowIdx    = -1;
+      for (let j = 1; j < latestDenomRows.length; j++) {
+        if (normalizeDate(latestDenomRows[j][1]) === nextDate && latestDenomRows[j][2] === 'START') {
+          nextDayStartRowIdx = j + 1;
           break;
         }
       }
 
-      if (!nextDayStartExists) {
-        const endTotal = parseFloat(endRow[13]) || 0;
-        const newId    = 'DEN-OC-' + nextDate.replace(/-/g,'') + '-CF';
+      const denomVals = [
+        endRow[3], endRow[4], endRow[5], endRow[6], endRow[7],
+        endRow[8], endRow[9], endRow[10], endRow[11], endRow[12],
+        endTotal, cfNote, now
+      ];
 
-        denomSheet.appendRow([
-          newId,          // ID
-          nextDate,       // Date
-          'START',        // Type
-          endRow[3],      // ₱1000
-          endRow[4],      // ₱500
-          endRow[5],      // ₱200
-          endRow[6],      // ₱100
-          endRow[7],      // ₱50
-          endRow[8],      // ₱20
-          endRow[9],      // ₱10
-          endRow[10],     // ₱5
-          endRow[11],     // ₱1
-          endRow[12],     // ₱0.25
-          endTotal,       // Total
-          'Carried forward from ' + data.date + ' audit closing count',
-          now             // Timestamp
+      let cfId;
+      if (nextDayStartRowIdx !== -1) {
+        // Overwrite the existing START row in-place
+        cfId = latestDenomRows[nextDayStartRowIdx - 1][0];
+        denomSheet.getRange(nextDayStartRowIdx, 4, 1, 13).setValues([denomVals]);
+      } else {
+        cfId = 'DEN-OC-' + nextDate.replace(/-/g,'') + '-CF';
+        denomSheet.appendRow([cfId, nextDate, 'START', ...denomVals]);
+      }
+
+      // Write or update the next day's summary row with the correct openingCash
+      const nextSumSheet = ss.getSheetByName(SHEETS.SUMMARY);
+      SpreadsheetApp.flush();
+      const nextSumData  = nextSumSheet.getDataRange().getValues();
+      let nextSumRowIdx  = -1;
+      for (let k = 1; k < nextSumData.length; k++) {
+        if (normalizeDate(nextSumData[k][1]) === nextDate) { nextSumRowIdx = k + 1; break; }
+      }
+      if (nextSumRowIdx === -1) {
+        const nextSumId = generateId('SUM', nextDate, nextSumSheet);
+        // 15 columns: ID, Date, Opening, CashAdv, ExpRcpt, ExpNoRcpt, Expenses,
+        //             CashOver, Repl, CashReturn, Closing, Variance, Status, ClosedBy, UpdatedAt
+        nextSumSheet.appendRow([
+          nextSumId, nextDate,
+          endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
         ]);
+      } else {
+        nextSumSheet.getRange(nextSumRowIdx, 3).setValue(endTotal);
+      }
 
-        // Write or update the next day's summary row with the correct openingCash
-        // IMPORTANT: must happen BEFORE recalculateDailySummary so it has a row to update
-        const nextSumSheet = ss.getSheetByName(SHEETS.SUMMARY);
-        const nextSumData  = nextSumSheet.getDataRange().getValues();
-        let nextSumRowIdx  = -1;
-        for (let k = 1; k < nextSumData.length; k++) {
-          if (normalizeDate(nextSumData[k][1]) === nextDate) { nextSumRowIdx = k + 1; break; }
-        }
-        if (nextSumRowIdx === -1) {
-          // No row yet — create one
-          const nextSumId = generateId('SUM', nextDate, nextSumSheet);
-          nextSumSheet.appendRow([
-            nextSumId, nextDate,
-            endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
-          ]);
-        } else {
-          // Row exists but openingCash may be 0 — force-update it
-          nextSumSheet.getRange(nextSumRowIdx, 3).setValue(endTotal);
-        }
+      recalculateDailySummary(nextDate);
 
-        // Now recalculate — opening is already correct in the sheet
-        recalculateDailySummary(nextDate);
+      writeAuditLog(
+        'OPENING_SAVED',
+        `Opening cash auto-carried from ${data.date} audit count. Total: ₱${endTotal.toFixed(2)}`,
+        cfId,
+        nextDate
+      );
 
-        writeAuditLog(
-          'OPENING_SAVED',
-          `Opening cash auto-carried from ${data.date} audit count. Total: ₱${endTotal.toFixed(2)}`,
-          newId,
-          nextDate
-        );
-
-        // ── Auto-close Sunday if next day is a non-working day ──
-        try { autoCloseNonWorkingDays(nextDate, endTotal, ss, now); } catch(e) {
-          console.error('autoCloseNonWorkingDays error:', e);
-        }
+      try { autoCloseNonWorkingDays(nextDate, endTotal, ss, now); } catch(e) {
+        console.error('autoCloseNonWorkingDays error:', e);
       }
     }
 
