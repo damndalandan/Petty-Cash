@@ -465,7 +465,11 @@ function recalculateDailySummary(date) {
         else if (type === 'CASH_OVER')     totalCashOver      += amt;
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
         else if (type === 'CASH_RETURN')   totalCashReturn    += amt;
-        else if (type === 'LIQ_DETAIL')    { /* documentation only — ignore in totals */ }
+        else if (type === 'LIQ_DETAIL')    {
+          totalExp += amt;
+          if (row[6] === 'YES') totalReceipt   += amt;
+          else                  totalNoReceipt += amt;
+        }
         else {
           totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
@@ -493,12 +497,15 @@ function recalculateDailySummary(date) {
     let existingStatus = '', targetRow = -1, existingClosedBy = '';
     for (let i = 1; i < sumData.length; i++) {
       if (normalizeDate(sumData[i][1]) === date) {
-        existingStatus   = sumData[i][11] || '';
-        existingClosedBy = sumData[i][12] || '';
+        existingStatus   = sumData[i][12] || '';
+        existingClosedBy = sumData[i][13] || '';
         targetRow = i + 1;
         break;
       }
     }
+
+    // Never overwrite a day that has already been closed by the auditor
+    if (existingStatus === 'CLOSED') return { success: true };
 
     const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (totalExp + cashAdvance);
     const variance = hasClosing ? (closingCash - expected) : 0;
@@ -519,7 +526,7 @@ function recalculateDailySummary(date) {
       const sumId = generateId('SUM', date, sumSheet);
       sumSheet.appendRow([sumId, date, ...summaryRow]);
     } else {
-      sumSheet.getRange(targetRow, 3, 1, 12).setValues([summaryRow]);
+      sumSheet.getRange(targetRow, 3, 1, 13).setValues([summaryRow]);
     }
 
     return { success: true };
@@ -1324,7 +1331,7 @@ function findUnclosedPastDate(beforeDate) {
     for (let i = 1; i < data.length; i++) {
       if (data[i].length < 12) continue;
       const rDate = normalizeDate(data[i][1]);
-      const s = data[i][11];
+      const s = data[i][12];
       if (rDate < beforeDate && (s === 'OPEN' || s === 'PENDING_AUDIT' || s === 'FLAGGED')) unclosed.push(rDate);
     }
 
@@ -1354,9 +1361,9 @@ function auditApproveDay(data) {
     for (let i = 1; i < rows.length; i++) {
       if (normalizeDate(rows[i][1]) !== data.date) continue;
       const row = i + 1;
-      sheet.getRange(row, 12).setValue('CLOSED');
-      sheet.getRange(row, 13).setValue(email);
-      sheet.getRange(row, 14).setValue(now);
+      sheet.getRange(row, 13).setValue('CLOSED');
+      sheet.getRange(row, 14).setValue(email);
+      sheet.getRange(row, 15).setValue(now);
       found = true;
 
       // ── Finalize any LIQUIDATION_PENDING advances that were verified ──
@@ -2004,7 +2011,7 @@ function getFilingChecklists(params) {
       const sumRows = sumSheet.getDataRange().getValues();
       for (let i = 1; i < sumRows.length; i++) {
         const rDate  = normalizeDate(sumRows[i][1]);
-        const status = sumRows[i][11];
+        const status = sumRows[i][12];
         if (params?.from && rDate < params.from) continue;
         if (params?.to   && rDate > params.to)   continue;
         if (status === 'CLOSED') closedDates[rDate] = true;
@@ -2077,7 +2084,7 @@ function getClosedDaysForFiling() {
     const sumRows   = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
     const closedMap = {};
     for (let i = 1; i < sumRows.length; i++) {
-      if (sumRows[i][11] === 'CLOSED') closedMap[normalizeDate(sumRows[i][1])] = true;
+      if (sumRows[i][12] === 'CLOSED') closedMap[normalizeDate(sumRows[i][1])] = true;
     }
 
     // Get all filing records
@@ -2124,9 +2131,9 @@ function flagDay(data) {
     for (let i = 1; i < rows.length; i++) {
       if (normalizeDate(rows[i][1]) !== data.date) continue;
       const row = i + 1;
-      sheet.getRange(row, 12).setValue('FLAGGED');
-      sheet.getRange(row, 13).setValue(email);
-      sheet.getRange(row, 14).setValue(now);
+      sheet.getRange(row, 13).setValue('FLAGGED');
+      sheet.getRange(row, 14).setValue(email);
+      sheet.getRange(row, 15).setValue(now);
 
       // Tag each flagged entry with auditor note in col 15 (notes/remarks)
       if (data.flaggedEntries && data.flaggedEntries.length) {
@@ -2206,9 +2213,9 @@ function getAdminMetrics() {
     const closedDates = {};
     for (let i = 1; i < sumRows.length; i++) {
       const row = sumRows[i];
-      if ((row[11] || '') === 'CLOSED') {
+      if ((row[12] || '') === 'CLOSED') {
         const d = normalizeDate(row[1]);
-        if (d <= today) closedDates[d] = { date: d, opening: parseFloat(row[2])||0, expenses: parseFloat(row[6])||0, closing: parseFloat(row[9])||0 };
+        if (d <= today) closedDates[d] = { date: d, opening: parseFloat(row[2])||0, expenses: parseFloat(row[6])||0, closing: parseFloat(row[10])||0 };
       }
     }
 
@@ -2307,11 +2314,11 @@ function getAuditorMetrics() {
       if (row.length < 12) continue;
       const rDate  = normalizeDate(row[1]);
       if (rDate > today) continue;
-      const status   = row[11] || 'OPEN';
-      const variance = parseFloat(row[10]) || 0;
+      const status   = row[12] || 'OPEN';
+      const variance = parseFloat(row[11]) || 0;
       const opening  = parseFloat(row[2])  || 0;
       const expenses = parseFloat(row[6])  || 0;
-      const closing  = parseFloat(row[9])  || 0;
+      const closing  = parseFloat(row[10]) || 0;
 
       if (status === 'PENDING_AUDIT') {
         pendingAudit.push({ date: rDate, variance, opening, expenses, closing });
@@ -2366,6 +2373,99 @@ function getAuditorMetrics() {
       }
     };
   } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// DATA REPAIR UTILITY
+// Run once from the Apps Script editor to fix Summary rows corrupted by the
+// old bug where auditApproveDay/flagDay wrote status to col 12 (Variance)
+// instead of col 13 (Status).
+// ─────────────────────────────────────────────
+function repairSummarySheet() {
+  try {
+    const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
+    if (!sumSheet) return { success: false, message: 'Summary sheet not found' };
+
+    const rows = sumSheet.getDataRange().getValues();
+    let repaired = 0;
+    const STATUS_STRINGS = ['CLOSED', 'FLAGGED', 'PENDING_AUDIT', 'OPEN'];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row   = rows[i];
+      const col12 = row[11]; // index 11 = col 12 = should be Variance (number)
+      const col13 = row[12]; // index 12 = col 13 = should be Status
+      const col14 = row[13]; // index 13 = col 14 = should be Closed_By
+      const col15 = row[14]; // index 14 = col 15 = should be Updated_At
+      const date  = normalizeDate(row[1]);
+
+      // Detect corrupted row: col 12 holds a status string (bug wrote status there)
+      const isCorrupted = STATUS_STRINGS.includes(String(col12));
+      if (!isCorrupted) continue;
+
+      const corruptedStatus = String(col12); // e.g. 'CLOSED'
+      const corruptedEmail  = String(col13 || '');
+      const corruptedTs     = String(col14 || new Date().toISOString());
+
+      // Recompute all totals from Entries sheet
+      const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+      let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0;
+      let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0;
+
+      for (let j = 1; j < entryData.length; j++) {
+        const eRow    = entryData[j];
+        const rDate   = normalizeDate(eRow[1]);
+        const type    = eRow[2];
+        const eStatus = eRow[10];
+        const amt     = parseFloat(eRow[5]) || 0;
+        if (rDate !== date || eStatus === 'DELETED') continue;
+
+        if (type === 'CASH_ADVANCE') {
+          if (eStatus === 'ACTIVE' || eStatus === 'LIQUIDATION_PENDING') cashAdvance += amt;
+        } else if (type === 'CASH_OVER')     { totalCashOver      += amt; }
+          else if (type === 'REPLENISHMENT') { totalReplenishment += amt; }
+          else if (type === 'CASH_RETURN')   { totalCashReturn    += amt; }
+          else {
+            totalExp += amt;
+            if (eRow[6] === 'YES') totalReceipt   += amt;
+            else                   totalNoReceipt += amt;
+          }
+      }
+
+      // Get opening and closing cash from Denominations sheet
+      const denomData = ss.getSheetByName(SHEETS.DENOMINATIONS).getDataRange().getValues();
+      let openingCash = parseFloat(row[2]) || 0; // preserve existing opening as fallback
+      let closingCash = 0;
+      for (let k = 1; k < denomData.length; k++) {
+        if (normalizeDate(denomData[k][1]) !== date) continue;
+        if (denomData[k][2] === 'START') openingCash = parseFloat(denomData[k][13]) || openingCash;
+        if (denomData[k][2] === 'END')   closingCash = parseFloat(denomData[k][13]) || 0;
+      }
+
+      const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (totalExp + cashAdvance);
+      const variance = closingCash - expected;
+      const rowNum   = i + 1;
+
+      sumSheet.getRange(rowNum, 3, 1, 13).setValues([[
+        openingCash, cashAdvance,
+        totalReceipt, totalNoReceipt, totalExp,
+        totalCashOver, totalReplenishment, totalCashReturn,
+        closingCash, variance,         // col 12 = Variance (restored as number)
+        corruptedStatus,               // col 13 = Status (moved to correct column)
+        corruptedEmail,                // col 14 = Closed_By (moved to correct column)
+        corruptedTs                    // col 15 = Updated_At (moved to correct column)
+      ]]);
+
+      repaired++;
+      console.log('Repaired row for date: ' + date + ' (' + corruptedStatus + ')');
+    }
+
+    SpreadsheetApp.flush();
+    return { success: true, repaired, message: 'Repaired ' + repaired + ' corrupted Summary row(s).' };
+  } catch(e) {
+    console.error('repairSummarySheet error:', e);
     return { success: false, message: e.toString() };
   }
 }
