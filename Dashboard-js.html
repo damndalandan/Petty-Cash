@@ -204,23 +204,27 @@ function updateDashStats() {
     .filter(e => e.type === 'REPLENISHMENT' && !e.carriedForward)
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  const totalCashReturn = state.entries
-    .filter(e => e.type === 'CASH_RETURN' && !e.carriedForward)
-    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+  // LIQUIDATION_PENDING advances: count totalSpent as expense (not full advance amount)
+  const liqPendingSpent = state.entries
+    .filter(e => e.type === 'CASH_ADVANCE' && e.status === 'LIQUIDATION_PENDING' && !e.carriedForward)
+    .reduce((s, e) => s + parseFloat(e.liqBreakdown?.totalSpent || 0), 0);
+
+  const totalExpDisplay = withReceipt + noReceipt + liqPendingSpent;
 
   const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
-  const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExp);
+  const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExpDisplay);
   const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
-  const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish + totalCashReturn);
+  const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish);
   const srpsub = document.getElementById('stat-replenishment-sub');
-  if (srpsub) srpsub.textContent = totalCashReturn > 0 ? `incl. ${fmt(totalCashReturn)} returned` : '';
+  if (srpsub) srpsub.textContent = '';
 
-  // Expected = opening + replenishment - expenses - advances
-    const liveCashAdv = state.entries
-    .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward)
+  // Expected = opening + replenishment - expenses (incl. liq pending) - active advances
+  const liveCashAdv = state.entries
+    .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward
+      && e.status !== 'LIQUIDATION_PENDING')
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  const expectedInfo = (opening + totalReplenish + totalCashReturn) - (totalExp + liveCashAdv);
+  const expectedInfo = (opening + totalReplenish) - (totalExpDisplay + liveCashAdv);
 
   const sexp = document.getElementById('stat-expected');
   if (sexp) {

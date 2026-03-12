@@ -392,20 +392,20 @@
     const expenses = state.entries
       .filter(e => e.type === 'EXPENSE' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-    // Only count advances issued TODAY — carried-forward advances are receivables,
-    // already deducted from the cash box on the day they were issued.
+    // LIQUIDATION_PENDING advances: use totalSpent from breakdown (change already returned, advance closed for audit)
+    const liqPendingSpent = state.entries
+      .filter(e => e.type === 'CASH_ADVANCE' && e.status === 'LIQUIDATION_PENDING' && !e.carriedForward)
+      .reduce((s, e) => s + parseFloat(e.liqBreakdown?.totalSpent || 0), 0);
+    // Only count ACTIVE advances (not LIQUIDATION_PENDING — those are handled via totalSpent above)
     const cashAdvance = state.entries
-      .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward)
+      .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward
+        && e.status !== 'LIQUIDATION_PENDING')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
     const replenishment = state.entries
       .filter(e => e.type === 'REPLENISHMENT' && e.status !== 'DELETED')
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-    // Cash returns (change from liquidated advances already physically returned today)
-    const cashReturn = state.entries
-      .filter(e => e.type === 'CASH_RETURN' && e.status !== 'DELETED')
-      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-    const expected = (opening + replenishment + cashReturn) - (expenses + cashAdvance);
+    const expected = (opening + replenishment) - (expenses + liqPendingSpent + cashAdvance);
     const variance = actual - expected;
 
     document.getElementById('modExpected').textContent = fmt(expected);

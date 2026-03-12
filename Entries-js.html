@@ -203,14 +203,13 @@ function renderEntries() {
   const AMOUNT_TYPES = ['EXPENSE', 'CASH_ADVANCE', 'CASH_OVER', 'REPLENISHMENT', 'CASH_RETURN'];
   let total = filtered
     .filter(e => AMOUNT_TYPES.includes(e.type) && e.type !== 'LIQ_DETAIL')
-    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-  // On 'all' tab, net out cash returns (change physically returned from liquidated advances)
-  if (state.entryTab === 'all') {
-    const returned = state.entries
-      .filter(e => e.type === 'CASH_RETURN' && e.status !== 'DELETED')
-      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-    total = Math.max(0, total - returned);
-  }
+    .reduce((s, e) => {
+      // For LIQUIDATION_PENDING advances: count totalSpent instead of full amount
+      if (e.type === 'CASH_ADVANCE' && e.status === 'LIQUIDATION_PENDING') {
+        return s + parseFloat(e.liqBreakdown?.totalSpent || e.amount || 0);
+      }
+      return s + parseFloat(e.amount || 0);
+    }, 0);
   document.getElementById('entries-total').textContent = fmt(total);
 
   const tbody = document.getElementById('entriesBody');
