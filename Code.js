@@ -466,7 +466,6 @@ function recalculateDailySummary(date) {
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
         else if (type === 'CASH_RETURN')   totalCashReturn    += amt;
         else if (type === 'LIQ_DETAIL')    {
-          totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
           else                  totalNoReceipt += amt;
         }
