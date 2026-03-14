@@ -1608,9 +1608,13 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
 }
 
 function getNextDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  const parts = String(dateStr).split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return '';
+
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  d.setUTCDate(d.getUTCDate() + 1);
+
+  return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
 }
 
 function getPreviousDayClosing(date) {
@@ -2980,7 +2984,11 @@ function autoCloseNonWorkingDays(startDate, openingCash, ss, now) {
 }
 
 function getPreviousDate(dateStr) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
+  const parts = String(dateStr).split('-').map(Number);
+  if (parts.length !== 3 || parts.some(isNaN)) return '';
+
+  const d = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  d.setUTCDate(d.getUTCDate() - 1);
+
+  return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
 }
