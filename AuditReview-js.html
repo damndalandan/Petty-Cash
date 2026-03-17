@@ -129,6 +129,9 @@ function updateAuditVariance(actualCash) {
   reviewableEntries
     .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
+      // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
+      if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+
       const amt = parseFloat(e.amount || 0);
       if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
         expectedAdj += amt;
@@ -430,6 +433,9 @@ async function confirmAuditDecision(decision) {
   // At approval time all entries must be verified, so this equals the full expected.
   let expectedAdj = 0;
   entries.forEach(e => {
+    // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
+    if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+
     const amt = parseFloat(e.amount || 0);
     if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
       expectedAdj += amt;
@@ -479,6 +485,9 @@ function openAuditApproveModal(variance, actualCash) {
   const opening = parseFloat(summary?.openingCash || 0);
   let expectedAdjModal = 0;
   entries.forEach(e => {
+    // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
+    if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+
     const amt = parseFloat(e.amount || 0);
     if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
       expectedAdjModal += amt;
@@ -620,12 +629,18 @@ function updateAuditDaySummaryPanel() {
 
   if (liveEntries.length > 0 || state.entries !== undefined) {
     liveEntries.forEach(e => {
+      // Skip LIQ_DETAIL from cash movement calculations
+      if (e.type === 'LIQ_DETAIL') return;
+
       const amt = parseFloat(e.amount || 0);
       if      (e.type === 'REPLENISHMENT') replenish  += amt;
       else if (e.type === 'CASH_OVER')     cashOver   += amt;
       else if (e.type === 'CASH_RETURN')   cashReturn += amt;
-      else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) advance += amt;
-      else if (e.type === 'EXPENSE' || e.type === 'LIQ_DETAIL') expenses += amt;
+      else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) {
+        // Only deduct advance if it was issued today
+        if (!e.originalDate || e.originalDate >= state.currentDate) advance += amt;
+      }
+      else if (e.type === 'EXPENSE') expenses += amt;
     });
   } else {
     replenish = parseFloat(s.totalReplenishment || 0);

@@ -466,6 +466,7 @@ function recalculateDailySummary(date) {
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
         else if (type === 'CASH_RETURN')   totalCashReturn    += amt;
         else if (type === 'LIQ_DETAIL')    {
+          totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
           else                  totalNoReceipt += amt;
         }
@@ -1546,11 +1547,11 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
         notesCol + ' | [LIQUIDATED BY ' + approverEmail + ' on ' + approvalDate + ']'
       );
 
-      // 2. Save LIQ_DETAIL entries on the advance's original date (documentation only)
+      // 2. Save LIQ_DETAIL entries on the current approval date (accounting standard)
       if (breakdown.entries && breakdown.entries.length) {
         breakdown.entries.forEach(entry => {
           const liqEntry = saveExpenseEntry({
-            date       : advDate,
+            date       : approvalDate,
             type       : 'LIQ_DETAIL',
             category   : entry.category   || 'Miscellaneous',
             description: entry.desc       || '',
@@ -1566,7 +1567,7 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
             saveReceiptRecord({
               ...entry.receipt,
               entryId: liqEntry.id,
-              date   : advDate
+              date   : approvalDate
             });
           }
         });
@@ -2568,9 +2569,9 @@ function getSummaryReportData(params) {
       const amount  = parseFloat(row[5]) || 0;
 
       if (rowDate < fromStr || rowDate > toStr) continue;
-      if (status === 'DELETED' || type === 'LIQ_DETAIL') continue;
+      if (status === 'DELETED') continue;
 
-      if (type === 'EXPENSE') {
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         totalExpenses += amount;
@@ -2717,9 +2718,9 @@ function getReplenishmentPeriodReport() {
       const amount  = parseFloat(row[5]) || 0;
 
       if (rowDate < fromStr || rowDate > toStr) continue;
-      if (status === 'DELETED' || type === 'LIQ_DETAIL') continue;
+      if (status === 'DELETED') continue;
 
-      if (type === 'EXPENSE') {
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
         totalExpenses += amount;
       } else if (type === 'REPLENISHMENT') {
         totalReplenishment += amount;
