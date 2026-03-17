@@ -442,6 +442,7 @@ function recalculateDailySummary(date) {
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
     let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0;
     let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0;
+    let cashMovementExp = 0;
 
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
@@ -456,11 +457,10 @@ function recalculateDailySummary(date) {
 
       if (rDate === date) {
         if (type === 'CASH_ADVANCE') {
-          // Only count as cash-out if still ACTIVE (money is out, unaccounted).
-          // LIQUIDATION_PENDING = cashier submitted breakdown but auditor hasn't closed yet —
-          // still treat as outstanding so expected cash isn't reduced prematurely.
-          // LIQUIDATED = finalized by auditor, LIQ_DETAIL entries handle the actual expense amounts.
-          if (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING') cashAdvance += amt;
+          // Cash leaves the drawer on the advance date and stays part of that day's
+          // cash movement even after later liquidation. LIQ_DETAIL rows document the
+          // eventual spend but must not rewrite the original day's cash balance.
+          cashAdvance += amt;
         }
         else if (type === 'CASH_OVER')     totalCashOver      += amt;
         else if (type === 'REPLENISHMENT') totalReplenishment += amt;
@@ -471,6 +471,7 @@ function recalculateDailySummary(date) {
         }
         else {
           totalExp += amt;
+          cashMovementExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
           else                  totalNoReceipt += amt;
         }
@@ -503,7 +504,7 @@ function recalculateDailySummary(date) {
       }
     }
 
-    const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (totalExp + cashAdvance);
+    const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (cashMovementExp + cashAdvance);
     const variance = hasClosing ? (closingCash - expected) : 0;
     const status   = hasClosing
       ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
@@ -2431,6 +2432,7 @@ function repairSummarySheet() {
       const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
       let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0;
       let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0;
+      let cashMovementExp = 0;
 
       for (let j = 1; j < entryData.length; j++) {
         const eRow    = entryData[j];
@@ -2441,12 +2443,18 @@ function repairSummarySheet() {
         if (rDate !== date || eStatus === 'DELETED') continue;
 
         if (type === 'CASH_ADVANCE') {
-          if (eStatus === 'ACTIVE' || eStatus === 'LIQUIDATION_PENDING') cashAdvance += amt;
+          cashAdvance += amt;
         } else if (type === 'CASH_OVER')     { totalCashOver      += amt; }
           else if (type === 'REPLENISHMENT') { totalReplenishment += amt; }
           else if (type === 'CASH_RETURN')   { totalCashReturn    += amt; }
+          else if (type === 'LIQ_DETAIL')    {
+            totalExp += amt;
+            if (eRow[6] === 'YES') totalReceipt   += amt;
+            else                   totalNoReceipt += amt;
+          }
           else {
             totalExp += amt;
+            cashMovementExp += amt;
             if (eRow[6] === 'YES') totalReceipt   += amt;
             else                   totalNoReceipt += amt;
           }
@@ -2462,7 +2470,7 @@ function repairSummarySheet() {
         if (denomData[k][2] === 'END')   closingCash = parseFloat(denomData[k][13]) || 0;
       }
 
-      const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (totalExp + cashAdvance);
+      const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (cashMovementExp + cashAdvance);
       const variance = closingCash - expected;
       const rowNum   = i + 1;
 
