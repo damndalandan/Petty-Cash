@@ -2687,11 +2687,8 @@ function getReplenishmentPeriodReport() {
     const sumData = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
     let fromStr = null;
 
-    if (replenishDates.length >= 2) {
-      const prevReplenish = replenishDates[replenishDates.length - 2];
-      const d = new Date(prevReplenish + 'T00:00:00');
-      d.setDate(d.getDate() + 1);
-      fromStr = normalizeDate(d);
+    if (replenishDates.length >= 1) {
+      fromStr = replenishDates[replenishDates.length - 1]; // Start ON the day of the last replenishment
     } else {
       const dates = [];
       for (let i = 1; i < sumData.length; i++) {
