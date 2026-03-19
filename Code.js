@@ -2708,6 +2708,7 @@ function getReplenishmentPeriodReport() {
     let totalExpenses       = 0;
     let totalReplenishment  = 0;
     let advancesOutstanding = 0;
+    const periodEntries     = [];
 
     for (let i = 1; i < entryData.length; i++) {
       const row     = entryData[i];
@@ -2722,13 +2723,23 @@ function getReplenishmentPeriodReport() {
 
       if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
         totalExpenses += amount;
+        periodEntries.push({
+          id: row[0], date: rowDate, type, category: row[3],
+          description: row[4], amount, requestedBy: row[8], status
+        });
       } else if (type === 'REPLENISHMENT') {
         totalReplenishment += amount;
       } else if (type === 'CASH_ADVANCE' &&
                 (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING')) {
         advancesOutstanding += amount;
+        periodEntries.push({
+          id: row[0], date: rowDate, type, category: row[3],
+          description: row[4], amount, requestedBy: row[8], status
+        });
       }
     }
+    
+    periodEntries.sort((a, b) => a.date > b.date ? 1 : -1);
 
     // ── Daily breakdown from summary — correct column indexes ──
     const dailyRows = [];
@@ -2773,7 +2784,8 @@ function getReplenishmentPeriodReport() {
         advancesOutstanding,
         accounted,
         toReplenish,
-        dailyRows
+        dailyRows,
+        periodEntries
       }
     };
   } catch(e) {

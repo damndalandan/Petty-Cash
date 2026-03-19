@@ -113,6 +113,28 @@
       </div>
     </div>
 
+    <!-- Detailed Expense Breakdown Table -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden mt-6">
+      <div class="px-5 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+        <h2 class="text-sm font-bold text-gray-700">📑 Detailed Expense Breakdown</h2>
+        <span class="text-xs text-gray-400">All transactions this period</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
+              <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Category</th>
+              <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Description</th>
+              <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Requested By</th>
+              <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Amount</th>
+            </tr>
+          </thead>
+          <tbody id="rrDetailedBody" class="divide-y divide-gray-50"></tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Refresh button -->
     <div class="flex justify-center pb-4">
       <button onclick="loadReplenishReport()"
