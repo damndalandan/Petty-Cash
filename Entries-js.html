@@ -84,6 +84,96 @@ function hideEmployeeSuggestions() {
   }, 150);
 }
 
+// ─────────────────────────────────────────────
+// SUPPLIER AUTOCOMPLETE — Receipt Modal
+// ─────────────────────────────────────────────
+let _supplierCache = null; // null = not yet loaded, [] = loaded but empty
+
+async function loadSupplierCache() {
+  if (_supplierCache !== null) return; // already loaded
+  _supplierCache = []; // mark as loading
+  try {
+    const res = await callServer('getSuppliers');
+    _supplierCache = (res.success && res.data) ? res.data : [];
+  } catch(e) {
+    _supplierCache = [];
+    console.warn('loadSupplierCache failed:', e);
+  }
+}
+
+function filterSuppliers(input) {
+  const query = input.value.trim().toLowerCase();
+  const box   = document.getElementById('supplierSuggestions');
+  if (!box) return;
+
+  // Need at least 1 character
+  if (!query) {
+    box.classList.add('hidden');
+    return;
+  }
+
+  // If cache not loaded yet, trigger load silently and wait
+  if (_supplierCache === null) {
+    loadSupplierCache().then(() => filterSuppliers(input));
+    return;
+  }
+
+  // Build flat list of all matching variants
+  const matches = [];
+  for (const supplier of _supplierCache) {
+    if (!supplier.name.toLowerCase().includes(query)) continue;
+    for (const v of supplier.variants) {
+      matches.push({ name: supplier.name, address: v.address, tin: v.tin });
+      if (matches.length >= 20) break; // safety cap before DOM render
+    }
+    if (matches.length >= 20) break;
+  }
+
+  if (!matches.length) {
+    box.classList.add('hidden');
+    return;
+  }
+
+  box.innerHTML = matches.map((m, i) => {
+    const safeName    = m.name.replace(/'/g, "\\'");
+    const safeAddress = m.address.replace(/'/g, "\\'");
+    const safeTin     = m.tin.replace(/'/g, "\\'");
+
+    // Highlight the matched portion in the name
+    const idx   = m.name.toLowerCase().indexOf(query);
+    const before = m.name.slice(0, idx);
+    const match  = m.name.slice(idx, idx + query.length);
+    const after  = m.name.slice(idx + query.length);
+    const highlighted = `${before}<span class="text-green-700 font-bold">${match}</span>${after}`;
+
+    const meta = [m.address, m.tin].filter(Boolean).join(' · ');
+
+    return `
+      <div class="px-3 py-2.5 hover:bg-green-50 cursor-pointer border-b border-gray-100 last:border-0 transition-colors"
+        onmousedown="selectSupplier('${safeName}','${safeAddress}','${safeTin}')">
+        <div class="text-sm text-gray-800 leading-tight">${highlighted}</div>
+        ${meta ? `<div class="text-[11px] text-gray-400 mt-0.5 truncate">${meta}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  box.classList.remove('hidden');
+}
+
+function selectSupplier(name, address, tin) {
+  const setV = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+  setV('rcptSupplier', name);
+  setV('rcptAddress',  address);
+  setV('rcptTin',      tin);
+  hideSupplierSuggestions();
+}
+
+function hideSupplierSuggestions() {
+  setTimeout(() => {
+    const box = document.getElementById('supplierSuggestions');
+    if (box) box.classList.add('hidden');
+  }, 150);
+}
+
 function updateReceiptIndicator() {
   const indicator = document.getElementById('receiptIndicator');
   const addBtn    = document.getElementById('addReceiptBtn');
@@ -579,7 +669,7 @@ function openReceiptModal(ctx) {
     document.getElementById('receiptSkipBtn').textContent = 'Close';
   }
 
-  modal.classList.remove('hidden');
+  loadSupplierCache(); 
   if (ctx.mode !== 'view') {
     setTimeout(() => document.getElementById('rcptSupplier')?.focus(), 100);
   }

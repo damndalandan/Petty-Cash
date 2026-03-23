@@ -164,10 +164,20 @@
           </div>
         </div>
 
-        <!-- Supplier Name -->
-        <div>
+        <!-- Supplier Name + Autocomplete -->
+        <div class="relative">
           <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Name of Supplier <span class="text-red-500">*</span></label>
-          <input type="text" id="rcptSupplier" placeholder="Business / individual name" class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+          <input type="text" id="rcptSupplier"
+            placeholder="Business / individual name"
+            autocomplete="off"
+            oninput="filterSuppliers(this)"
+            onblur="hideSupplierSuggestions()"
+            class="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 outline-none">
+          <div id="supplierSuggestions"
+            class="hidden absolute z-[300] w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 overflow-y-auto"
+            style="max-height: 156px;">
+            <!-- 3 rows × ~52px each = 156px -->
+          </div>
         </div>
 
         <!-- Address -->

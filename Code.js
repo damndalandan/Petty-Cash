@@ -3010,3 +3010,71 @@ function getPreviousDate(dateStr) {
 
   return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
 }
+
+// ─────────────────────────────────────────────
+// SUPPLIER AUTOCOMPLETE
+// Reads from PettyCash_Receipts (main) + BIR dest sheet
+// Returns all unique name+address+TIN combinations
+// ─────────────────────────────────────────────
+function getSuppliers() {
+  try {
+    const BIR_SPREADSHEET_ID = '1p7nptmZh-rJF4gjq1S9ntj4-EwCjtBsu_vTc17wahgw';
+    const seen    = new Map(); // key: "NAME|||ADDRESS|||TIN" → true (dedup)
+    const grouped = new Map(); // key: NAME_LOWER → { name, variants: [] }
+
+    function processRow(name, address, tin) {
+      name    = String(name    || '').trim();
+      address = String(address || '').trim();
+      tin     = String(tin     || '').trim();
+      if (!name) return;
+
+      const dedupeKey = `${name.toLowerCase()}|||${address.toLowerCase()}|||${tin.toLowerCase()}`;
+      if (seen.has(dedupeKey)) return;
+      seen.set(dedupeKey, true);
+
+      const groupKey = name.toLowerCase();
+      if (!grouped.has(groupKey)) grouped.set(groupKey, { name, variants: [] });
+      grouped.get(groupKey).variants.push({ address, tin });
+    }
+
+    // ── 1. Read main PettyCash_Receipts ──
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.RECEIPTS);
+    if (sheet) {
+      const rows    = sheet.getDataRange().getValues();
+      const headers = rows[0];
+      const nameIdx = headers.indexOf('Supplier_Name');
+      const addrIdx = headers.indexOf('Address');
+      const tinIdx  = headers.indexOf('TIN');
+      for (let i = 1; i < rows.length; i++) {
+        processRow(rows[i][nameIdx], rows[i][addrIdx], rows[i][tinIdx]);
+      }
+    }
+
+    // ── 2. Read BIR historical spreadsheet (all monthly tabs) ──
+    // Columns: A=Date, B=Supplier_Name, C=Address, D=TIN
+    try {
+      const birSS    = SpreadsheetApp.openById(BIR_SPREADSHEET_ID);
+      const birSheets = birSS.getSheets();
+      for (const tab of birSheets) {
+        const rows = tab.getDataRange().getValues();
+        for (let i = 1; i < rows.length; i++) {
+          processRow(rows[i][1], rows[i][2], rows[i][3]); // B, C, D
+        }
+      }
+    } catch(e) {
+      console.warn('getSuppliers: BIR sheet read failed (non-fatal):', e);
+    }
+
+    // ── 3. Sort alphabetically and return ──
+    const result = [];
+    for (const [, entry] of grouped) {
+      result.push(entry);
+    }
+    result.sort((a, b) => a.name.localeCompare(b.name));
+
+    return { success: true, data: result };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
