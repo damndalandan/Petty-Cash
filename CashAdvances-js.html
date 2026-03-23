@@ -164,6 +164,21 @@ function renderAdvances() {
           <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
             <div class="text-right">
               <div class="text-lg font-black font-mono text-gray-800">${fmt(a.amount)}</div>
+              ${(() => {
+                if (a.status === 'LIQUIDATION_PENDING' && a.liqBreakdown) {
+                  const spent  = parseFloat(a.liqBreakdown.totalSpent || 0);
+                  const change = parseFloat(a.liqBreakdown.change     || 0);
+                  return `
+                    <div class="text-[11px] text-gray-500 mt-0.5 space-y-0.5 text-right">
+                      <div>Spent: <span class="font-mono font-semibold text-gray-700">${fmt(spent)}</span></div>
+                      ${change > 0.005
+                        ? `<div class="text-green-700 font-semibold">↩ Returned: <span class="font-mono">${fmt(change)}</span></div>`
+                        : `<div class="text-green-600 font-medium">✓ Fully spent</div>`
+                      }
+                    </div>`;
+                }
+                return '';
+              })()}
             </div>
             <div class="flex gap-2">${actions}</div>
           </div>
