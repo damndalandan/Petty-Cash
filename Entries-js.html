@@ -669,7 +669,20 @@ function openReceiptModal(ctx) {
     document.getElementById('receiptSkipBtn').textContent = 'Close';
   }
 
-  loadSupplierCache(); 
+  // ── Show the modal ──
+  modal.classList.remove('hidden');
+
+  // ── Wire supplier autocomplete events safely (only once) ──
+  const supplierInput = document.getElementById('rcptSupplier');
+  if (supplierInput && !supplierInput._autocompleteWired) {
+    supplierInput.addEventListener('input', function() { filterSuppliers(this); });
+    supplierInput.addEventListener('blur',  function() { hideSupplierSuggestions(); });
+    supplierInput._autocompleteWired = true;
+  }
+
+  // ── Warm up supplier cache in background ──
+  try { loadSupplierCache(); } catch(e) { console.warn('supplier cache:', e); }
+
   if (ctx.mode !== 'view') {
     setTimeout(() => document.getElementById('rcptSupplier')?.focus(), 100);
   }
