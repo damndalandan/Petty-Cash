@@ -88,9 +88,6 @@ function renderSummaryReport(d) {
   // Charts
   renderBarChart(d.categories);
 
-  // Daily breakdown
-  renderSrDailyTable(d.dailyRows, d.totalExpenses);
-
   // Show content
   document.getElementById('srContent').classList.remove('hidden');
 }
@@ -123,64 +120,6 @@ function renderBarChart(categories) {
         </div>
       </div>`;
   }).join('');
-}
-
-// ── Daily Breakdown Table ──
-function renderSrDailyTable(rows, totalExpenses) {
-  const tbody = document.getElementById('srDailyBody');
-  const tfoot = document.getElementById('srDailyFoot');
-
-  if (!rows || rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 italic text-sm">No activity this month</td></tr>`;
-    tfoot.innerHTML = '';
-    return;
-  }
-
-  const statusMap = {
-    CLOSED       : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-green-100 text-green-700">✅ Closed</span>',
-    PENDING_AUDIT: '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-700">🔍 Pending</span>',
-    FLAGGED      : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-700">🚩 Flagged</span>',
-    OPEN         : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600">⚪ Open</span>',
-  };
-
-  let totOpening = 0, totExpenses = 0, totReplenish = 0, totCashAdv = 0;
-
-  tbody.innerHTML = rows.map(r => {
-    totOpening   += r.opening;
-    totExpenses  += r.expenses;
-    totReplenish += r.replenishment;
-    totCashAdv   += r.cashAdvance || 0;
-    const d       = new Date(r.date + 'T00:00:00');
-    const label   = d.toLocaleDateString('en-PH', { weekday:'short', month:'short', day:'numeric' });
-    const badge   = statusMap[r.status] || statusMap['OPEN'];
-    const expCls    = r.expenses > 0 ? 'text-red-600' : 'text-gray-400';
-    const advCls    = r.cashAdvance > 0 ? 'text-orange-500' : 'text-gray-300';
-    const repCls    = r.replenishment > 0 ? 'text-purple-600' : 'text-gray-300';
-    const isClosed  = r.status === 'CLOSED';
-    const closingDisplay = isClosed ? fmt(r.closing) : '—';
-    const closingCls     = isClosed ? 'text-gray-700' : 'text-gray-300';
-    return `
-      <tr class="hover:bg-gray-50 transition">
-        <td class="px-4 py-3 text-sm font-medium text-gray-700">${label}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">${fmt(r.opening)}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm font-bold ${expCls}">${r.expenses > 0 ? fmt(r.expenses) : '—'}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${advCls}">${r.cashAdvance > 0 ? fmt(r.cashAdvance) : '—'}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">${r.replenishment > 0 ? fmt(r.replenishment) : '—'}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${closingCls}">${closingDisplay}</td>
-        <td class="px-4 py-3 text-center">${badge}</td>
-      </tr>`;
-  }).join('');
-
-  tfoot.innerHTML = `
-    <tr>
-      <td class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">Totals</td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-red-600">${fmt(totExpenses)}</td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-orange-500">${totCashAdv > 0 ? fmt(totCashAdv) : '—'}</td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-purple-600">${totReplenish > 0 ? fmt(totReplenish) : '—'}</td>
-      <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
-      <td></td>
-    </tr>`;
 }
 
 // ── PDF Export (browser print) ──
