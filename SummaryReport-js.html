@@ -35,37 +35,44 @@ function srStartOfYear() {
   return new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
 }
 
-// ─── Preset buttons ───
-function srSetPreset(preset) {
-  srActivePreset = preset;
+// ─── Period dropdown ───
+function srOnPeriodChange() {
+  const val = document.getElementById('srPeriodSelect').value;
+  const customRange = document.getElementById('srCustomRange');
+
+  if (val === 'custom') {
+    customRange.classList.remove('hidden');
+    customRange.classList.add('flex');
+    // Don't auto-generate — wait for user to pick dates + click Generate
+    return;
+  }
+
+  customRange.classList.add('hidden');
+  customRange.classList.remove('flex');
+  srApplyPreset(val);
+  loadSummaryReport();
+}
+
+function srApplyPreset(preset) {
   const today = srToday();
   let from, to = today;
-
   if (preset === 'today')  { from = today; }
   if (preset === 'week')   { from = srStartOfWeek(); }
   if (preset === 'month')  { from = srStartOfMonth(); }
   if (preset === 'year')   { from = srStartOfYear(); }
-
   document.getElementById('srFrom').value = from;
   document.getElementById('srTo').value   = to;
-
-  // Highlight active preset
-  document.querySelectorAll('.sr-preset-btn').forEach(b => b.classList.remove('sr-active'));
-  const btn = document.getElementById('sr-preset-' + preset);
-  if (btn) btn.classList.add('sr-active');
-
-  loadSummaryReport();
 }
 
-function srClearPreset() {
-  srActivePreset = null;
-  document.querySelectorAll('.sr-preset-btn').forEach(b => b.classList.remove('sr-active'));
-}
+// Keep these for backward compat (no longer used for buttons)
+function srSetPreset(preset) { srApplyPreset(preset); loadSummaryReport(); }
+function srClearPreset() {}
 
 // ─── Init ───
 function initSummaryReport() {
-  // Default to This Month on first load
-  srSetPreset('month');
+  // Default to This Month — dropdown already has month selected
+  srApplyPreset('month');
+  loadSummaryReport();
 }
 
 // ─── Load ───
