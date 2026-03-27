@@ -51,19 +51,50 @@
     </div>
   </div>
 
-  <!-- Loading State -->
-  <div id="srLoading" class="hidden text-center py-16">
-    <div class="loader inline-block mb-3"></div>
-    <p class="text-sm text-gray-400">Loading report data...</p>
+  <!-- Skeleton + Content (always visible after first load, skeleton on reload) -->
+  <div id="srSkeleton" class="space-y-6">
+
+    <!-- Fund Overview Cards skeleton -->
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse mb-3"></div><div class="h-7 w-28 bg-gray-200 rounded animate-pulse mb-2"></div><div class="h-2 w-16 bg-gray-100 rounded animate-pulse"></div></div>
+      <div class="bg-white rounded-xl border border-red-100 shadow-sm p-4"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse mb-3"></div><div class="h-7 w-28 bg-gray-200 rounded animate-pulse mb-2"></div><div class="h-2 w-16 bg-gray-100 rounded animate-pulse"></div></div>
+      <div class="bg-white rounded-xl border border-blue-100 shadow-sm p-4"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse mb-3"></div><div class="h-7 w-28 bg-gray-200 rounded animate-pulse mb-2"></div><div class="h-2 w-16 bg-gray-100 rounded animate-pulse"></div></div>
+      <div class="bg-white rounded-xl border border-amber-100 shadow-sm p-4"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse mb-3"></div><div class="h-7 w-28 bg-gray-200 rounded animate-pulse mb-2"></div><div class="h-2 w-16 bg-gray-100 rounded animate-pulse"></div></div>
+      <div class="bg-white rounded-xl border border-purple-100 shadow-sm p-4"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse mb-3"></div><div class="h-7 w-28 bg-gray-200 rounded animate-pulse mb-2"></div><div class="h-2 w-16 bg-gray-100 rounded animate-pulse"></div></div>
+    </div>
+
+    <!-- Chart + Right column skeleton -->
+    <div class="grid lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div class="h-4 w-40 bg-gray-200 rounded animate-pulse mb-4"></div>
+        <div class="space-y-4">
+          <div><div class="flex justify-between mb-1"><div class="h-3 w-32 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div><div class="h-2 w-full bg-gray-100 rounded animate-pulse"></div></div>
+          <div><div class="flex justify-between mb-1"><div class="h-3 w-44 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div><div class="h-2 w-4/5 bg-gray-100 rounded animate-pulse"></div></div>
+          <div><div class="flex justify-between mb-1"><div class="h-3 w-36 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div><div class="h-2 w-3/5 bg-gray-100 rounded animate-pulse"></div></div>
+          <div><div class="flex justify-between mb-1"><div class="h-3 w-28 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div><div class="h-2 w-1/2 bg-gray-100 rounded animate-pulse"></div></div>
+          <div><div class="flex justify-between mb-1"><div class="h-3 w-40 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div><div class="h-2 w-2/5 bg-gray-100 rounded animate-pulse"></div></div>
+        </div>
+      </div>
+      <div class="lg:col-span-1 flex flex-col gap-6">
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div class="h-4 w-36 bg-gray-200 rounded animate-pulse mb-4"></div>
+          <div class="h-16 bg-gray-100 rounded-lg animate-pulse mb-3"></div>
+          <div class="h-16 bg-gray-100 rounded-lg animate-pulse"></div>
+        </div>
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div class="h-4 w-28 bg-gray-200 rounded animate-pulse mb-4"></div>
+          <div class="space-y-3">
+            <div class="flex justify-between py-2 border-b border-gray-100"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div>
+            <div class="flex justify-between py-2 border-b border-gray-100"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div>
+            <div class="flex justify-between py-2 border-b border-gray-100"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div>
+            <div class="flex justify-between py-2"><div class="h-3 w-20 bg-gray-200 rounded animate-pulse"></div><div class="h-3 w-16 bg-gray-200 rounded animate-pulse"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <!-- Empty State -->
-  <div id="srEmpty" class="text-center py-16 text-gray-400">
-    <span class="text-5xl block mb-3 grayscale opacity-40">📊</span>
-    <p class="text-sm">Select a date range and click Generate</p>
-  </div>
-
-  <!-- Report Content -->
+  <!-- Report Content (hidden until first load, then always shown) -->
   <div id="srContent" class="hidden space-y-6">
 
     <!-- Fund Overview Cards -->

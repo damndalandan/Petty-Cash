@@ -4,7 +4,6 @@
 // =============================================
 
 let srData        = null;
-let srActivePreset = null;
 
 // Receipt modal state
 let srModalEntries   = [];  // full list (filtered from srData)
@@ -89,21 +88,22 @@ async function loadSummaryReport() {
     return;
   }
 
-  document.getElementById('srEmpty').classList.add('hidden');
+  // Show skeleton, hide real content
+  document.getElementById('srSkeleton').classList.remove('hidden');
   document.getElementById('srContent').classList.add('hidden');
-  document.getElementById('srLoading').classList.remove('hidden');
 
   const res = await callServer('getSummaryReportDataByRange', { from, to });
 
-  document.getElementById('srLoading').classList.add('hidden');
+  // Hide skeleton, show real content
+  document.getElementById('srSkeleton').classList.add('hidden');
 
   if (!res.success) {
     toast('Failed to load report: ' + (res.message || ''), 'error');
-    document.getElementById('srEmpty').classList.remove('hidden');
     return;
   }
 
   srData = res.data;
+  document.getElementById('srContent').classList.remove('hidden');
   renderSummaryReport(srData);
 }
 
