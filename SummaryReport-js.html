@@ -53,15 +53,6 @@ async function loadSummaryReport() {
 }
 
 function renderSummaryReport(d) {
-  const monthNames = ['January','February','March','April','May','June',
-                      'July','August','September','October','November','December'];
-  const month = parseInt(document.getElementById('srMonth').value);
-  const year  = parseInt(document.getElementById('srYear').value);
-
-  // Period label
-  document.getElementById('srPeriodLabel').textContent =
-    `Period: ${monthNames[month]} ${year}`;
-
   // Fund overview cards
   document.getElementById('sr-fundCeiling').textContent    = fmt(d.fundCeiling);
   document.getElementById('sr-totalExpenses').textContent  = fmt(d.totalExpenses);
@@ -78,11 +69,9 @@ function renderSummaryReport(d) {
   document.getElementById('sr-withoutReceipt').textContent    = fmt(d.totalWithoutReceipt);
   document.getElementById('sr-withReceiptPct').textContent    = wrPct + '%';
   document.getElementById('sr-withoutReceiptPct').textContent = nrPct + '%';
-  document.getElementById('sr-complianceRate').textContent    = wrPct + '%';
-  document.getElementById('sr-complianceBar').style.width     = wrPct + '%';
 
   // Cash advances
-    document.getElementById('sr-advIssued').textContent          = fmt(d.advancesIssued);
+  document.getElementById('sr-advIssued').textContent          = fmt(d.advancesIssued);
   document.getElementById('sr-advLiquidated').textContent      = fmt(d.advancesLiquidated);
   document.getElementById('sr-advOutstanding').textContent     = fmt(d.advancesOutstanding);
   document.getElementById('sr-totalCashReturn').textContent    = fmt(d.totalCashReturn || 0);
@@ -106,7 +95,7 @@ function renderSummaryReport(d) {
   document.getElementById('srContent').classList.remove('hidden');
 }
 
-// ── Horizontal Bar Chart (pure CSS/HTML) ──
+// ── Horizontal Bar Chart (pure CSS/HTML) — top 10, rest scrollable ──
 function renderBarChart(categories) {
   const container = document.getElementById('srBarChart');
   if (!categories || categories.length === 0) {
@@ -114,9 +103,10 @@ function renderBarChart(categories) {
     return;
   }
 
-  const max = categories[0].amount; // already sorted descending
+  const top10 = categories.slice(0, 10);
+  const max   = top10[0].amount; // already sorted descending
 
-  container.innerHTML = categories.map((c, i) => {
+  container.innerHTML = top10.map((c, i) => {
     const barPct = max > 0 ? Math.round((c.amount / max) * 100) : 0;
     const color  = SR_COLORS[i % SR_COLORS.length];
     return `
