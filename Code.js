@@ -3078,3 +3078,144 @@ function getSuppliers() {
     return { success: false, message: e.toString(), data: [] };
   }
 }
+
+// ─────────────────────────────────────────────
+// SUMMARY REPORT — date-range aware
+// params: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
+// ─────────────────────────────────────────────
+function getSummaryReportDataByRange(params) {
+  try {
+    const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const fromStr = params.from;
+    const toStr   = params.to;
+
+    const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const categoryTotals    = {};
+    let totalWithReceipt    = 0;
+    let totalWithoutReceipt = 0;
+    let totalExpenses       = 0;
+    let advancesIssued      = 0;
+    let advancesLiquidated  = 0;
+    let advancesOutstanding = 0;
+    let totalReplenishment  = 0;
+    let totalCashReturn     = 0;
+
+    // Also collect entry lists for receipt modal
+    const withReceiptEntries    = [];
+    const withoutReceiptEntries = [];
+
+    for (let i = 1; i < entryData.length; i++) {
+      const row     = entryData[i];
+      if (row.length < 11) continue;
+      const rowDate = normalizeDate(row[1]);
+      const type    = row[2];
+      const status  = row[10];
+      const amount  = parseFloat(row[5]) || 0;
+
+      if (rowDate < fromStr || rowDate > toStr) continue;
+      if (status === 'DELETED') continue;
+
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
+        const cat = String(row[3] || 'Miscellaneous').trim();
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+        totalExpenses += amount;
+
+        const entry = {
+          id         : row[0],
+          date       : rowDate,
+          category   : row[3],
+          description: row[4],
+          amount     : amount,
+          referenceNo: row[7],
+          requestedBy: row[8]
+        };
+
+        if (row[6] === 'YES') {
+          totalWithReceipt += amount;
+          withReceiptEntries.push(entry);
+        } else {
+          totalWithoutReceipt += amount;
+          withoutReceiptEntries.push(entry);
+        }
+      } else if (type === 'CASH_ADVANCE') {
+        advancesIssued += amount;
+        if (status === 'LIQUIDATED')   advancesLiquidated  += amount;
+        else if (status !== 'DELETED') advancesOutstanding += amount;
+      } else if (type === 'REPLENISHMENT') {
+        totalReplenishment += amount;
+      } else if (type === 'CASH_RETURN') {
+        totalCashReturn += amount;
+      }
+    }
+
+    // ── Join receipt details from PettyCash_Receipts ──
+    const rcptSheet = ss.getSheetByName(SHEETS.RECEIPTS);
+    const rcptData  = rcptSheet ? rcptSheet.getDataRange().getValues() : [];
+    const rcptMap   = {};
+    for (let i = 1; i < rcptData.length; i++) {
+      const r = rcptData[i];
+      rcptMap[r[1]] = {
+        supplierName: r[3],
+        address     : r[4],
+        tin         : r[5],
+        receiptNo   : r[6],
+        grossAmount : r[7]
+      };
+    }
+    withReceiptEntries.forEach(e => {
+      if (rcptMap[e.id]) Object.assign(e, rcptMap[e.id]);
+    });
+
+    withReceiptEntries.sort((a, b) => a.date > b.date ? 1 : -1);
+    withoutReceiptEntries.sort((a, b) => a.date > b.date ? 1 : -1);
+
+    // ── Summary rows ──
+    const sumData  = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+    const dailyRows = [];
+    for (let i = 1; i < sumData.length; i++) {
+      const rowDate = normalizeDate(sumData[i][1]);
+      if (rowDate < fromStr || rowDate > toStr) continue;
+      const expenses = parseFloat(sumData[i][6]) || 0;
+      const opening  = parseFloat(sumData[i][2]) || 0;
+      const replenish= parseFloat(sumData[i][8]) || 0;
+      const closing  = parseFloat(sumData[i][10]) || 0;
+      const status   = String(sumData[i][12] || 'OPEN');
+      if (expenses === 0 && opening === 0 && replenish === 0) continue;
+      dailyRows.push({
+        date: rowDate, opening,
+        cashAdvance: parseFloat(sumData[i][3]) || 0,
+        expenses, replenishment: replenish, closing, status
+      });
+    }
+    dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
+
+    const lastClosed  = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
+    const cashOnHand  = lastClosed ? lastClosed.closing : 0;
+    const FUND_CEILING = 28000;
+    const accounted   = cashOnHand + advancesOutstanding;
+    const toReplenish = Math.max(0, FUND_CEILING - accounted);
+
+    const categories = Object.entries(categoryTotals)
+      .map(([name, amount]) => ({
+        name, amount,
+        percent: totalExpenses > 0 ? Math.round((amount / totalExpenses) * 100) : 0
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return {
+      success: true,
+      data: {
+        period: { from: fromStr, to: toStr },
+        fundCeiling: FUND_CEILING,
+        totalExpenses, totalWithReceipt, totalWithoutReceipt,
+        totalReplenishment, totalCashReturn,
+        cashOnHand, advancesIssued, advancesLiquidated,
+        advancesOutstanding, accounted, toReplenish,
+        categories, dailyRows,
+        withReceiptEntries, withoutReceiptEntries
+      }
+    };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}

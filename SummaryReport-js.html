@@ -3,7 +3,14 @@
 // SUMMARY REPORT LOGIC
 // =============================================
 
-let srData = null;
+let srData        = null;
+let srActivePreset = null;
+
+// Receipt modal state
+let srModalEntries   = [];  // full list (filtered from srData)
+let srModalFiltered  = [];  // after search filter
+let srModalPage      = 1;
+const SR_PAGE_SIZE   = 15;
 
 const SR_COLORS = [
   '#3b82f6','#10b981','#f59e0b','#ef4444',
@@ -11,34 +18,75 @@ const SR_COLORS = [
   '#ec4899','#6b7280'
 ];
 
-function initSummaryReport() {
-  // Populate year selector
-  const yEl = document.getElementById('srYear');
-  if (yEl && yEl.options.length === 0) {
-    const cur = new Date().getFullYear();
-    for (let y = cur; y >= 2025; y--) {
-      const o = document.createElement('option');
-      o.value = y; o.textContent = y;
-      if (y === cur) o.selected = true;
-      yEl.appendChild(o);
-    }
-  }
-  // Default month to current
-  const mEl = document.getElementById('srMonth');
-  if (mEl) mEl.value = new Date().getMonth();
+// ─── Date helpers ───
+function srToday() {
+  return new Date().toISOString().split('T')[0];
+}
+function srStartOfWeek() {
+  const d = new Date();
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().split('T')[0];
+}
+function srStartOfMonth() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
+}
+function srStartOfYear() {
+  return new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+}
+
+// ─── Preset buttons ───
+function srSetPreset(preset) {
+  srActivePreset = preset;
+  const today = srToday();
+  let from, to = today;
+
+  if (preset === 'today')  { from = today; }
+  if (preset === 'week')   { from = srStartOfWeek(); }
+  if (preset === 'month')  { from = srStartOfMonth(); }
+  if (preset === 'year')   { from = srStartOfYear(); }
+
+  document.getElementById('srFrom').value = from;
+  document.getElementById('srTo').value   = to;
+
+  // Highlight active preset
+  document.querySelectorAll('.sr-preset-btn').forEach(b => b.classList.remove('sr-active'));
+  const btn = document.getElementById('sr-preset-' + preset);
+  if (btn) btn.classList.add('sr-active');
 
   loadSummaryReport();
 }
 
+function srClearPreset() {
+  srActivePreset = null;
+  document.querySelectorAll('.sr-preset-btn').forEach(b => b.classList.remove('sr-active'));
+}
+
+// ─── Init ───
+function initSummaryReport() {
+  // Default to This Month on first load
+  srSetPreset('month');
+}
+
+// ─── Load ───
 async function loadSummaryReport() {
-  const month = parseInt(document.getElementById('srMonth').value);
-  const year  = parseInt(document.getElementById('srYear').value);
+  const from = document.getElementById('srFrom').value;
+  const to   = document.getElementById('srTo').value;
+
+  if (!from || !to) {
+    toast('Please select a date range', 'warning');
+    return;
+  }
+  if (from > to) {
+    toast('"From" date must be before "To" date', 'warning');
+    return;
+  }
 
   document.getElementById('srEmpty').classList.add('hidden');
   document.getElementById('srContent').classList.add('hidden');
   document.getElementById('srLoading').classList.remove('hidden');
 
-  const res = await callServer('getSummaryReportData', { month, year });
+  const res = await callServer('getSummaryReportDataByRange', { from, to });
 
   document.getElementById('srLoading').classList.add('hidden');
 
@@ -52,8 +100,8 @@ async function loadSummaryReport() {
   renderSummaryReport(srData);
 }
 
+// ─── Render ───
 function renderSummaryReport(d) {
-  // Fund overview cards
   document.getElementById('sr-fundCeiling').textContent    = fmt(d.fundCeiling);
   document.getElementById('sr-totalExpenses').textContent  = fmt(d.totalExpenses);
   document.getElementById('sr-cashOnHand').textContent     = fmt(d.cashOnHand);
@@ -61,7 +109,6 @@ function renderSummaryReport(d) {
   document.getElementById('sr-replenishNote').textContent  =
     `Cash ₱${fmtShort(d.cashOnHand)} + Advances ₱${fmtShort(d.advancesOutstanding)}`;
 
-  // Receipt compliance
   const total = d.totalExpenses || 1;
   const wrPct = Math.round((d.totalWithReceipt    / total) * 100);
   const nrPct = Math.round((d.totalWithoutReceipt / total) * 100);
@@ -70,7 +117,6 @@ function renderSummaryReport(d) {
   document.getElementById('sr-withReceiptPct').textContent    = wrPct + '%';
   document.getElementById('sr-withoutReceiptPct').textContent = nrPct + '%';
 
-  // Cash advances
   document.getElementById('sr-advIssued').textContent          = fmt(d.advancesIssued);
   document.getElementById('sr-advLiquidated').textContent      = fmt(d.advancesLiquidated);
   document.getElementById('sr-advOutstanding').textContent     = fmt(d.advancesOutstanding);
@@ -85,23 +131,18 @@ function renderSummaryReport(d) {
     advAlert.classList.add('hidden');
   }
 
-  // Charts
   renderBarChart(d.categories);
-
-  // Show content
   document.getElementById('srContent').classList.remove('hidden');
 }
 
-// ── Horizontal Bar Chart (pure CSS/HTML) — all categories, scrollable ──
+// ─── Bar chart ───
 function renderBarChart(categories) {
   const container = document.getElementById('srBarChart');
   if (!categories || categories.length === 0) {
     container.innerHTML = '<p class="text-xs text-gray-400 italic">No expense data</p>';
     return;
   }
-
-  const max = categories[0].amount; // already sorted descending
-
+  const max = categories[0].amount;
   container.innerHTML = categories.map((c, i) => {
     const barPct = max > 0 ? Math.round((c.amount / max) * 100) : 0;
     const color  = SR_COLORS[i % SR_COLORS.length];
@@ -115,23 +156,155 @@ function renderBarChart(categories) {
           </div>
         </div>
         <div class="w-full bg-gray-100 rounded-full h-2">
-          <div class="h-2 rounded-full transition-all duration-700"
-            style="width:${barPct}%; background:${color}"></div>
+          <div class="h-2 rounded-full transition-all duration-700" style="width:${barPct}%; background:${color}"></div>
         </div>
       </div>`;
   }).join('');
 }
 
-// ── PDF Export (browser print) ──
+// ─── PDF Export ───
 function printSummaryReport() {
   if (!srData) { toast('Generate a report first', 'warning'); return; }
   window.print();
 }
 
-// ── Helper: short format e.g. ₱24.7k ──
+// ─── Short format helper ───
 function fmtShort(val) {
   const n = parseFloat(val) || 0;
   if (n >= 1000) return '₱' + (n / 1000).toFixed(1) + 'k';
   return '₱' + n.toFixed(0);
+}
+
+// =============================================
+// RECEIPT DETAIL MODAL
+// =============================================
+
+function openReceiptModal(type) {
+  if (!srData) return;
+
+  const isWith = type === 'with';
+  srModalEntries  = isWith
+    ? (srData.withReceiptEntries    || [])
+    : (srData.withoutReceiptEntries || []);
+  srModalFiltered = [...srModalEntries];
+  srModalPage     = 1;
+
+  // Style header
+  const header = document.getElementById('srReceiptModalHeader');
+  header.className = isWith
+    ? 'bg-gradient-to-r from-green-700 to-green-600 p-5 flex justify-between items-center shrink-0'
+    : 'bg-gradient-to-r from-red-700 to-red-600 p-5 flex justify-between items-center shrink-0';
+
+  document.getElementById('srReceiptModalTitle').textContent = isWith
+    ? '🟢 With Receipt — Entries'
+    : '🔴 Without Receipt — Entries';
+
+  const from = document.getElementById('srFrom').value;
+  const to   = document.getElementById('srTo').value;
+  document.getElementById('srReceiptModalSub').textContent = `${from} → ${to}`;
+
+  // Build table head
+  const thead = document.getElementById('srReceiptTableHead');
+  if (isWith) {
+    thead.innerHTML = `
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Supplier</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">OR No.</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Category</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Description</th>
+      <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Amount</th>`;
+  } else {
+    thead.innerHTML = `
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Category</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Description</th>
+      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Requested By</th>
+      <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Amount</th>`;
+  }
+
+  // Clear search
+  document.getElementById('srReceiptSearch').value = '';
+
+  srReceiptRender(isWith);
+  document.getElementById('srReceiptModal').classList.remove('hidden');
+}
+
+function closeSrReceiptModal() {
+  document.getElementById('srReceiptModal').classList.add('hidden');
+  srModalEntries  = [];
+  srModalFiltered = [];
+}
+
+function srReceiptFilterAndRender() {
+  const q = document.getElementById('srReceiptSearch').value.toLowerCase();
+  srModalFiltered = srModalEntries.filter(e =>
+    (e.description  || '').toLowerCase().includes(q) ||
+    (e.category     || '').toLowerCase().includes(q) ||
+    (e.supplierName || '').toLowerCase().includes(q) ||
+    (e.receiptNo    || '').toLowerCase().includes(q) ||
+    (e.requestedBy  || '').toLowerCase().includes(q)
+  );
+  srModalPage = 1;
+  // detect current type from header
+  const isWith = document.getElementById('srReceiptModalTitle').textContent.includes('With Receipt');
+  srReceiptRender(isWith);
+}
+
+function srReceiptRender(isWith) {
+  const total    = srModalFiltered.length;
+  const pages    = Math.max(1, Math.ceil(total / SR_PAGE_SIZE));
+  srModalPage    = Math.min(srModalPage, pages);
+  const start    = (srModalPage - 1) * SR_PAGE_SIZE;
+  const pageRows = srModalFiltered.slice(start, start + SR_PAGE_SIZE);
+
+  document.getElementById('srReceiptCount').textContent     = `${total} entr${total === 1 ? 'y' : 'ies'}`;
+  document.getElementById('srReceiptPageLabel').textContent = `Page ${srModalPage} of ${pages}`;
+  document.getElementById('srReceiptPrev').disabled         = srModalPage <= 1;
+  document.getElementById('srReceiptNext').disabled         = srModalPage >= pages;
+
+  const tbody = document.getElementById('srReceiptBody');
+  if (pageRows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-gray-400 italic text-sm">No entries found</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = pageRows.map(e => {
+    const dateLabel = new Date(e.date + 'T00:00:00').toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
+    if (isWith) {
+      return `<tr class="hover:bg-gray-50 transition">
+        <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${dateLabel}</td>
+        <td class="px-4 py-3 text-xs text-gray-700 font-medium">${e.supplierName || '—'}</td>
+        <td class="px-4 py-3 text-xs font-mono text-gray-500">${e.receiptNo || '—'}</td>
+        <td class="px-4 py-3 text-xs text-gray-500">${e.category || '—'}</td>
+        <td class="px-4 py-3 text-xs text-gray-700">${e.description || '—'}</td>
+        <td class="px-4 py-3 text-xs font-mono font-bold text-green-700 text-right">${fmt(e.amount)}</td>
+      </tr>`;
+    } else {
+      return `<tr class="hover:bg-gray-50 transition">
+        <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${dateLabel}</td>
+        <td class="px-4 py-3 text-xs text-gray-500">${e.category || '—'}</td>
+        <td class="px-4 py-3 text-xs text-gray-700">${e.description || '—'}</td>
+        <td class="px-4 py-3 text-xs text-gray-500">${e.requestedBy || '—'}</td>
+        <td class="px-4 py-3 text-xs font-mono font-bold text-red-700 text-right">${fmt(e.amount)}</td>
+      </tr>`;
+    }
+  }).join('');
+}
+
+function srReceiptPagePrev() {
+  if (srModalPage > 1) {
+    srModalPage--;
+    const isWith = document.getElementById('srReceiptModalTitle').textContent.includes('With Receipt');
+    srReceiptRender(isWith);
+  }
+}
+
+function srReceiptPageNext() {
+  const pages = Math.ceil(srModalFiltered.length / SR_PAGE_SIZE);
+  if (srModalPage < pages) {
+    srModalPage++;
+    const isWith = document.getElementById('srReceiptModalTitle').textContent.includes('With Receipt');
+    srReceiptRender(isWith);
+  }
 }
 </script>
