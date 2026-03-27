@@ -95,7 +95,7 @@ function renderSummaryReport(d) {
   document.getElementById('srContent').classList.remove('hidden');
 }
 
-// ── Horizontal Bar Chart (pure CSS/HTML) — top 10, rest scrollable ──
+// ── Horizontal Bar Chart (pure CSS/HTML) — all categories, scrollable ──
 function renderBarChart(categories) {
   const container = document.getElementById('srBarChart');
   if (!categories || categories.length === 0) {
@@ -103,10 +103,9 @@ function renderBarChart(categories) {
     return;
   }
 
-  const top10 = categories.slice(0, 10);
-  const max   = top10[0].amount; // already sorted descending
+  const max = categories[0].amount; // already sorted descending
 
-  container.innerHTML = top10.map((c, i) => {
+  container.innerHTML = categories.map((c, i) => {
     const barPct = max > 0 ? Math.round((c.amount / max) * 100) : 0;
     const color  = SR_COLORS[i % SR_COLORS.length];
     return `
