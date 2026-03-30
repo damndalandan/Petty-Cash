@@ -89,20 +89,29 @@ function hideEmployeeSuggestions() {
 // ─────────────────────────────────────────────
 let _supplierCache        = null;  // null = not yet loaded; [] = loaded (possibly empty)
 let _supplierCacheLoading = false; // prevents duplicate in-flight calls
+let _supplierCachePromise = null;  // tracks in-flight request so callers can await safely
 
 async function loadSupplierCache() {
-  if (_supplierCache !== null) return; // already successfully loaded — skip
-  if (_supplierCacheLoading)  return;  // fetch already in-flight — skip
+  if (_supplierCache !== null) return _supplierCache; // already loaded
+  if (_supplierCachePromise) return _supplierCachePromise; // reuse in-flight request
+
   _supplierCacheLoading = true;
-  try {
-    const res = await callServer('getSuppliers');
-    _supplierCache = (res.success && res.data) ? res.data : [];
-  } catch(e) {
-    // Leave _supplierCache as null so the next modal open will retry
-    console.warn('loadSupplierCache failed:', e);
-  } finally {
-    _supplierCacheLoading = false;
-  }
+  _supplierCachePromise = (async () => {
+    try {
+      const res = await callServer('getSuppliers');
+      _supplierCache = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+      return _supplierCache;
+    } catch (e) {
+      // Leave _supplierCache as null so the next modal open will retry
+      console.warn('loadSupplierCache failed:', e);
+      return [];
+    } finally {
+      _supplierCacheLoading = false;
+      _supplierCachePromise = null;
+    }
+  })();
+
+  return _supplierCachePromise;
 }
 
 function filterSuppliers(input) {
@@ -118,6 +127,8 @@ function filterSuppliers(input) {
 
   // If cache not loaded yet, trigger load then retry
   if (_supplierCache === null) {
+    // Avoid retry loops while the first request is still in-flight.
+    if (_supplierCacheLoading) return;
     loadSupplierCache().then(() => filterSuppliers(input));
     return;
   }
@@ -125,9 +136,15 @@ function filterSuppliers(input) {
   // Build flat list of all matching variants
   const matches = [];
   for (const supplier of _supplierCache) {
-    if (!supplier.name.toLowerCase().includes(query)) continue;
-    for (const v of supplier.variants) {
-      matches.push({ name: supplier.name, address: v.address, tin: v.tin });
+    const supplierName = (supplier && supplier.name) ? supplier.name : '';
+    if (!supplierName.toLowerCase().includes(query)) continue;
+
+    const variants = (supplier && Array.isArray(supplier.variants) && supplier.variants.length)
+      ? supplier.variants
+      : [{ address: '', tin: '' }];
+
+    for (const v of variants) {
+      matches.push({ name: supplierName, address: v.address, tin: v.tin });
       if (matches.length >= 20) break;
     }
     if (matches.length >= 20) break;
