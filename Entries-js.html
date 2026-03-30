@@ -87,17 +87,21 @@ function hideEmployeeSuggestions() {
 // ─────────────────────────────────────────────
 // SUPPLIER AUTOCOMPLETE — Receipt Modal
 // ─────────────────────────────────────────────
-let _supplierCache = null; // null = not yet loaded, [] = loaded but empty
+let _supplierCache        = null;  // null = not yet loaded; [] = loaded (possibly empty)
+let _supplierCacheLoading = false; // prevents duplicate in-flight calls
 
 async function loadSupplierCache() {
-  if (_supplierCache !== null) return; // already loaded
-  _supplierCache = []; // mark as loading
+  if (_supplierCache !== null) return; // already successfully loaded — skip
+  if (_supplierCacheLoading)  return;  // fetch already in-flight — skip
+  _supplierCacheLoading = true;
   try {
     const res = await callServer('getSuppliers');
     _supplierCache = (res.success && res.data) ? res.data : [];
   } catch(e) {
-    _supplierCache = [];
+    // Leave _supplierCache as null so the next modal open will retry
     console.warn('loadSupplierCache failed:', e);
+  } finally {
+    _supplierCacheLoading = false;
   }
 }
 
@@ -112,7 +116,7 @@ function filterSuppliers(input) {
     return;
   }
 
-  // If cache not loaded yet, trigger load silently and wait
+  // If cache not loaded yet, trigger load then retry
   if (_supplierCache === null) {
     loadSupplierCache().then(() => filterSuppliers(input));
     return;
@@ -124,7 +128,7 @@ function filterSuppliers(input) {
     if (!supplier.name.toLowerCase().includes(query)) continue;
     for (const v of supplier.variants) {
       matches.push({ name: supplier.name, address: v.address, tin: v.tin });
-      if (matches.length >= 20) break; // safety cap before DOM render
+      if (matches.length >= 20) break;
     }
     if (matches.length >= 20) break;
   }
@@ -134,16 +138,16 @@ function filterSuppliers(input) {
     return;
   }
 
-  box.innerHTML = matches.map((m, i) => {
+  box.innerHTML = matches.map((m) => {
     const safeName    = m.name.replace(/'/g, "\\'");
-    const safeAddress = m.address.replace(/'/g, "\\'");
-    const safeTin     = m.tin.replace(/'/g, "\\'");
+    const safeAddress = (m.address || '').replace(/'/g, "\\'");
+    const safeTin     = (m.tin     || '').replace(/'/g, "\\'");
 
     // Highlight the matched portion in the name
-    const idx   = m.name.toLowerCase().indexOf(query);
-    const before = m.name.slice(0, idx);
-    const match  = m.name.slice(idx, idx + query.length);
-    const after  = m.name.slice(idx + query.length);
+    const idx         = m.name.toLowerCase().indexOf(query);
+    const before      = m.name.slice(0, idx);
+    const match       = m.name.slice(idx, idx + query.length);
+    const after       = m.name.slice(idx + query.length);
     const highlighted = `${before}<span class="text-green-700 font-bold">${match}</span>${after}`;
 
     const meta = [m.address, m.tin].filter(Boolean).join(' · ');
@@ -672,16 +676,20 @@ function openReceiptModal(ctx) {
   // ── Show the modal ──
   modal.classList.remove('hidden');
 
-  // ── Wire supplier autocomplete events safely (only once) ──
+  // ── Wire supplier autocomplete events (only once per element lifetime) ──
   const supplierInput = document.getElementById('rcptSupplier');
   if (supplierInput && !supplierInput._autocompleteWired) {
     supplierInput.addEventListener('input', function() { filterSuppliers(this); });
+    // focus: re-show dropdown if field already has text (e.g. editing a draft)
+    supplierInput.addEventListener('focus', function() {
+      if (this.value.trim()) filterSuppliers(this);
+    });
     supplierInput.addEventListener('blur',  function() { hideSupplierSuggestions(); });
     supplierInput._autocompleteWired = true;
   }
 
-  // ── Warm up supplier cache in background ──
-  try { loadSupplierCache(); } catch(e) { console.warn('supplier cache:', e); }
+  // ── Pre-fetch supplier cache in background so it's ready when user types ──
+  loadSupplierCache().catch(e => console.warn('supplier cache warm-up:', e));
 
   if (ctx.mode !== 'view') {
     setTimeout(() => document.getElementById('rcptSupplier')?.focus(), 100);
