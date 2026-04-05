@@ -393,12 +393,12 @@ async function confirmAuditHoliday() {
   const summary = state.summary;
   const opening = parseFloat(summary?.openingCash || 0);
 
-  // Note: we just save the total as the END denomination using saveDenominationRecord
-  // so that the summary recalculation correctly carries it forward.
+  // Note: we place the total in the '1000' bucket temporarily so the backend parser computes the correct total
+  // and saves the END denomination accurately. This effectively carries the cash forward without zeroing it.
   await callServer('saveDenominationRecord', {
     date     : state.currentDate,
     type     : 'END',
-    breakdown: JSON.stringify({}),
+    breakdown: JSON.stringify({'1000': opening / 1000}),
     total    : opening,
     notes    : 'Holiday / Store Closed'
   });
