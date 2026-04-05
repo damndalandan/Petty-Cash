@@ -18,9 +18,9 @@
     <div class="lg:col-span-1 space-y-4">
 
       <!-- Denomination Card -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-          <h2 class="text-sm font-bold text-gray-700">💵 Physical Cash Count</h2>
+      <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative group">
+        <div class="px-4 py-3 border-b border-white/50 bg-white/40 flex items-center justify-between">
+          <h2 class="text-sm font-bold text-slate-700">💵 Physical Cash Count</h2>
           <div class="text-right">
             <div class="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">Opening Cash</div>
             <span id="auditOpeningCashHeader" class="font-mono font-bold text-blue-700 text-sm">₱0.00</span>
@@ -48,9 +48,9 @@
       </div><!-- close Denomination Card -->
 
       <!-- Day Summary Panel -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50">
-          <h2 class="text-sm font-bold text-gray-700">📊 Day Summary</h2>
+      <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative group">
+        <div class="px-4 py-3 border-b border-white/50 bg-white/40">
+          <h2 class="text-sm font-bold text-slate-700">📊 Day Summary</h2>
         </div>
         <div class="p-4 space-y-2 text-xs" id="auditDaySummaryPanel">
           <div class="flex justify-between items-center py-1">
@@ -89,20 +89,20 @@
       </div>
 
       <!-- Approve / Send Back -->
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-4 space-y-3">
-        <h2 class="text-sm font-bold text-gray-700">📋 Audit Decision</h2>
+      <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 p-4 space-y-3 relative group">
+        <h2 class="text-sm font-bold text-slate-700">📋 Audit Decision</h2>
         <div id="auditProgressBar" class="text-xs text-gray-500">Mark all entries to proceed.</div>
         <textarea id="auditDecisionNote" rows="2" placeholder="Audit notes (optional)..."
           class="w-full text-xs p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-400 resize-none bg-gray-50"></textarea>
         <button id="auditApproveBtn" onclick="confirmAuditDecision('approve')" disabled
-          class="w-full bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-lg transition">
+          class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-xl shadow-sm shadow-emerald-200 transition-all">
           ✓ Approve & Close Day
         </button>
         <button id="auditSendBackBtn" onclick="confirmAuditDecision('sendback')" disabled
-          class="w-full bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-lg transition">
+          class="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-xl shadow-sm shadow-rose-200 transition-all">
           🚩 Send Back to Cashier
         </button>
-        <button id="auditHolidayBtn" onclick="confirmAuditHoliday()" class="hidden w-full bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs font-bold py-2.5 rounded-lg transition">
+        <button id="auditHolidayBtn" onclick="confirmAuditHoliday()" class="hidden w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-xs font-bold py-2.5 rounded-xl shadow-sm shadow-blue-200 transition-all">
           🏖️ Mark as Holiday / Closed
         </button>
       </div>
@@ -111,9 +111,9 @@
 
     <!-- RIGHT: Entry review list -->
     <div class="lg:col-span-2">
-      <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
-          <h2 class="text-sm font-bold text-gray-700">🧾 Entries to Review</h2>
+      <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative group">
+        <div class="px-4 py-3 border-b border-white/50 bg-white/40 flex items-center justify-between">
+          <h2 class="text-sm font-bold text-slate-700">🧾 Entries to Review</h2>
           <div class="flex items-center gap-3 text-xs text-gray-500">
             <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-green-400"></span> Verified</span>
             <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-red-400"></span> Flagged</span>

@@ -227,11 +227,11 @@ function navigate(page) {
 
   document.querySelectorAll('.nav-item').forEach(n => {
     if (n.dataset.page === page) {
-      n.classList.add('bg-green-50','text-green-600');
-      n.classList.remove('text-gray-600','hover:bg-gray-50');
+      n.classList.add('bg-gradient-to-r', 'from-indigo-50', 'to-purple-50/50', 'text-indigo-700', 'shadow-sm', 'border', 'border-indigo-100/50');
+      n.classList.remove('text-slate-600','hover:bg-slate-100/50', 'hover:text-slate-900', 'border-transparent');
     } else {
-      n.classList.remove('bg-green-50','text-green-600');
-      n.classList.add('text-gray-600','hover:bg-gray-50');
+      n.classList.remove('bg-gradient-to-r', 'from-indigo-50', 'to-purple-50/50', 'text-indigo-700', 'shadow-sm', 'border', 'border-indigo-100/50');
+      n.classList.add('text-slate-600','hover:bg-slate-100/50', 'hover:text-slate-900', 'border', 'border-transparent');
     }
   });
 
