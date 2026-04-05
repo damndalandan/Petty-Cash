@@ -353,8 +353,23 @@ function updateAuditProgress(entries) {
 
   const approveBtn  = document.getElementById('auditApproveBtn');
   const sendBackBtn = document.getElementById('auditSendBackBtn');
+  const holidayBtn  = document.getElementById('auditHolidayBtn');
+  const isClosed    = state.summary?.status === 'CLOSED';
 
-  if (!allDone) {
+  if (total === 0 && !isClosed) {
+    if (holidayBtn) holidayBtn.classList.remove('hidden');
+    if (progressEl) progressEl.innerHTML = '<div class="text-xs text-gray-500 mb-1">No entries for this day. You can mark this day as a holiday or closed.</div>';
+  } else {
+    if (holidayBtn) holidayBtn.classList.add('hidden');
+  }
+
+  if (isClosed) {
+    if (approveBtn)  { approveBtn.disabled  = true; }
+    if (sendBackBtn) { sendBackBtn.disabled = true; }
+    return;
+  }
+
+  if (!allDone && total > 0) {
     if (approveBtn)  { approveBtn.disabled  = true; }
     if (sendBackBtn) { sendBackBtn.disabled = true; }
     return;
@@ -366,6 +381,42 @@ function updateAuditProgress(entries) {
   } else {
     if (approveBtn)  { approveBtn.disabled  = false; }
     if (sendBackBtn) { sendBackBtn.disabled = true; }
+  }
+}
+
+async function confirmAuditHoliday() {
+  if (!confirm("Close this day as a Holiday / Store Closed? The opening cash will automatically be carried forward as the physical count for the next day.")) return;
+
+  const btn = document.getElementById('auditHolidayBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Closing...'; }
+
+  const summary = state.summary;
+  const opening = parseFloat(summary?.openingCash || 0);
+
+  // Note: we just save the total as the END denomination using saveDenominationRecord
+  // so that the summary recalculation correctly carries it forward.
+  await callServer('saveDenominationRecord', {
+    date     : state.currentDate,
+    type     : 'END',
+    breakdown: JSON.stringify({}),
+    total    : opening,
+    notes    : 'Holiday / Store Closed'
+  });
+
+  const res = await callServer('auditApproveDay', {
+    date          : state.currentDate,
+    actualCash    : opening,
+    note          : 'Holiday / Store Closed',
+    flaggedEntries: []
+  });
+
+  if (res.success) {
+    toast('Day marked as Holiday / Closed ✓', 'success');
+    loadAuditReviewPage();
+    loadDayData();
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = '🏖️ Mark as Holiday / Closed'; }
+    toast(res.message || 'Failed to close day', 'error');
   }
 }
 
