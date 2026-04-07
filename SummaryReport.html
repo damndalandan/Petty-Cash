@@ -200,55 +200,7 @@
   </div><!-- end srContent -->
 </div>
 
-<!-- =============================================
-     UNIVERSAL DETAIL MODAL
-     ============================================= -->
-<div id="srDetailModal" class="hidden fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-  <div class="bg-white w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
 
-    <!-- Header -->
-    <div id="srDetailModalHeader" class="p-5 flex justify-between items-center shrink-0">
-      <div>
-        <div class="flex items-center gap-2">
-          <span id="srDetailModalIcon" class="text-xl">📋</span>
-          <h3 class="text-white font-bold text-lg" id="srDetailModalTitle">Entries</h3>
-        </div>
-        <p class="text-xs mt-0.5 opacity-80" id="srDetailModalSub">—</p>
-      </div>
-      <button onclick="closeSrDetailModal()" class="text-white/70 hover:text-white text-2xl font-light leading-none">&times;</button>
-    </div>
-
-    <!-- Search + count bar -->
-    <div class="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-3 shrink-0">
-      <input type="text" id="srDetailSearch" placeholder="Search description, category, supplier…"
-        oninput="srDetailFilterAndRender()"
-        class="flex-1 text-sm p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-white">
-      <span class="text-xs text-gray-400 whitespace-nowrap" id="srDetailCount">0 entries</span>
-    </div>
-
-    <!-- Table -->
-    <div class="overflow-y-auto flex-1 min-h-0 bg-white">
-      <table class="w-full text-sm">
-        <thead class="bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-gray-500 uppercase font-bold text-[10px] tracking-wider">
-          <tr id="srDetailTableHead"></tr>
-        </thead>
-        <tbody id="srDetailBody" class="divide-y divide-gray-50 text-gray-700"></tbody>
-      </table>
-    </div>
-
-    <!-- Pagination footer -->
-    <div class="px-5 py-3 border-t border-gray-100 bg-gray-100 flex items-center justify-between shrink-0">
-      <button onclick="srDetailPagePrev()"
-        class="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 text-gray-600 hover:bg-white hover:shadow-sm transition disabled:opacity-40"
-        id="srDetailPrev">← Prev</button>
-      <span class="text-xs text-gray-400 font-mono" id="srDetailPageLabel">Page 1 of 1</span>
-      <button onclick="srDetailPageNext()"
-        class="px-3 py-1.5 text-xs font-bold rounded-lg border border-gray-200 text-gray-600 hover:bg-white hover:shadow-sm transition disabled:opacity-40"
-        id="srDetailNext">Next →</button>
-    </div>
-
-  </div>
-</div>
 
 <!-- PRINT STYLES -->
 <style>

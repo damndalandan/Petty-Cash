@@ -217,40 +217,6 @@
 
         </div>
 
-        <!-- Auditor Panel Modal (triggered by card click) -->
-        <div id="auditorPanelModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-            <div class="px-5 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
-              <span class="text-sm font-bold text-gray-700 uppercase tracking-wider" id="auditorDetailTitle">—</span>
-              <button onclick="closeAuditorCard()" class="text-gray-400 hover:text-gray-700 text-2xl font-light leading-none">&times;</button>
-            </div>
-            <div id="auditorDetailList" class="overflow-y-auto flex-1 divide-y divide-gray-100">
-            </div>
-            <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 text-[10px] text-gray-400 text-center">
-              Click any row to go directly to that day's audit review
-            </div>
-          </div>
-        </div>
-
-      </div>
-
-      <!-- ADMIN PANEL LIST MODAL -->
-      <div id="adminPanelModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-        <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
-          <!-- Header -->
-          <div class="px-5 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 shrink-0">
-            <span class="text-sm font-bold text-gray-700 uppercase tracking-wider" id="adminPanelModalTitle">—</span>
-            <button onclick="closeAdminCard()" class="text-gray-400 hover:text-gray-700 text-2xl font-light leading-none">&times;</button>
-          </div>
-          <!-- Scrollable List -->
-          <div id="adminPanelModalList" class="overflow-y-auto flex-1">
-            <!-- Rows injected by JS -->
-          </div>
-          <!-- Footer -->
-          <div class="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 text-[10px] text-gray-400 text-center">
-            Click any row to view full day details
-          </div>
-        </div>
       </div>
 
       <!-- Stats Grid -->
@@ -342,29 +308,5 @@
              <p class="text-gray-500 mt-2">No discrepancies found in the records.</p>
         </div>
 
-      </div>
-    </div>
-
-    <!-- ADMIN DAY DETAIL MODAL -->
-    <div id="adminDayModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-        <div class="bg-gradient-to-r from-gray-800 to-gray-700 px-5 py-4 flex justify-between items-center">
-          <div>
-            <h3 class="text-white font-bold text-base" id="adminModalTitle">Day Detail</h3>
-            <p class="text-gray-300 text-xs mt-0.5" id="adminModalDate">—</p>
-          </div>
-          <button onclick="closeAdminDayModal()" class="text-white/70 hover:text-white text-2xl font-light leading-none">&times;</button>
-        </div>
-        <div class="p-5 space-y-4" id="adminModalBody">
-          <!-- Injected by JS -->
-        </div>
-        <div class="px-5 pb-5 flex gap-2 justify-end">
-          <button onclick="goToDateFromModal()" class="px-4 py-2 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700 transition">
-            📋 View Full Report →
-          </button>
-          <button onclick="closeAdminDayModal()" class="px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
-            Close
-          </button>
-        </div>
       </div>
     </div>
