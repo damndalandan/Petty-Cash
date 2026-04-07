@@ -146,7 +146,7 @@ function renderSummaryReport(d) {
 function renderBarChart(categories) {
   const container = document.getElementById('srBarChart');
   if (!categories || categories.length === 0) {
-    container.innerHTML = '<p class="text-xs text-gray-400 italic">No expense data</p>';
+    container.innerHTML = '<p class="text-xs text-gray-400 italic text-center py-10">No expense data</p>';
     return;
   }
   const max = categories[0].amount;
@@ -154,16 +154,17 @@ function renderBarChart(categories) {
     const barPct = max > 0 ? Math.round((c.amount / max) * 100) : 0;
     const color  = SR_COLORS[i % SR_COLORS.length];
     return `
-      <div class="space-y-1">
+      <div onclick="openSrDetailModal({ type: 'category', value: '${c.name}' })"
+        class="space-y-1 cursor-pointer group hover:bg-slate-50 p-1.5 rounded-lg transition-all duration-200">
         <div class="flex justify-between items-center">
-          <span class="text-xs font-medium text-gray-700 truncate max-w-[180px]">${c.name}</span>
+          <span class="text-xs font-bold text-slate-700 truncate max-w-[200px] group-hover:text-blue-600 transition-colors">${c.name}</span>
           <div class="flex items-center gap-2 shrink-0">
-            <span class="text-xs font-mono font-bold text-gray-800">${fmt(c.amount)}</span>
-            <span class="text-[10px] text-gray-400 w-8 text-right">${c.percent}%</span>
+            <span class="text-xs font-mono font-bold text-slate-800">${fmt(c.amount)}</span>
+            <span class="text-[10px] text-slate-400 w-8 text-right">${c.percent}%</span>
           </div>
         </div>
-        <div class="w-full bg-gray-100 rounded-full h-2">
-          <div class="h-2 rounded-full transition-all duration-700" style="width:${barPct}%; background:${color}"></div>
+        <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner">
+          <div class="h-2 rounded-full transition-all duration-1000 ease-out shadow-sm" style="width:${barPct}%; background:${color}"></div>
         </div>
       </div>`;
   }).join('');
@@ -183,67 +184,96 @@ function fmtShort(val) {
 }
 
 // =============================================
-// RECEIPT DETAIL MODAL
+// UNIVERSAL DETAIL MODAL
 // =============================================
 
-function openSrReceiptModal(type) {
-  if (!srData) return;
+let srDetailContext = null; // { type: 'receipt', value: 'with'|'without' } OR { type: 'category', value: 'CategoryName' }
 
-  const isWith = type === 'with';
-  srModalEntries  = isWith
-    ? (srData.withReceiptEntries    || [])
-    : (srData.withoutReceiptEntries || []);
-  srModalFiltered = [...srModalEntries];
+function openSrDetailModal(context) {
+  if (!srData) return;
+  srDetailContext = context;
+
+  // Prepare entries
+  let entries = [];
+  if (context.type === 'receipt') {
+    entries = context.value === 'with' ? (srData.withReceiptEntries || []) : (srData.withoutReceiptEntries || []);
+  } else {
+    // Category context — combine all list entries and filter by category name
+    const all = [...(srData.withReceiptEntries || []), ...(srData.withoutReceiptEntries || [])];
+    entries = all.filter(e => String(e.category).trim() === context.value.trim());
+    // Sort by date latest first
+    entries.sort((a, b) => b.date > a.date ? 1 : -1);
+  }
+
+  srModalEntries  = entries;
+  srModalFiltered = [...entries];
   srModalPage     = 1;
 
-  // Style header
-  const header = document.getElementById('srReceiptModalHeader');
-  header.className = isWith
-    ? 'bg-gradient-to-r from-green-700 to-green-600 p-5 flex justify-between items-center shrink-0'
-    : 'bg-gradient-to-r from-red-700 to-red-600 p-5 flex justify-between items-center shrink-0';
+  // Style header and update titles
+  const header = document.getElementById('srDetailModalHeader');
+  const icon   = document.getElementById('srDetailModalIcon');
+  const title  = document.getElementById('srDetailModalTitle');
+  const sub    = document.getElementById('srDetailModalSub');
 
-  document.getElementById('srReceiptModalTitle').textContent = isWith
-    ? '🟢 With Receipt — Entries'
-    : '🔴 Without Receipt — Entries';
+  if (context.type === 'receipt') {
+    const isWith = context.value === 'with';
+    header.className = isWith
+      ? 'bg-gradient-to-r from-emerald-700 to-green-600 p-5 flex justify-between items-center shrink-0 shadow-lg'
+      : 'bg-gradient-to-r from-rose-700 to-red-600 p-5 flex justify-between items-center shrink-0 shadow-lg';
+    icon.textContent = isWith ? '🟢' : '🔴';
+    title.textContent = isWith ? 'With Receipt — Entries' : 'Without Receipt — Entries';
+  } else {
+    header.className = 'bg-gradient-to-r from-slate-800 to-slate-700 p-5 flex justify-between items-center shrink-0 shadow-lg';
+    icon.textContent = '📊';
+    title.textContent = `Category: ${context.value}`;
+  }
 
   const from = document.getElementById('srFrom').value;
   const to   = document.getElementById('srTo').value;
-  document.getElementById('srReceiptModalSub').textContent = `${from} → ${to}`;
+  sub.textContent = `${from} → ${to}`;
 
-  // Build table head
-  const thead = document.getElementById('srReceiptTableHead');
-  if (isWith) {
+  // Build table head based on context
+  const thead = document.getElementById('srDetailTableHead');
+  if (context.type === 'receipt' && context.value === 'with') {
     thead.innerHTML = `
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Supplier</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">OR No.</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Category</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Description</th>
-      <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Amount</th>`;
+      <th class="px-4 py-3 text-left">Date</th>
+      <th class="px-4 py-3 text-left">Supplier</th>
+      <th class="px-4 py-3 text-left">OR No.</th>
+      <th class="px-4 py-3 text-left">Category</th>
+      <th class="px-4 py-3 text-left">Description</th>
+      <th class="px-4 py-3 text-right">Amount</th>`;
+  } else if (context.type === 'receipt' && context.value === 'without') {
+    thead.innerHTML = `
+      <th class="px-4 py-3 text-left">Date</th>
+      <th class="px-4 py-3 text-left">Category</th>
+      <th class="px-4 py-3 text-left">Description</th>
+      <th class="px-4 py-3 text-left">Requested By</th>
+      <th class="px-4 py-3 text-right">Amount</th>`;
   } else {
+    // Category view
     thead.innerHTML = `
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Date</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Category</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Description</th>
-      <th class="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase">Requested By</th>
-      <th class="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase">Amount</th>`;
+      <th class="px-4 py-3 text-left">Date</th>
+      <th class="px-4 py-3 text-left">Description</th>
+      <th class="px-4 py-3 text-left text-center">Receipt?</th>
+      <th class="px-4 py-3 text-left">Ref/OR</th>
+      <th class="px-4 py-3 text-left">Requested By</th>
+      <th class="px-4 py-3 text-right">Amount</th>`;
   }
 
-  // Clear search
-  document.getElementById('srReceiptSearch').value = '';
-
-  srReceiptRender(isWith);
-  document.getElementById('srReceiptModal').classList.remove('hidden');
+  document.getElementById('srDetailSearch').value = '';
+  srDetailRender();
+  document.getElementById('srDetailModal').classList.remove('hidden');
 }
 
-function closeSrReceiptModal() {
-  document.getElementById('srReceiptModal').classList.add('hidden');
+function closeSrDetailModal() {
+  document.getElementById('srDetailModal').classList.add('hidden');
   srModalEntries  = [];
   srModalFiltered = [];
+  srDetailContext = null;
 }
 
-function srReceiptFilterAndRender() {
-  const q = document.getElementById('srReceiptSearch').value.toLowerCase();
+function srDetailFilterAndRender() {
+  const q = document.getElementById('srDetailSearch').value.toLowerCase();
   srModalFiltered = srModalEntries.filter(e =>
     (e.description  || '').toLowerCase().includes(q) ||
     (e.category     || '').toLowerCase().includes(q) ||
@@ -252,66 +282,86 @@ function srReceiptFilterAndRender() {
     (e.requestedBy  || '').toLowerCase().includes(q)
   );
   srModalPage = 1;
-  // detect current type from header
-  const isWith = document.getElementById('srReceiptModalTitle').textContent.includes('With Receipt');
-  srReceiptRender(isWith);
+  srDetailRender();
 }
 
-function srReceiptRender(isWith) {
+function srDetailRender() {
   const total    = srModalFiltered.length;
   const pages    = Math.max(1, Math.ceil(total / SR_PAGE_SIZE));
   srModalPage    = Math.min(srModalPage, pages);
   const start    = (srModalPage - 1) * SR_PAGE_SIZE;
   const pageRows = srModalFiltered.slice(start, start + SR_PAGE_SIZE);
 
-  document.getElementById('srReceiptCount').textContent     = `${total} entr${total === 1 ? 'y' : 'ies'}`;
-  document.getElementById('srReceiptPageLabel').textContent = `Page ${srModalPage} of ${pages}`;
-  document.getElementById('srReceiptPrev').disabled         = srModalPage <= 1;
-  document.getElementById('srReceiptNext').disabled         = srModalPage >= pages;
+  document.getElementById('srDetailCount').textContent     = `${total} entr${total === 1 ? 'y' : 'ies'}`;
+  document.getElementById('srDetailPageLabel').textContent = `Page ${srModalPage} of ${pages}`;
+  document.getElementById('srDetailPrev').disabled         = srModalPage <= 1;
+  document.getElementById('srDetailNext').disabled         = srModalPage >= pages;
 
-  const tbody = document.getElementById('srReceiptBody');
+  const tbody = document.getElementById('srDetailBody');
   if (pageRows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-gray-400 italic text-sm">No entries found</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 italic text-sm bg-slate-50/50">No entries found matching your search</td></tr>`;
     return;
   }
 
   tbody.innerHTML = pageRows.map(e => {
     const dateLabel = new Date(e.date + 'T00:00:00').toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
-    if (isWith) {
-      return `<tr class="hover:bg-gray-50 transition">
-        <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${dateLabel}</td>
-        <td class="px-4 py-3 text-xs text-gray-700 font-medium">${e.supplierName || '—'}</td>
-        <td class="px-4 py-3 text-xs font-mono text-gray-500">${e.receiptNo || '—'}</td>
-        <td class="px-4 py-3 text-xs text-gray-500">${e.category || '—'}</td>
-        <td class="px-4 py-3 text-xs text-gray-700">${e.description || '—'}</td>
-        <td class="px-4 py-3 text-xs font-mono font-bold text-green-700 text-right">${fmt(e.amount)}</td>
+    const amountHtml = `<span class="font-mono font-bold ${srDetailContext?.type === 'receipt' ? (srDetailContext.value === 'with' ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-800'}">${fmt(e.amount)}</span>`;
+
+    if (srDetailContext?.type === 'receipt' && srDetailContext.value === 'with') {
+      return `<tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
+        <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${dateLabel}</td>
+        <td class="px-4 py-3 text-xs text-slate-700 font-bold">${e.supplierName || '—'}</td>
+        <td class="px-4 py-3 text-xs font-mono text-slate-500">${e.receiptNo || '—'}</td>
+        <td class="px-4 py-3 text-xs text-slate-500">${e.category || '—'}</td>
+        <td class="px-4 py-3 text-xs text-slate-600">${e.description || '—'}</td>
+        <td class="px-4 py-3 text-sm text-right">${amountHtml}</td>
+      </tr>`;
+    } else if (srDetailContext?.type === 'receipt' && srDetailContext.value === 'without') {
+      return `<tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
+        <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${dateLabel}</td>
+        <td class="px-4 py-3 text-xs text-slate-500">${e.category || '—'}</td>
+        <td class="px-4 py-3 text-xs text-slate-600">${e.description || '—'}</td>
+        <td class="px-4 py-3 text-xs text-slate-500 italic">${e.requestedBy || '—'}</td>
+        <td class="px-4 py-3 text-sm text-right">${amountHtml}</td>
       </tr>`;
     } else {
-      return `<tr class="hover:bg-gray-50 transition">
-        <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${dateLabel}</td>
-        <td class="px-4 py-3 text-xs text-gray-500">${e.category || '—'}</td>
-        <td class="px-4 py-3 text-xs text-gray-700">${e.description || '—'}</td>
-        <td class="px-4 py-3 text-xs text-gray-500">${e.requestedBy || '—'}</td>
-        <td class="px-4 py-3 text-xs font-mono font-bold text-red-700 text-right">${fmt(e.amount)}</td>
+      // Category view — more general
+      const hasReceipt = !!e.receiptNo || (srData.withReceiptEntries || []).some(wr => wr.id === e.id);
+      return `<tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
+        <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${dateLabel}</td>
+        <td class="px-4 py-3 text-xs text-slate-700 font-medium">${e.description || '—'}</td>
+        <td class="px-4 py-3 text-center">
+          ${hasReceipt ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-bold rounded uppercase">Yes</span>' : '<span class="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded uppercase">No</span>'}
+        </td>
+        <td class="px-4 py-3 text-xs font-mono text-slate-400">${e.receiptNo || e.referenceNo || '—'}</td>
+        <td class="px-4 py-3 text-xs text-slate-500 italic">${e.requestedBy || '—'}</td>
+        <td class="px-4 py-3 text-sm text-right">${amountHtml}</td>
       </tr>`;
     }
   }).join('');
 }
 
-function srReceiptPagePrev() {
+function srDetailPagePrev() {
   if (srModalPage > 1) {
     srModalPage--;
-    const isWith = document.getElementById('srReceiptModalTitle').textContent.includes('With Receipt');
-    srReceiptRender(isWith);
+    srDetailRender();
   }
 }
 
-function srReceiptPageNext() {
+function srDetailPageNext() {
   const pages = Math.ceil(srModalFiltered.length / SR_PAGE_SIZE);
   if (srModalPage < pages) {
     srModalPage++;
-    const isWith = document.getElementById('srReceiptModalTitle').textContent.includes('With Receipt');
-    srReceiptRender(isWith);
+    srDetailRender();
   }
 }
+
+// Redirect old functions to new universal one
+function openSrReceiptModal(type) { openSrDetailModal({ type: 'receipt', value: type }); }
+function closeSrReceiptModal() { closeSrDetailModal(); }
+function srReceiptFilterAndRender() { srDetailFilterAndRender(); }
+function srReceiptRender() { srDetailRender(); }
+function srReceiptPagePrev() { srDetailPagePrev(); }
+function srReceiptPageNext() { srDetailPageNext(); }
+
 </script>
