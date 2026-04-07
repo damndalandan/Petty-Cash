@@ -2213,8 +2213,8 @@ function getAdminMetrics() {
       const expenses = parseFloat(row[6])  || 0;
       const closing  = parseFloat(row[10]) || 0;
 
-      // Unclosed = anything not CLOSED
-      if (status !== 'CLOSED') {
+      // Unclosed = anything not CLOSED (exclude today as it is still active)
+      if (status !== 'CLOSED' && rDate !== today) {
         unclosedDays.push({ date: rDate, status, opening, expenses, closing, variance });
       }
 
