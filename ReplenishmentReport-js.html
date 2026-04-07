@@ -36,23 +36,30 @@ function toggleRrDetails() {
   // Update UI Elements
   const label = document.getElementById('rrDetailsLabel');
   const btn   = document.getElementById('btn-rrDetails');
+  const detailRows = document.querySelectorAll('.rr-detail-row');
   
   if (rrDetailedActive) {
     label.textContent = 'Hide Details';
     btn.classList.replace('bg-white', 'bg-blue-600');
     btn.classList.replace('text-gray-600', 'text-white');
     btn.classList.replace('border-gray-300', 'border-blue-700');
+    detailRows.forEach(row => row.classList.remove('hidden'));
   } else {
     label.textContent = 'Show Details';
     btn.classList.replace('bg-blue-600', 'bg-white');
     btn.classList.replace('text-white', 'text-gray-600');
     btn.classList.replace('border-blue-700', 'border-gray-300');
+    detailRows.forEach(row => row.classList.add('hidden'));
   }
-  
-  if (rrData) renderReplenishReport(rrData);
 }
 
 function renderReplenishReport(d) {
+  // Reset state on new report load
+  rrDetailedActive = false;
+  const btn = document.getElementById('btn-rrDetails');
+  if (btn) btn.className = "px-3 py-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 text-[10px] font-bold rounded-lg shadow-sm transition flex items-center gap-1.5";
+  document.getElementById('rrDetailsLabel').textContent = 'Show Details';
+
   // ── Period Banner ──
   const fromDate = new Date(d.periodFrom + 'T00:00:00');
   const toDate   = new Date(d.periodTo   + 'T00:00:00');
@@ -143,7 +150,7 @@ function renderRrFusedTable(rows, entries) {
 
     // Main Summary Row
     html += `
-      <tr class="transition ${rowCls} ${borderCls}">
+      <tr class="transition ${rowCls} ${borderCls} print:bg-white no-break-inside">
         <td class="px-4 py-3 text-sm font-medium text-gray-700">
           ${label}
           ${r.replenishment > 0 ? '<span class="ml-1 text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">TOP-UP</span>' : ''}
@@ -156,11 +163,11 @@ function renderRrFusedTable(rows, entries) {
         <td class="px-4 py-3 text-center">${badge}</td>
       </tr>`;
 
-    // Detailed Nested Rows (if active and entries exist)
-    if (rrDetailedActive && entryMap[r.date]) {
+    // Detailed Nested Rows (Always in DOM, handled by hidden/print classes)
+    if (entryMap[r.date]) {
       const dayEntries = entryMap[r.date];
       html += `
-        <tr class="bg-gray-50/50">
+        <tr class="rr-detail-row bg-gray-50/50 hidden print:table-row no-break-inside">
           <td colspan="7" class="px-8 py-0">
             <div class="border-l-2 border-dashed border-gray-200 ml-2 my-2 py-2 pl-4 space-y-2">
               ${dayEntries.map(e => {
@@ -195,7 +202,7 @@ function renderRrFusedTable(rows, entries) {
   tbody.innerHTML = html;
 
   tfoot.innerHTML = `
-    <tr class="bg-gray-100/50">
+    <tr class="bg-gray-100/50 print:bg-gray-100">
       <td class="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Period Totals</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-red-600">${fmt(totExpenses)}</td>
@@ -211,6 +218,11 @@ function printReplenishReport() {
     toast('No report data to export', 'warning');
     return;
   }
-  window.print();
+  
+  toast('Preparing document for printing...', 'info');
+  // Small timeout to allow toast to appear and DOM to settle
+  setTimeout(() => {
+    window.print();
+  }, 500);
 }
 </script>
