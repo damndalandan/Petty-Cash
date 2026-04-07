@@ -4,6 +4,7 @@
 // =============================================
 
 let rrData = null;
+let rrDetailedActive = false; // State for fused table view
 
 async function loadReplenishReport() {
   document.getElementById('rrEmpty').classList.add('hidden');
@@ -27,6 +28,28 @@ async function loadReplenishReport() {
 
   rrData = res.data;
   renderReplenishReport(rrData);
+}
+
+function toggleRrDetails() {
+  rrDetailedActive = !rrDetailedActive;
+  
+  // Update UI Elements
+  const label = document.getElementById('rrDetailsLabel');
+  const btn   = document.getElementById('btn-rrDetails');
+  
+  if (rrDetailedActive) {
+    label.textContent = 'Hide Details';
+    btn.classList.replace('bg-white', 'bg-blue-600');
+    btn.classList.replace('text-gray-600', 'text-white');
+    btn.classList.replace('border-gray-300', 'border-blue-700');
+  } else {
+    label.textContent = 'Show Details';
+    btn.classList.replace('bg-blue-600', 'bg-white');
+    btn.classList.replace('text-white', 'text-gray-600');
+    btn.classList.replace('border-blue-700', 'border-gray-300');
+  }
+  
+  if (rrData) renderReplenishReport(rrData);
 }
 
 function renderReplenishReport(d) {
@@ -65,29 +88,30 @@ function renderReplenishReport(d) {
   netEl.className   = 'text-xl font-black font-mono ' +
     (net >= 0 ? 'text-green-600' : 'text-red-600');
 
-  // ── Daily Table ──
-  renderRrDailyTable(d.dailyRows);
-
-  // ── Detailed Expense Table ──
-  renderRrDetailedTable(d.periodEntries);
+  // ── Fused Table ──
+  renderRrFusedTable(d.dailyRows, d.periodEntries);
 
   // Show content
   document.getElementById('rrContent').classList.remove('hidden');
 }
 
-function renderRrDailyTable(rows) {
+function renderRrFusedTable(rows, entries) {
   const tbody = document.getElementById('rrDailyBody');
   const tfoot = document.getElementById('rrDailyFoot');
 
   if (!rows || rows.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" class="px-4 py-8 text-center text-gray-400 italic text-sm">
-          No activity in this period
-        </td>
-      </tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="px-4 py-8 text-center text-gray-400 italic text-sm">No activity in this period</td></tr>`;
     tfoot.innerHTML = '';
     return;
+  }
+
+  // Group entries by date
+  const entryMap = {};
+  if (entries) {
+    entries.forEach(e => {
+      if (!entryMap[e.date]) entryMap[e.date] = [];
+      entryMap[e.date].push(e);
+    });
   }
 
   const statusMap = {
@@ -97,61 +121,78 @@ function renderRrDailyTable(rows) {
     OPEN         : '<span class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 text-gray-600">⚪ Open</span>',
   };
 
-  let totExpenses  = 0;
-  let totReplenish = 0;
-  let totCashAdv   = 0;
+  let totExpenses = 0, totReplenish = 0, totCashAdv = 0;
+  let html = '';
 
-  tbody.innerHTML = rows.map((r, idx) => {
+  rows.forEach(r => {
     totExpenses  += r.expenses;
     totReplenish += r.replenishment;
     totCashAdv   += r.cashAdvance || 0;
 
-    const d      = new Date(r.date + 'T00:00:00');
-    const label  = d.toLocaleDateString('en-PH', {
-      weekday: 'short', month: 'short', day: 'numeric'
-    });
+    const dt     = new Date(r.date + 'T00:00:00');
+    const label  = dt.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
     const badge  = statusMap[r.status] || statusMap['OPEN'];
+    
     const expCls  = r.expenses      > 0 ? 'font-bold text-red-600'    : 'text-gray-300';
     const advCls  = r.cashAdvance   > 0 ? 'font-bold text-orange-500' : 'text-gray-300';
     const repCls  = r.replenishment > 0 ? 'font-bold text-purple-600' : 'text-gray-300';
     const isClosed = r.status === 'CLOSED';
-    const closingDisplay = isClosed ? fmt(r.closing) : '—';
-    const closingCls     = isClosed ? 'text-gray-700' : 'text-gray-300';
+    
+    const rowCls = r.replenishment > 0 ? 'bg-purple-50/30' : 'hover:bg-gray-50/50';
+    const borderCls = r.replenishment > 0 ? 'border-l-4 border-purple-400' : '';
 
-    const rowCls = r.replenishment > 0
-      ? 'bg-purple-50 border-l-4 border-purple-400'
-      : 'hover:bg-gray-50';
-
-    return `
-      <tr class="transition ${rowCls}">
+    // Main Summary Row
+    html += `
+      <tr class="transition ${rowCls} ${borderCls}">
         <td class="px-4 py-3 text-sm font-medium text-gray-700">
           ${label}
-          ${r.replenishment > 0
-            ? '<span class="ml-1 text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">TOP-UP</span>'
-            : ''}
+          ${r.replenishment > 0 ? '<span class="ml-1 text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">TOP-UP</span>' : ''}
         </td>
-        <td class="px-4 py-3 text-right font-mono text-sm text-gray-700">
-          ${fmt(r.opening)}
-        </td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${expCls}">
-          ${r.expenses > 0 ? fmt(r.expenses) : '—'}
-        </td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${advCls}">
-          ${r.cashAdvance > 0 ? fmt(r.cashAdvance) : '—'}
-        </td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">
-          ${r.replenishment > 0 ? fmt(r.replenishment) : '—'}
-        </td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${closingCls}">
-          ${closingDisplay}
-        </td>
+        <td class="px-4 py-3 text-right font-mono text-xs text-gray-400">${fmt(r.opening)}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${expCls}">${r.expenses > 0 ? fmt(r.expenses) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${advCls}">${r.cashAdvance > 0 ? fmt(r.cashAdvance) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">${r.replenishment > 0 ? fmt(r.replenishment) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${isClosed ? 'text-gray-700' : 'text-gray-300'}">${isClosed ? fmt(r.closing) : '—'}</td>
         <td class="px-4 py-3 text-center">${badge}</td>
       </tr>`;
-  }).join('');
+
+    // Detailed Nested Rows (if active and entries exist)
+    if (rrDetailedActive && entryMap[r.date]) {
+      const dayEntries = entryMap[r.date];
+      html += `
+        <tr class="bg-gray-50/50">
+          <td colspan="7" class="px-8 py-0">
+            <div class="border-l-2 border-dashed border-gray-200 ml-2 my-2 py-2 pl-4 space-y-2">
+              ${dayEntries.map(e => {
+                let typeBadge = '';
+                if (e.type === 'CASH_ADVANCE') typeBadge = '<span class="px-1.5 py-0.5 text-[9px] bg-amber-100 text-amber-700 rounded font-bold uppercase">Advance</span>';
+                else if (e.type === 'LIQ_DETAIL') typeBadge = '<span class="px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-700 rounded font-bold uppercase">Liq</span>';
+                
+                return `
+                  <div class="flex items-center justify-between group">
+                    <div class="flex items-center gap-3">
+                      <span class="text-[9px] font-bold py-0.5 px-1.5 bg-gray-200 text-gray-500 rounded uppercase tracking-tighter">${e.category || 'misc'}</span>
+                      <span class="text-xs text-gray-700 font-medium">${e.description}</span>
+                      ${typeBadge}
+                    </div>
+                    <div class="flex items-center gap-4">
+                      <span class="text-[10px] text-gray-400 font-medium">${e.requestedBy || 'system'}</span>
+                      <span class="text-xs font-mono font-bold text-gray-600">${fmt(e.amount)}</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </td>
+        </tr>`;
+    }
+  });
+
+  tbody.innerHTML = html;
 
   tfoot.innerHTML = `
-    <tr>
-      <td class="px-4 py-3 text-xs font-bold text-gray-500 uppercase">Period Totals</td>
+    <tr class="bg-gray-100/50">
+      <td class="px-4 py-3 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Period Totals</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-red-600">${fmt(totExpenses)}</td>
       <td class="px-4 py-3 text-right font-mono font-bold text-orange-500">${totCashAdv > 0 ? fmt(totCashAdv) : '—'}</td>
@@ -159,45 +200,6 @@ function renderRrDailyTable(rows) {
       <td class="px-4 py-3 text-right font-mono font-bold text-gray-400">—</td>
       <td></td>
     </tr>`;
-}
-
-function renderRrDetailedTable(entries) {
-  const tbody = document.getElementById('rrDetailedBody');
-  if (!entries || entries.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="5" class="px-4 py-8 text-center text-gray-400 italic text-sm">
-          No detailed expenses in this period
-        </td>
-      </tr>`;
-    return;
-  }
-
-  tbody.innerHTML = entries.map(e => {
-    const d      = new Date(e.date + 'T00:00:00');
-    const label  = d.toLocaleDateString('en-PH', {
-      weekday: 'short', month: 'short', day: 'numeric'
-    });
-    
-    let typeBadge = '';
-    if (e.type === 'CASH_ADVANCE') {
-      typeBadge = '<span class="ml-2 px-2 py-0.5 text-[10px] bg-amber-100 text-amber-700 rounded-full font-bold">ADVANCE</span>';
-    } else if (e.type === 'LIQ_DETAIL') {
-      typeBadge = '<span class="ml-2 px-2 py-0.5 text-[10px] bg-blue-100 text-blue-700 rounded-full font-bold">LIQ</span>';
-    }
-
-    return `
-      <tr class="hover:bg-gray-50 transition border-b border-gray-50 last:border-0">
-        <td class="px-4 py-3 text-sm font-medium text-gray-700 whitespace-nowrap">${label}</td>
-        <td class="px-4 py-3 text-sm text-gray-600">
-          <span class="inline-flex px-2 py-0.5 rounded text-[10px] font-bold bg-gray-100 text-gray-600">${e.category || '—'}</span>
-          ${typeBadge}
-        </td>
-        <td class="px-4 py-3 text-sm text-gray-800 font-medium">${e.description || '—'}</td>
-        <td class="px-4 py-3 text-sm text-gray-600">${e.requestedBy || '—'}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm font-bold text-gray-800">${fmt(e.amount)}</td>
-      </tr>`;
-  }).join('');
 }
 
 function printReplenishReport() {
