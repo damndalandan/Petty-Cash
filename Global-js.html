@@ -122,54 +122,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 function applyRoleUI() {
-  // Show role badge in sidebar
+  const role = state.userRole;
+  
+  // Update role badge, name, email
   const roleEl = document.getElementById('user-role-badge');
   if (roleEl) {
-    roleEl.textContent = state.userRole || 'Unknown';
+    roleEl.textContent = role || 'Unknown';
     roleEl.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full ' + (
       isAdmin()   ? 'bg-purple-100 text-purple-700' :
       isAuditor() ? 'bg-blue-100 text-blue-700' :
                     'bg-green-100 text-green-700'
     );
   }
+  if (state.userName)  document.getElementById('user-name').textContent  = state.userName;
+  if (state.userEmail) document.getElementById('user-email').textContent = state.userEmail;
 
-  // Show name and email in sidebar
-  const nameEl  = document.getElementById('user-name');
-  const emailEl = document.getElementById('user-email');
-  if (nameEl  && state.userName)  nameEl.textContent  = state.userName;
-  if (emailEl && state.userEmail) emailEl.textContent = state.userEmail;
+  // ── WHITELIST SHOWING LOGIC ──
+  // Show navigation items based on role. (Everything started with .hidden)
+  
+  const show = (id) => document.getElementById(id)?.classList.remove('hidden');
 
-  const isAuditorOnly = state.userRole === 'Auditor'; // pure Auditor, not Admin
+  // UNIVERSAL / COMMON
+  show('nav-report');
+  show('nav-summaryreport');
+  show('nav-advances');
 
-  // ── Audit Review — Admin + Auditor only ──
-  const navAuditReview = document.getElementById('nav-auditreview');
-  if (navAuditReview && (isAuditorOnly || isAdmin())) navAuditReview.classList.remove('hidden');
-
-  // ── Audit Log — Admin + Auditor only ──
-  const navAuditLog = document.getElementById('nav-auditlog');
-  if (navAuditLog && (isAuditorOnly || isAdmin())) navAuditLog.classList.remove('hidden');
-
-  // ── Pages hidden from Auditor ──
-  if (isAuditorOnly) {
-    ['nav-entries', 'nav-denominations', 'nav-replenishment', 'nav-filing'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
-    });
-  }
-
-  // ── Pages hidden from Admin — Entries and Filing not needed at admin level ──
   if (isAdmin()) {
-    ['nav-entries', 'nav-filing'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.classList.add('hidden');
-    });
-  }
-
-  // ── Report pages — hide Replenishment Report from pure Auditor only ──
-  // Summary Report is visible to Auditor (they need it for review)
-  const navReplenish = document.querySelector('[data-page="replenishreport"]');
-  if (isAuditorOnly) {
-    if (navReplenish) navReplenish.classList.add('hidden');
+    // Admin sees everything except data-entry tasks
+    ['nav-denominations', 'nav-replenishment', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
+  } else if (state.userRole === 'Auditor') {
+    // Auditor sees review tools
+    ['nav-auditreview', 'nav-auditlog'].forEach(show);
+  } else if (state.userRole === 'Cashier') {
+    // Cashier sees operational tools
+    ['nav-entries', 'nav-denominations', 'nav-replenishment', 'nav-filing', 'nav-replenishreport'].forEach(show);
   }
 }
 
