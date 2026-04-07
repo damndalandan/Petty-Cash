@@ -169,15 +169,19 @@ function renderRrFusedTable(rows, entries) {
                 else if (e.type === 'LIQ_DETAIL') typeBadge = '<span class="px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-700 rounded font-bold uppercase">Liq</span>';
                 
                 return `
-                  <div class="flex items-center justify-between group">
-                    <div class="flex items-center gap-3">
-                      <span class="text-[9px] font-bold py-0.5 px-1.5 bg-gray-200 text-gray-500 rounded uppercase tracking-tighter">${e.category || 'misc'}</span>
-                      <span class="text-xs text-gray-700 font-medium">${e.description}</span>
+                  <div class="grid grid-cols-[130px_minmax(0,1fr)_120px_80px] gap-2 items-center group py-1 border-b border-gray-50 last:border-0">
+                    <div class="flex items-center gap-1.5">
+                      <span class="text-[8px] font-bold py-0.5 px-1.5 bg-gray-100 text-gray-400 rounded uppercase truncate max-w-[120px]">${e.category || 'misc'}</span>
                       ${typeBadge}
                     </div>
-                    <div class="flex items-center gap-4">
-                      <span class="text-[10px] text-gray-400 font-medium">${e.requestedBy || 'system'}</span>
-                      <span class="text-xs font-mono font-bold text-gray-600">${fmt(e.amount)}</span>
+                    <div class="text-xs text-gray-600 font-medium truncate pr-4" title="${e.description}">
+                      ${e.description}
+                    </div>
+                    <div class="text-[10px] text-gray-400 font-medium truncate text-right pr-2">
+                      ${e.requestedBy || '-'}
+                    </div>
+                    <div class="text-[11px] font-mono font-bold text-gray-600 text-right">
+                      ${fmt(e.amount)}
                     </div>
                   </div>
                 `;
