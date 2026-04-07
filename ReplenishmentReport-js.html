@@ -213,16 +213,55 @@ function renderRrFusedTable(rows, entries) {
     </tr>`;
 }
 
-function printReplenishReport() {
+async function printReplenishReport() {
   if (!rrData) {
     toast('No report data to export', 'warning');
     return;
   }
   
-  toast('Preparing document for printing...', 'info');
-  // Small timeout to allow toast to appear and DOM to settle
-  setTimeout(() => {
+  const element = document.getElementById('rrContent');
+  if (!element) return;
+
+  // Show a loading state
+  toast('Generating high-fidelity PDF...', 'info');
+
+  // 1. Prepare for export: Show ALL details temporarily
+  const detailRows = document.querySelectorAll('.rr-detail-row');
+  const wasActive = rrDetailedActive;
+  detailRows.forEach(row => row.classList.remove('hidden'));
+
+  // 2. Define dynamic filename
+  const from = rrData.periodFrom.replace(/-/g, '');
+  const to   = rrData.periodTo.replace(/-/g, '');
+  const filename = `PettyCash_ReplenishReport_${from}_to_${to}.pdf`;
+
+  // 3. Configure html2pdf options
+  const opt = {
+    margin:       [10, 10, 10, 10],
+    filename:     filename,
+    image:        { type: 'jpeg', quality: 0.98 },
+    html2canvas:  { 
+      scale: 2, 
+      useCORS: true, 
+      letterRendering: true,
+      logging: false
+    },
+    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+    pagebreak:    { mode: ['avoid-all', 'css', 'legacy'] }
+  };
+
+  try {
+    // 4. Generate and save
+    await html2pdf().from(element).set(opt).save();
+    toast('Report exported successfully!', 'success');
+  } catch (err) {
+    console.error('PDF Export Error:', err);
+    toast('Failed to generate PDF. Falling back to print...', 'warning');
     window.print();
-  }, 500);
+  } finally {
+    // 5. Restore original view state if it was hidden
+    if (!wasActive) {
+      detailRows.forEach(row => row.classList.add('hidden'));
+    }
+  }
 }
-</script>
