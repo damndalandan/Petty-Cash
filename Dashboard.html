@@ -63,62 +63,83 @@
         </div>
 
         <!-- Metric Cards Row -->
-        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3" id="adminMetricCards">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 lg:gap-3" id="adminMetricCards">
 
           <!-- Card: Unclosed -->
           <div onclick="toggleAdminCard('unclosed')" id="card-unclosed"
-            class="admin-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 select-none relative overflow-hidden group">
+            class="admin-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-xl lg:rounded-2xl p-3 lg:p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 select-none relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-red-400/10 rounded-full blur-xl group-hover:bg-red-400/20 transition-all"></div>
-            <div class="flex justify-between items-start mb-3 relative">
-              <span class="text-2xl drop-shadow-sm">🔓</span>
-              <span id="badge-unclosed" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-gradient-to-r from-red-100 to-rose-100/50 text-red-700 shadow-sm border border-red-200/50">0</span>
+            <div class="flex lg:flex-col items-center lg:items-start gap-3 lg:gap-0 relative">
+              <div class="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto rounded-lg lg:rounded-none bg-red-50 lg:bg-transparent shrink-0">
+                <span class="text-lg lg:text-2xl drop-shadow-sm">🔓</span>
+              </div>
+              <div class="flex-1 min-w-0 lg:mt-3">
+                <div class="text-xs lg:text-sm font-bold text-slate-700 leading-tight truncate">Unclosed Days</div>
+                <div class="text-[10px] text-slate-400 uppercase tracking-wide hidden lg:block mt-1">Not yet audited</div>
+              </div>
+              <span id="badge-unclosed" class="text-xs lg:text-sm font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-red-100 to-rose-100/50 text-red-700 shadow-sm border border-red-200/50 shrink-0">0</span>
             </div>
-            <div class="text-sm font-bold text-slate-700 leading-tight">Unclosed Days</div>
-            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">Not yet audited</div>
           </div>
 
           <!-- Card: Unfiled -->
           <div onclick="toggleAdminCard('unfiled')" id="card-unfiled"
-            class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-amber-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-3">
-              <span class="text-2xl">📂</span>
-              <span id="badge-unfiled" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-700">0</span>
+            class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-amber-200 p-3 lg:p-4 hover:shadow-md transition-all select-none">
+            <div class="flex lg:flex-col items-center lg:items-start gap-3 lg:gap-0">
+              <div class="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto rounded-lg lg:rounded-none bg-amber-50 lg:bg-transparent shrink-0">
+                <span class="text-lg lg:text-2xl">📂</span>
+              </div>
+              <div class="flex-1 min-w-0 lg:mt-3">
+                <div class="text-xs lg:text-sm font-bold text-gray-700 leading-tight truncate">Unfiled Days</div>
+                <div class="text-[10px] text-gray-400 hidden lg:block mt-1">Incomplete filing</div>
+              </div>
+              <span id="badge-unfiled" class="text-xs lg:text-sm font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">0</span>
             </div>
-            <div class="text-sm font-bold text-gray-700 leading-tight">Unfiled Days</div>
-            <div class="text-xs text-gray-400 mt-1">Incomplete filing</div>
           </div>
 
           <!-- Card: Discrepancies -->
           <div onclick="toggleAdminCard('discrepancies')" id="card-discrepancies"
-            class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-orange-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-3">
-              <span class="text-2xl">⚠️</span>
-              <span id="badge-discrepancies" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-orange-100 text-orange-700">0</span>
+            class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-orange-200 p-3 lg:p-4 hover:shadow-md transition-all select-none">
+            <div class="flex lg:flex-col items-center lg:items-start gap-3 lg:gap-0">
+              <div class="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto rounded-lg lg:rounded-none bg-orange-50 lg:bg-transparent shrink-0">
+                <span class="text-lg lg:text-2xl">⚠️</span>
+              </div>
+              <div class="flex-1 min-w-0 lg:mt-3">
+                <div class="text-xs lg:text-sm font-bold text-gray-700 leading-tight truncate">Discrepancies</div>
+                <div class="text-[10px] text-gray-400 hidden lg:block mt-1">Variance detected</div>
+              </div>
+              <span id="badge-discrepancies" class="text-xs lg:text-sm font-black px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 shrink-0">0</span>
             </div>
-            <div class="text-sm font-bold text-gray-700 leading-tight">Discrepancies</div>
-            <div class="text-xs text-gray-400 mt-1">Variance detected</div>
           </div>
 
           <!-- Card: Cash Over -->
           <div onclick="toggleAdminCard('cashOver')" id="card-cashOver"
-            class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-blue-200 p-4 hover:shadow-md transition-all select-none">
-            <div class="flex justify-between items-start mb-3">
-              <span class="text-2xl">💹</span>
-              <span id="badge-cashOver" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">0</span>
+            class="admin-metric-card cursor-pointer bg-white rounded-xl border-2 border-blue-200 p-3 lg:p-4 hover:shadow-md transition-all select-none">
+            <div class="flex lg:flex-col items-center lg:items-start gap-3 lg:gap-0">
+              <div class="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto rounded-lg lg:rounded-none bg-blue-50 lg:bg-transparent shrink-0">
+                <span class="text-lg lg:text-2xl">💹</span>
+              </div>
+              <div class="flex-1 min-w-0 lg:mt-3">
+                <div class="text-xs lg:text-sm font-bold text-gray-700 leading-tight truncate">Cash Over Days</div>
+                <div class="text-[10px] text-gray-400 hidden lg:block mt-1">Excess cash found</div>
+              </div>
+              <span id="badge-cashOver" class="text-xs lg:text-sm font-black px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 shrink-0">0</span>
             </div>
-            <div class="text-sm font-bold text-gray-700 leading-tight">Cash Over Days</div>
-            <div class="text-xs text-gray-400 mt-1">Excess cash found</div>
           </div>
 
+          <!-- Card: Pending Advances -->
           <div onclick="toggleAdminCard('pendingAdvances')" id="card-pendingAdvances"
-            class="admin-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 select-none relative overflow-hidden group">
+            class="admin-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-xl lg:rounded-2xl p-3 lg:p-4 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 select-none relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-16 h-16 bg-purple-400/10 rounded-full blur-xl group-hover:bg-purple-400/20 transition-all"></div>
-            <div class="flex justify-between items-start mb-3 relative">
-              <span class="text-2xl drop-shadow-sm">💳</span>
-              <span id="badge-pendingAdvances" class="text-sm font-black px-2.5 py-0.5 rounded-full bg-gradient-to-r from-purple-100 to-fuchsia-100/50 text-purple-700 shadow-sm border border-purple-200/50">0</span>
+            <div class="flex lg:flex-col items-center lg:items-start gap-3 lg:gap-0 relative">
+              <div class="flex items-center justify-center w-9 h-9 lg:w-auto lg:h-auto rounded-lg lg:rounded-none bg-purple-50 lg:bg-transparent shrink-0">
+                <span class="text-lg lg:text-2xl drop-shadow-sm">💳</span>
+              </div>
+              <div class="flex-1 min-w-0 lg:mt-3">
+                <div class="text-xs lg:text-sm font-bold text-slate-700 leading-tight truncate">Pending Advances</div>
+                <div class="text-[10px] text-slate-400 uppercase tracking-wide hidden lg:block mt-1">Unliquidated</div>
+              </div>
+              <span id="badge-pendingAdvances" class="text-xs lg:text-sm font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-100 to-fuchsia-100/50 text-purple-700 shadow-sm border border-purple-200/50 shrink-0">0</span>
             </div>
-            <div class="text-sm font-bold text-slate-700 leading-tight">Pending Advances</div>
-            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wide">Unliquidated</div>
           </div>
 
         </div>
