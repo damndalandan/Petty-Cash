@@ -1,5 +1,5 @@
     <!-- DASHBOARD PAGE -->
-    <div id="page-dashboard" class="page-view space-y-6">
+    <div id="page-dashboard" class="page-view space-y-4">
       
       <!-- Previous Day Warning -->
       <div id="prevDayWarning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-3 md:p-4 rounded shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
@@ -20,20 +20,17 @@
       </div>
 
       <!-- Header + Day Status inline -->
-      <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pb-3 border-b border-gray-200">
-        <div>
+      <div class="pb-3 border-b border-gray-200">
+        <div class="flex items-center gap-3 flex-wrap">
           <h1 class="text-2xl font-bold text-gray-800 font-display leading-tight">Dashboard</h1>
-          <p class="text-xs text-gray-400 mt-0.5" id="dash-date-label">—</p>
-        </div>
-        <!-- Day Status Badge — inline with header -->
-        <div id="dayStatusBanner" class="hidden rounded-lg px-4 py-2 flex items-center gap-3 border shadow-sm text-sm">
-          <span id="dayStatusIcon">⏳</span>
-          <div>
+          <!-- Day Status Badge — same line as h1 -->
+          <div id="dayStatusBanner" class="hidden rounded-lg px-3 py-1.5 flex items-center gap-2 border shadow-sm">
+            <span id="dayStatusIcon" class="text-sm">⏳</span>
             <div class="font-bold text-xs" id="dayStatusTitle">Loading...</div>
-            <div class="text-[10px] opacity-75" id="dayStatusSub"></div>
+            <div id="dayStatusAction"></div>
           </div>
-          <div id="dayStatusAction"></div>
         </div>
+        <p class="text-xs text-gray-400 mt-0.5" id="dash-date-label">—</p>
       </div>
 
       <!-- ═══════════════════════════════════════════
