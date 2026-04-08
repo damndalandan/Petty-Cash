@@ -10,21 +10,21 @@
   </div>
 
   <!-- Filters -->
-  <div class="flex flex-wrap gap-3 items-end">
+  <div class="grid grid-cols-2 sm:flex sm:flex-wrap gap-3 items-end">
     <div>
       <label class="block text-xs font-bold text-gray-400 uppercase mb-1">From</label>
       <input type="date" id="auditFrom"
-        class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+        class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
     </div>
     <div>
       <label class="block text-xs font-bold text-gray-400 uppercase mb-1">To</label>
       <input type="date" id="auditTo"
-        class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+        class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
     </div>
-    <div>
+    <div class="col-span-2">
       <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Action</label>
       <select id="auditAction"
-        class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+        class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
         <option value="">All Actions</option>
         <option value="OPENING_SAVED">Opening Saved</option>
         <option value="CLOSING_SAVED">Closing Saved</option>
@@ -41,11 +41,11 @@
       </select>
     </div>
     <button onclick="loadAuditLog()"
-      class="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow transition">
+      class="col-span-1 px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow transition">
       Filter
     </button>
     <button onclick="clearAuditFilters()"
-      class="px-4 py-2 bg-white border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition">
+      class="col-span-1 px-4 py-2 bg-white border border-gray-300 text-gray-600 text-sm font-medium rounded-lg hover:bg-gray-50 transition">
       Clear
     </button>
   </div>

@@ -45,10 +45,10 @@
     <div class="flex-1 overflow-hidden">
 
       <!-- SUBMIT: two-column layout -->
-      <div id="liqTwoCol" class="hidden grid-cols-2 divide-x divide-gray-100" style="height: calc(90vh - 130px); min-height: 0;">
+      <div id="liqTwoCol" class="hidden grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 overflow-y-auto md:overflow-hidden md:h-[calc(90vh-130px)]">
 
         <!-- LEFT: Entries -->
-        <div class="p-5 space-y-4 overflow-y-auto" style="height: 100%;">
+        <div class="p-5 space-y-4 overflow-y-auto md:h-full">
           <div class="bg-blue-50 rounded-xl p-3 border border-blue-200 text-sm">
             <div class="text-blue-500 text-xs uppercase font-bold mb-1">Advance Details</div>
             <div id="liqAdvanceDetails" class="text-gray-800 font-medium"></div>
@@ -64,7 +64,7 @@
         </div>
 
         <!-- RIGHT: Summary + Notes -->
-        <div class="p-5 space-y-4 flex flex-col h-full overflow-hidden">
+        <div class="p-5 space-y-4 flex flex-col overflow-y-auto md:h-full md:overflow-hidden">
           <div>
             <p class="text-xs font-bold text-gray-500 uppercase mb-3">Summary</p>
             <div class="space-y-2 text-sm">
