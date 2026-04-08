@@ -2,7 +2,7 @@
     <div id="page-dashboard" class="page-view space-y-6">
       
       <!-- Previous Day Warning -->
-      <div id="prevDayWarning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-4 rounded shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div id="prevDayWarning" class="hidden bg-amber-50 border-l-4 border-amber-500 p-3 md:p-4 rounded shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
          <div class="flex items-start gap-3">
             <span class="text-2xl">⚠️</span>
             <div>
@@ -42,11 +42,7 @@
       <div id="adminMetricsSection" class="hidden space-y-4">
 
         <!-- Section Header + Filter -->
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-gray-200">
-          <div>
-            <h2 class="text-sm font-bold text-gray-700 uppercase tracking-wider font-mono">📊 Admin Overview</h2>
-            <p class="text-xs text-gray-400 mt-0.5">Click a card to expand. Click a date to view details.</p>
-          </div>
+        <div class="flex justify-between items-center gap-2 pb-3 border-b border-gray-200">
           <div class="flex items-center gap-2">
             <select id="adminMetricMonth" onchange="loadAdminMetrics()" class="text-xs border border-gray-300 rounded px-2 py-1.5 outline-none focus:border-blue-500 bg-white">
               <option value="ALL">All Time</option>
@@ -153,87 +149,79 @@
       <div id="auditorMetricsSection" class="hidden space-y-4">
 
         <!-- Header -->
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-3 border-b border-gray-200">
-          <div>
-            <h2 class="text-sm font-bold text-gray-700 uppercase tracking-wider font-mono">🔍 Auditor Overview</h2>
-            <p class="text-xs text-gray-400 mt-0.5">Items that need your attention.</p>
-          </div>
-          <button onclick="loadAuditorMetrics()" class="text-xs text-blue-600 hover:text-blue-800 font-medium transition">↺ Refresh</button>
+        <div class="flex justify-between items-center gap-2 pb-3 border-b border-gray-200">
+          <button onclick="loadAuditorMetrics()" class="text-xs text-blue-600 hover:text-blue-800 font-medium transition ml-auto">↺ Refresh</button>
         </div>
 
         <!-- Urgent alert banner (shown if pendingAudit > 0) -->
-        <div id="auditorUrgentBanner" class="hidden flex items-start gap-3 bg-amber-50 border border-amber-400 rounded-xl p-4 shadow-sm">
-          <span class="text-2xl">🔔</span>
-          <div class="flex-1">
-            <div class="text-sm font-bold text-amber-800" id="auditorUrgentTitle">Days awaiting your review</div>
-            <div class="text-xs text-amber-700 mt-0.5" id="auditorUrgentSub"></div>
+        <div id="auditorUrgentBanner" class="hidden flex items-center gap-2 md:gap-3 bg-amber-50 border border-amber-400 rounded-xl p-3 md:p-4 shadow-sm">
+          <span class="text-lg md:text-2xl shrink-0">🔔</span>
+          <div class="flex-1 min-w-0">
+            <div class="text-xs md:text-sm font-bold text-amber-800 truncate" id="auditorUrgentTitle">Days awaiting your review</div>
+            <div class="text-[10px] md:text-xs text-amber-700 mt-0.5 truncate" id="auditorUrgentSub"></div>
           </div>
           <button onclick="navigate('auditreview')"
-            class="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition">
-            Review Now →
+            class="shrink-0 px-3 md:px-4 py-1.5 md:py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition whitespace-nowrap">
+            Review →
           </button>
         </div>
 
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
 
           <!-- Pending Audit -->
-          <div onclick="toggleAuditorCard('pendingAudit')"
-            id="acard-pendingAudit"
-            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
+          <div onclick="toggleAuditorCard('pendingAudit')" id="acard-pendingAudit"
+            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-xl md:rounded-2xl p-3 md:p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-amber-400/10 rounded-full blur-2xl group-hover:bg-amber-400/20 transition-all"></div>
-            <div class="flex items-center justify-between mb-3 relative">
-              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center shadow-sm border border-amber-100/50">
-                <span class="text-xl">🔍</span>
+            <div class="flex items-center justify-between mb-2 md:mb-3 relative">
+              <div class="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center shadow-sm border border-amber-100/50">
+                <span class="text-base md:text-xl">🔍</span>
               </div>
-              <span id="abadge-pendingAudit" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-amber-500 to-orange-600 font-mono">…</span>
+              <span id="abadge-pendingAudit" class="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-amber-500 to-orange-600 font-mono">…</span>
             </div>
-            <div class="text-sm font-bold text-slate-700 relative">Pending Audit</div>
-            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider relative">Days awaiting review</div>
+            <div class="text-xs md:text-sm font-bold text-slate-700 relative leading-tight">Pending Audit</div>
+            <div class="text-[9px] md:text-[10px] text-slate-400 mt-0.5 md:mt-1 uppercase tracking-wider relative hidden md:block">Days awaiting review</div>
           </div>
 
           <!-- Flagged Days -->
-          <div onclick="toggleAuditorCard('flaggedDays')"
-            id="acard-flaggedDays"
-            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
+          <div onclick="toggleAuditorCard('flaggedDays')" id="acard-flaggedDays"
+            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-xl md:rounded-2xl p-3 md:p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-rose-400/10 rounded-full blur-2xl group-hover:bg-rose-400/20 transition-all"></div>
-            <div class="flex items-center justify-between mb-3 relative">
-              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-rose-50 to-red-50 flex items-center justify-center shadow-sm border border-rose-100/50">
-                <span class="text-xl">🚩</span>
+            <div class="flex items-center justify-between mb-2 md:mb-3 relative">
+              <div class="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br from-rose-50 to-red-50 flex items-center justify-center shadow-sm border border-rose-100/50">
+                <span class="text-base md:text-xl">🚩</span>
               </div>
-              <span id="abadge-flaggedDays" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-rose-500 to-red-600 font-mono">…</span>
+              <span id="abadge-flaggedDays" class="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-rose-500 to-red-600 font-mono">…</span>
             </div>
-            <div class="text-sm font-bold text-slate-700 relative">Flagged Days</div>
-            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider relative">Send back to cashier</div>
+            <div class="text-xs md:text-sm font-bold text-slate-700 relative leading-tight">Flagged Days</div>
+            <div class="text-[9px] md:text-[10px] text-slate-400 mt-0.5 md:mt-1 uppercase tracking-wider relative hidden md:block">Send back to cashier</div>
           </div>
 
           <!-- Pending Liquidations -->
-          <div onclick="toggleAuditorCard('pendingLiquidations')"
-            id="acard-pendingLiquidations"
-            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
+          <div onclick="toggleAuditorCard('pendingLiquidations')" id="acard-pendingLiquidations"
+            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-xl md:rounded-2xl p-3 md:p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-purple-400/10 rounded-full blur-2xl group-hover:bg-purple-400/20 transition-all"></div>
-            <div class="flex items-center justify-between mb-3 relative">
-              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-50 to-fuchsia-50 flex items-center justify-center shadow-sm border border-purple-100/50">
-                <span class="text-xl">💳</span>
+            <div class="flex items-center justify-between mb-2 md:mb-3 relative">
+              <div class="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br from-purple-50 to-fuchsia-50 flex items-center justify-center shadow-sm border border-purple-100/50">
+                <span class="text-base md:text-xl">💳</span>
               </div>
-              <span id="abadge-pendingLiquidations" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-500 to-indigo-600 font-mono">…</span>
+              <span id="abadge-pendingLiquidations" class="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-500 to-indigo-600 font-mono">…</span>
             </div>
-            <div class="text-sm font-bold text-slate-700 relative">Pending Liquidations</div>
-            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider relative">Awaiting review</div>
+            <div class="text-xs md:text-sm font-bold text-slate-700 relative leading-tight">Pending Liquidations</div>
+            <div class="text-[9px] md:text-[10px] text-slate-400 mt-0.5 md:mt-1 uppercase tracking-wider relative hidden md:block">Awaiting review</div>
           </div>
 
           <!-- Recently Closed -->
-          <div onclick="toggleAuditorCard('recentClosed')"
-            id="acard-recentClosed"
-            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:-translate-y-1 hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
+          <div onclick="toggleAuditorCard('recentClosed')" id="acard-recentClosed"
+            class="auditor-metric-card cursor-pointer bg-white/70 backdrop-blur-xl border border-white/60 rounded-xl md:rounded-2xl p-3 md:p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_8px_30px_rgb(0,0,0,0.08)] hover:bg-white/90 transition-all duration-300 relative overflow-hidden group">
             <div class="absolute -right-4 -top-4 w-20 h-20 bg-emerald-400/10 rounded-full blur-2xl group-hover:bg-emerald-400/20 transition-all"></div>
-            <div class="flex items-center justify-between mb-3 relative">
-              <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center shadow-sm border border-emerald-100/50">
-                <span class="text-xl">✅</span>
+            <div class="flex items-center justify-between mb-2 md:mb-3 relative">
+              <div class="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 flex items-center justify-center shadow-sm border border-emerald-100/50">
+                <span class="text-base md:text-xl">✅</span>
               </div>
-              <span id="abadge-recentClosed" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-emerald-500 to-teal-600 font-mono">…</span>
+              <span id="abadge-recentClosed" class="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-emerald-500 to-teal-600 font-mono">…</span>
             </div>
-            <div class="text-sm font-bold text-slate-700 relative">Closed <span class="opacity-75 font-normal ml-1">(Last 7d)</span></div>
-            <div class="text-[10px] text-slate-400 mt-1 uppercase tracking-wider relative">Recently approved</div>
+            <div class="text-xs md:text-sm font-bold text-slate-700 relative leading-tight">Closed <span class="opacity-75 font-normal">(7d)</span></div>
+            <div class="text-[9px] md:text-[10px] text-slate-400 mt-0.5 md:mt-1 uppercase tracking-wider relative hidden md:block">Recently approved</div>
           </div>
 
         </div>
@@ -241,45 +229,45 @@
       </div>
 
       <!-- Stats Grid -->
-      <div class="grid grid-cols-2 lg:grid-cols-6 gap-4" id="dashStatsGrid">
-        <div class="bg-white/70 backdrop-blur-xl p-5 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4" id="dashStatsGrid">
+        <div class="bg-white/70 backdrop-blur-xl p-3 md:p-5 rounded-xl md:rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
           <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-400 to-cyan-500"></div>
-          <h3 class="text-[10px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-1">Opening Cash</h3>
-          <p class="text-lg md:text-2xl font-black text-slate-800 font-mono drop-shadow-sm" id="stat-opening">₱0.00</p>
+          <h3 class="text-[9px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-0.5 md:mb-1">Opening Cash</h3>
+          <p class="text-base md:text-2xl font-black text-slate-800 font-mono" id="stat-opening">₱0.00</p>
         </div>
-        <div class="bg-white/70 backdrop-blur-xl p-5 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
+        <div class="bg-white/70 backdrop-blur-xl p-3 md:p-5 rounded-xl md:rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
           <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-rose-400 to-red-500"></div>
-          <h3 class="text-[10px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-1">Total Expenses</h3>
-          <p class="text-lg md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-rose-500 to-red-600 font-mono drop-shadow-sm" id="stat-expenses">₱0.00</p>
+          <h3 class="text-[9px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-0.5 md:mb-1">Total Expenses</h3>
+          <p class="text-base md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-rose-500 to-red-600 font-mono" id="stat-expenses">₱0.00</p>
         </div>
-        <div class="bg-white/70 backdrop-blur-xl p-5 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
+        <div class="bg-white/70 backdrop-blur-xl p-3 md:p-5 rounded-xl md:rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
           <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-400 to-fuchsia-500"></div>
-          <h3 class="text-[10px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-1">Replenishment</h3>
-          <p class="text-lg md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-500 to-fuchsia-600 font-mono drop-shadow-sm" id="stat-replenishment">₱0.00</p>
-          <p class="text-[10px] text-teal-600 font-mono mt-0.5" id="stat-replenishment-sub"></p>
+          <h3 class="text-[9px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-0.5 md:mb-1">Replenishment</h3>
+          <p class="text-base md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-purple-500 to-fuchsia-600 font-mono" id="stat-replenishment">₱0.00</p>
+          <p class="text-[9px] text-teal-600 font-mono mt-0.5" id="stat-replenishment-sub"></p>
         </div>
-        <div class="bg-white/70 backdrop-blur-xl p-5 rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
+        <div class="bg-white/70 backdrop-blur-xl p-3 md:p-5 rounded-xl md:rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] border border-white/60 relative overflow-hidden group">
           <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-400 to-orange-500"></div>
-          <h3 class="text-[10px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-1">Closing Cash</h3>
-          <p class="text-lg md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-amber-500 to-orange-600 font-mono drop-shadow-sm" id="stat-closing">₱0.00</p>
-          <div class="mt-2 flex items-center gap-1 text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider">
-             <span class="font-bold">Expected:</span>
+          <h3 class="text-[9px] md:text-xs text-slate-500 uppercase tracking-wider font-mono mb-0.5 md:mb-1">Closing Cash</h3>
+          <p class="text-base md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-br from-amber-500 to-orange-600 font-mono" id="stat-closing">₱0.00</p>
+          <div class="mt-1 flex items-center gap-1 text-[9px] md:text-xs text-slate-500 uppercase tracking-wider">
+             <span class="font-bold">Exp:</span>
              <span id="stat-expected" class="font-mono font-black text-slate-700">₱0.00</span>
           </div>
         </div>
       </div>
 
       <!-- Outstanding Cash Advances Alert -->
-      <div id="outstandingAdvBanner" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-center justify-between gap-4 shadow-sm">
-        <div class="flex items-center gap-3">
-          <span class="text-2xl">💳</span>
-          <div>
-            <div class="text-sm font-bold text-blue-800" id="outstandingAdvTitle">Outstanding Cash Advances</div>
-            <div class="text-xs text-blue-600" id="outstandingAdvSub"></div>
+      <div id="outstandingAdvBanner" class="hidden bg-blue-50 border border-blue-200 rounded-xl p-3 md:p-4 flex items-center justify-between gap-3 shadow-sm">
+        <div class="flex items-center gap-2 md:gap-3 min-w-0">
+          <span class="text-lg md:text-2xl shrink-0">💳</span>
+          <div class="min-w-0">
+            <div class="text-xs md:text-sm font-bold text-blue-800 truncate" id="outstandingAdvTitle">Outstanding Cash Advances</div>
+            <div class="text-[10px] md:text-xs text-blue-600 truncate" id="outstandingAdvSub"></div>
           </div>
         </div>
         <button onclick="navigate('advances')"
-          class="whitespace-nowrap px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition">
+          class="whitespace-nowrap px-3 md:px-4 py-1.5 md:py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition shrink-0">
           View All →
         </button>
       </div>
