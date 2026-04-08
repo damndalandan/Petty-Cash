@@ -265,22 +265,24 @@ async function loadDayStatusBanner() {
 };
 
   const info = statusMap[res.status] || statusMap['NO_RECORD'];
-  banner.className = `rounded-xl px-5 py-3 flex items-center justify-between gap-3 border shadow-sm ${info.bg}`;
-  iconEl.textContent  = info.icon;
-  titleEl.textContent = info.title;
-  titleEl.className   = `text-sm font-bold`;
-  subEl.textContent   = info.sub;
+  banner.className = `rounded-xl flex items-center gap-3 border shadow-sm ${info.bg} px-3 py-1.5`;
+  if (iconEl) iconEl.textContent  = info.icon;
+  if (titleEl) {
+    titleEl.textContent = info.title;
+    titleEl.className   = `text-sm font-bold`;
+  }
+  if (subEl) subEl.textContent = info.sub;
 
   // Show approve button for Auditor on PENDING_AUDIT
-  actionEl.innerHTML = '';
-  if (res.status === 'PENDING_AUDIT' && isAuditor()) {
+  if (actionEl) actionEl.innerHTML = '';
+  if (res.status === 'PENDING_AUDIT' && isAuditor() && actionEl) {
     actionEl.innerHTML = `
       <button onclick="navigate('auditreview')"
         class="whitespace-nowrap px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow transition">
         Review & Approve →
       </button>`;
   }
-  if (res.status === 'FLAGGED' && isCashier()) {
+  if (res.status === 'FLAGGED' && isCashier() && actionEl) {
     // Show flag note if available
     const noteHtml = res.flagNote
       ? `<div class="text-xs text-red-600 mt-1 font-normal">Auditor note: "${res.flagNote}"</div>`
