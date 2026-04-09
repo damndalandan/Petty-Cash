@@ -204,27 +204,32 @@ function updateDashStats() {
     .filter(e => e.type === 'REPLENISHMENT' && !e.carriedForward)
     .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  // LIQUIDATION_PENDING advances: count totalSpent as expense (not full advance amount)
-  const liqPendingSpent = state.entries
-    .filter(e => e.type === 'CASH_ADVANCE' && e.status === 'LIQUIDATION_PENDING' && !e.carriedForward)
-    .reduce((s, e) => s + parseFloat(e.liqBreakdown?.totalSpent || 0), 0);
+// Count inflows like CASH_RETURN and CASH_OVER
+    const cashInflows = state.entries
+      .filter(e => (e.type === 'CASH_RETURN' || e.type === 'CASH_OVER') && !e.carriedForward && e.status !== 'DELETED')
+      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-  const totalExpDisplay = withReceipt + noReceipt + liqPendingSpent;
+    // LIQUIDATION_PENDING advances: count totalSpent as expense ONLY if taken today
+    const liqPendingSpent = state.entries
+      .filter(e => e.type === 'CASH_ADVANCE' && e.status === 'LIQUIDATION_PENDING' && !e.carriedForward && e.originalDate === state.currentDate)
+      .reduce((s, e) => s + parseFloat(e.liqBreakdown?.totalSpent || 0), 0);
 
-  const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
-  const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExpDisplay);
-  const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
-  const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish);
-  const srpsub = document.getElementById('stat-replenishment-sub');
-  if (srpsub) srpsub.textContent = '';
+    const totalExpDisplay = withReceipt + noReceipt + liqPendingSpent;
 
-  // Expected = opening + replenishment - expenses (incl. liq pending) - active advances
-  const liveCashAdv = state.entries
-    .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward
-      && e.status !== 'LIQUIDATION_PENDING')
-    .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
+    const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExpDisplay);
+    const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
+    const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish);
+    const srpsub = document.getElementById('stat-replenishment-sub');
+    if (srpsub) srpsub.textContent = '';
 
-  const expectedInfo = (opening + totalReplenish) - (totalExpDisplay + liveCashAdv);
+    // Expected = opening + replenishment + inflows - expenses - active advances
+    const liveCashAdv = state.entries
+      .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward
+        && e.status !== 'LIQUIDATION_PENDING' && e.originalDate === state.currentDate)
+      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+
+    const expectedInfo = (opening + totalReplenish + cashInflows) - (totalExpDisplay + liveCashAdv);
 
   const sexp = document.getElementById('stat-expected');
   if (sexp) {
