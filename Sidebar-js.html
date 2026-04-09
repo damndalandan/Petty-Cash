@@ -11,6 +11,17 @@ function toggleSidebar() {
   }
 }
 
+function closeSidebarOnMobile() {
+  if (window.innerWidth < 768) {
+    const sb = document.getElementById('sidebar');
+    const ov = document.getElementById('sidebarOverlay');
+    if (sb && !sb.classList.contains('-translate-x-full')) {
+      sb.classList.add('-translate-x-full');
+      if (ov) ov.classList.add('hidden');
+    }
+  }
+}
+
 // Email is now set by applyRoleUI() in Global-js after getUserRole() loads
 // Keep this as a fallback only
 document.addEventListener('DOMContentLoaded', function() {

@@ -1,15 +1,23 @@
 <!-- FILING CHECKLIST PAGE -->
-<div id="page-filing" class="page-view hidden space-y-6">
+<div id="page-filing" class="page-view hidden space-y-4">
 
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 border-b border-gray-200 gap-2">
     <div>
-      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Filing Checklist</h1>
-      <p class="text-sm text-gray-500 mt-1">Track daily document filing status</p>
+      <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Filing Checklist</h1>
+      <p class="text-xs text-gray-500 mt-0.5">Track daily document filing status</p>
     </div>
-    <button onclick="loadFilingPage()" class="mt-3 md:mt-0 text-sm text-blue-600 hover:text-blue-800 font-medium transition">↺ Refresh</button>
+    <button onclick="loadFilingPage()" class="text-sm text-blue-600 hover:text-blue-800 font-medium transition px-3 py-2 border border-blue-200 rounded-lg min-h-[44px] self-start md:self-auto">↺ Refresh</button>
   </div>
 
-  <div class="grid lg:grid-cols-3 gap-6">
+  <!-- Mobile tab switcher (hidden on desktop) -->
+  <div class="mobile-panel-tabs gap-1 bg-gray-100 p-1 rounded-lg" id="filingMobileTabs">
+    <button onclick="switchFilingPanel('submit')" id="filing-tab-submit"
+      class="flex-1 py-2.5 text-sm font-bold rounded-md bg-white text-gray-800 shadow-sm min-h-[44px]">📋 Submit</button>
+    <button onclick="switchFilingPanel('history')" id="filing-tab-history"
+      class="flex-1 py-2.5 text-sm font-medium rounded-md text-gray-500 min-h-[44px]">📜 History</button>
+  </div>
+
+  <div class="flex flex-col lg:grid lg:grid-cols-3 gap-4">
 
     <!-- LEFT PANEL: Cashier only — date list + form -->
     <div class="lg:col-span-1" id="filingSubmitPanel">
@@ -24,7 +32,7 @@
         </div>
 
         <!-- Form -->
-        <div class="p-5 space-y-4">
+        <div class="p-4 space-y-4">
           <div>
             <h2 class="text-base font-bold text-gray-800 flex items-center gap-2">
               <span class="w-6 h-6 rounded bg-amber-100 text-amber-600 flex items-center justify-center text-xs">📋</span>
@@ -34,26 +42,26 @@
 
           <div id="filingStatusBanner" class="hidden"></div>
 
-          <div class="space-y-3" id="filingCheckboxes">
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-              <input type="checkbox" id="chkFiling_Receipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
+          <div class="space-y-2" id="filingCheckboxes">
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition min-h-[56px]">
+              <input type="checkbox" id="chkFiling_Receipts" class="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500 shrink-0">
               <div>
                 <div class="text-sm font-bold text-gray-700">🧾 Official Receipts Filed</div>
-                <div class="text-xs text-gray-500 mt-0.5">All ORs placed in the receipts folder.</div>
+                <div class="text-xs text-gray-500">All ORs placed in the receipts folder.</div>
               </div>
             </label>
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-              <input type="checkbox" id="chkFiling_NoReceipts" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition min-h-[56px]">
+              <input type="checkbox" id="chkFiling_NoReceipts" class="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500 shrink-0">
               <div>
                 <div class="text-sm font-bold text-gray-700">⚠️ No-Receipt Forms Filed</div>
-                <div class="text-xs text-gray-500 mt-0.5">All acknowledgment slips signed and filed.</div>
+                <div class="text-xs text-gray-500">All acknowledgment slips signed and filed.</div>
               </div>
             </label>
-            <label class="flex items-start gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
-              <input type="checkbox" id="chkFiling_Report" class="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500">
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 cursor-pointer transition min-h-[56px]">
+              <input type="checkbox" id="chkFiling_Report" class="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500 shrink-0">
               <div>
                 <div class="text-sm font-bold text-gray-700">📋 Daily Report Saved</div>
-                <div class="text-xs text-gray-500 mt-0.5">Report printed or saved for records.</div>
+                <div class="text-xs text-gray-500">Report printed or saved for records.</div>
               </div>
             </label>
           </div>
@@ -61,11 +69,11 @@
           <div>
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes <span class="font-normal text-gray-400">(optional)</span></label>
             <textarea id="filingNotes" rows="2" placeholder="Any remarks or exceptions..."
-              class="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none bg-gray-50"></textarea>
+              class="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-amber-400 outline-none resize-none bg-gray-50"></textarea>
           </div>
 
           <button id="submitFilingBtn" onclick="submitFilingChecklist()" disabled
-            class="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl shadow-sm transition text-sm">
+            class="w-full bg-amber-500 hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl shadow-sm transition text-sm min-h-[48px]">
             ✓ Submit Filing Checklist
           </button>
 
@@ -75,7 +83,7 @@
     </div>
 
     <!-- RIGHT PANEL: History table (all roles) -->
-    <div class="lg:col-span-2">
+    <div class="lg:col-span-2" id="filingHistoryPanel">
       <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
 
         <!-- Filter bar -->
@@ -97,15 +105,15 @@
 
         <!-- Table -->
         <div class="overflow-x-auto">
-          <table class="w-full text-sm text-left">
+          <table class="w-full text-sm text-left min-w-[500px]">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
               <tr>
-                <th class="px-4 py-3">Date</th>
-                <th class="px-4 py-3 text-center">🧾 OR</th>
-                <th class="px-4 py-3 text-center">⚠️ No-Receipt</th>
-                <th class="px-4 py-3 text-center">📋 Report</th>
-                <th class="px-4 py-3">Status</th>
-                <th class="px-4 py-3">Submitted By</th>
+                <th class="px-3 py-3">Date</th>
+                <th class="px-3 py-3 text-center">🧾 OR</th>
+                <th class="px-3 py-3 text-center">⚠️</th>
+                <th class="px-3 py-3 text-center">📋</th>
+                <th class="px-3 py-3">Status</th>
+                <th class="px-3 py-3 hidden sm:table-cell">By</th>
               </tr>
             </thead>
             <tbody id="filingHistoryBody" class="divide-y divide-gray-100">
@@ -119,3 +127,50 @@
 
   </div>
 </div>
+
+<script>
+// Filing mobile tab switcher
+function switchFilingPanel(tab) {
+  const submitPanel  = document.getElementById('filingSubmitPanel');
+  const historyPanel = document.getElementById('filingHistoryPanel');
+  const tabSubmit    = document.getElementById('filing-tab-submit');
+  const tabHistory   = document.getElementById('filing-tab-history');
+  if (!submitPanel || !historyPanel) return;
+
+  const isLg = window.innerWidth >= 1024;
+  if (isLg) {
+    // On desktop always show both
+    submitPanel.style.display = '';
+    historyPanel.style.display = '';
+    return;
+  }
+
+  if (tab === 'submit') {
+    submitPanel.style.display = '';
+    historyPanel.style.display = 'none';
+    tabSubmit.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+    tabSubmit.classList.remove('text-gray-500');
+    tabHistory.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+    tabHistory.classList.add('text-gray-500');
+  } else {
+    submitPanel.style.display = 'none';
+    historyPanel.style.display = '';
+    tabHistory.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+    tabHistory.classList.remove('text-gray-500');
+    tabSubmit.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+    tabSubmit.classList.add('text-gray-500');
+  }
+}
+
+// Ensure proper panel visibility on resize
+window.addEventListener('resize', () => {
+  const isLg = window.innerWidth >= 1024;
+  const submitPanel  = document.getElementById('filingSubmitPanel');
+  const historyPanel = document.getElementById('filingHistoryPanel');
+  if (!submitPanel || !historyPanel) return;
+  if (isLg) {
+    submitPanel.style.display = '';
+    historyPanel.style.display = '';
+  }
+});
+</script>

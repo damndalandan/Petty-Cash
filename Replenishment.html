@@ -1,20 +1,51 @@
 <!-- REPLENISHMENT PAGE -->
-<div id="page-replenishment" class="page-view hidden space-y-6">
+<div id="page-replenishment" class="page-view hidden space-y-4">
 
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200">
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 border-b border-gray-200 gap-3">
     <div>
-      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Replenishment</h1>
-      <p class="text-sm text-gray-500 mt-1">Add funds to petty cash for <span id="replenish-date-label" class="font-medium text-gray-700"></span></p>
+      <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Replenishment</h1>
+      <p class="text-xs text-gray-500 mt-0.5">Add funds for <span id="replenish-date-label" class="font-medium text-gray-700"></span></p>
     </div>
-    <button onclick="loadReplenishments()" class="mt-3 md:mt-0 text-sm text-blue-600 hover:text-blue-800 font-medium transition">↺ Refresh</button>
+    <div class="flex items-center gap-2 w-full md:w-auto">
+      <button id="replenishFormToggleBtn" onclick="toggleReplenishForm()"
+        class="mobile-form-toggle items-center gap-2 px-3 py-2 bg-purple-600 text-white text-sm font-bold rounded-lg shadow min-h-[44px] flex-1 md:flex-none justify-center">
+        ➕ Add Fund
+      </button>
+      <button onclick="loadReplenishments()" class="text-sm text-blue-600 hover:text-blue-800 font-medium transition px-3 py-2 border border-blue-200 rounded-lg min-h-[44px]">↺ Refresh</button>
+    </div>
   </div>
 
-  <div class="grid lg:grid-cols-3 gap-6">
+  <!-- Mobile: table first, form below; Desktop: 3-column -->
+  <div class="flex flex-col lg:grid lg:grid-cols-3 gap-4">
 
-    <!-- Form -->
-    <div class="lg:col-span-1">
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-6 lg:sticky lg:top-4">
-        <h2 class="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+    <!-- Records Table — first on mobile -->
+    <div class="lg:col-span-2 order-1 lg:order-2">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div class="p-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+          <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Fund Additions</h2>
+          <span class="text-xs text-gray-500 font-mono">Total: <span id="replenish-total" class="text-purple-600 font-bold text-sm">₱0.00</span></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[360px]">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+              <tr>
+                <th class="px-3 py-3">Details</th>
+                <th class="px-3 py-3 text-right">Amount</th>
+                <th class="px-3 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="replenishBody" class="divide-y divide-gray-100">
+              <tr><td colspan="3" class="px-4 py-8 text-center text-gray-400 text-sm italic">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Form — second on mobile -->
+    <div class="lg:col-span-1 order-2 lg:order-1" id="replenishFormPanel">
+      <div class="bg-white rounded-lg shadow-sm border border-gray-200 p-4 lg:sticky lg:top-4">
+        <h2 class="text-base font-bold text-gray-800 mb-3 flex items-center gap-2">
           <span class="w-6 h-6 rounded bg-purple-100 text-purple-600 flex items-center justify-center text-xs">🔄</span>
           Add Fund
         </h2>
@@ -22,7 +53,7 @@
 
           <div>
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Source / Reason</label>
-            <select id="replenishSource" class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none text-sm">
+            <select id="replenishSource" class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none text-sm min-h-[44px]">
               <option value="Head Office Release">Head Office Release</option>
               <option value="Liquidation Change Return">Liquidation Change Return</option>
               <option value="Custodian Top-Up">Custodian Top-Up</option>
@@ -34,51 +65,27 @@
           <div>
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
             <input type="text" id="replenishDesc" placeholder="e.g. Monthly fund release from HO"
-              class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none text-sm">
+              class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none text-sm min-h-[44px]">
           </div>
 
           <div>
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount (₱)</label>
             <input type="number" id="replenishAmount" placeholder="0.00" min="0" step="0.01"
-              class="w-full p-2 border border-gray-300 rounded font-mono focus:ring-2 focus:ring-purple-500 outline-none text-sm">
+              class="w-full p-3 border border-gray-300 rounded font-mono focus:ring-2 focus:ring-purple-500 outline-none text-sm min-h-[44px]">
           </div>
 
           <div>
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Released By</label>
             <input type="text" id="replenishBy" placeholder="Name or Department"
-              class="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none text-sm">
+              class="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-purple-500 outline-none text-sm min-h-[44px]">
           </div>
 
           <div class="border-t border-gray-100 pt-3">
             <button id="saveReplenishBtn" onclick="saveReplenishment()"
-              class="w-full bg-purple-600 text-white font-bold py-2.5 px-4 rounded-lg hover:bg-purple-700 shadow-sm transition active:scale-95 text-sm">
+              class="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 shadow-sm transition active:scale-95 text-sm min-h-[48px]">
               💾 Save Replenishment
             </button>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Records Table -->
-    <div class="lg:col-span-2">
-      <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        <div class="p-4 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-          <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Fund Additions</h2>
-          <span class="text-xs text-gray-500 font-mono">Total Added: <span id="replenish-total" class="text-purple-600 font-bold text-sm">₱0.00</span></span>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm">
-            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
-              <tr>
-                <th class="px-4 py-3">Details</th>
-                <th class="px-4 py-3 text-right">Amount</th>
-                <th class="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="replenishBody" class="divide-y divide-gray-100">
-              <tr><td colspan="3" class="px-4 py-8 text-center text-gray-400 text-sm italic">Loading...</td></tr>
-            </tbody>
-          </table>
         </div>
       </div>
     </div>

@@ -25,32 +25,32 @@
 
     <div class="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono">Main</div>
     
-    <button onclick="navigate('dashboard')" class="nav-item w-full flex items-center px-3 py-2 text-sm font-medium rounded-md group bg-gradient-to-r from-indigo-50 to-purple-50/50 text-indigo-700 shadow-sm border border-indigo-100/50" data-page="dashboard">
+    <button onclick="navigate('dashboard')" class="nav-item w-full flex items-center px-3 py-3 text-sm font-medium rounded-md group bg-gradient-to-r from-indigo-50 to-purple-50/50 text-indigo-700 shadow-sm border border-indigo-100/50 min-h-[44px]" data-page="dashboard">
       <span class="mr-3 text-lg">📊</span>
       <span>Dashboard</span>
     </button>
-    <button onclick="navigate('entries')" id="nav-entries" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="entries">
+    <button onclick="navigate('entries')" id="nav-entries" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="entries">
       <span class="mr-3 text-lg">📝</span>
       <span>Entries</span>
     </button>
-    
-    <button onclick="navigate('denominations')" id="nav-denominations" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="denominations">
+
+    <button onclick="navigate('denominations')" id="nav-denominations" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="denominations">
       <span class="mr-3 text-lg">💰</span>
       <span>Denominations</span>
     </button>
 
-    <button onclick="navigate('advances')" id="nav-advances" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="advances">
+    <button onclick="navigate('advances')" id="nav-advances" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="advances">
       <span class="mr-3 text-lg">💳</span>
       <span>Cash Advances</span>
       <span id="advances-badge" class="hidden ml-auto bg-gradient-to-r from-pink-500 to-rose-500 shadow-sm shadow-rose-200 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
     </button>
 
-    <button onclick="navigate('replenishment')" id="nav-replenishment" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="replenishment">
+    <button onclick="navigate('replenishment')" id="nav-replenishment" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="replenishment">
       <span class="mr-3 text-lg">🔄</span>
       <span>Replenishment</span>
     </button>
 
-    <button onclick="navigate('filing')" id="nav-filing" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="filing">
+    <button onclick="navigate('filing')" id="nav-filing" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="filing">
       <span class="mr-3 text-lg">📂</span>
       <span>Filing Checklist</span>
       <span id="filing-badge" class="hidden ml-auto bg-gradient-to-r from-amber-400 to-orange-500 shadow-sm shadow-amber-200 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
@@ -58,30 +58,30 @@
 
     <div class="px-3 py-2 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Reports</div>
 
-    <button onclick="navigate('report')" id="nav-report" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="report">
+    <button onclick="navigate('report')" id="nav-report" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="report">
       <span class="mr-3 text-lg">📋</span>
       <span>Daily Report</span>
     </button>
 
-    <button onclick="navigate('summaryreport')" id="nav-summaryreport" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="summaryreport">
+    <button onclick="navigate('summaryreport')" id="nav-summaryreport" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="summaryreport">
       <span class="mr-3 text-lg">📊</span>
       <span>Summary Report</span>
     </button>
 
-    <button onclick="navigate('replenishreport')" id="nav-replenishreport" class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="replenishreport">
+    <button onclick="navigate('replenishreport')" id="nav-replenishreport" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="replenishreport">
       <span class="mr-3 text-lg">📈</span>
       <span>Replenishment Report</span>
     </button>
 
     <button onclick="navigate('auditreview')" id="nav-auditreview"
-      class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="auditreview">
+      class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="auditreview">
       <span class="mr-3 text-lg">🔍</span>
       <span>Audit Review</span>
       <span id="audit-review-badge" class="hidden ml-auto bg-gradient-to-r from-amber-400 to-orange-500 shadow-sm shadow-amber-200 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
     </button>
 
     <button onclick="navigate('auditlog')" id="nav-auditlog"
-      class="nav-item hidden w-full flex items-center px-3 py-2 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group" data-page="auditlog">
+      class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="auditlog">
       <span class="mr-3 text-lg">🔎</span>
       <span>Audit Log</span>
     </button>

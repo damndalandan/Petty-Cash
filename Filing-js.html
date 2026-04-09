@@ -19,6 +19,11 @@ async function loadFilingPage() {
   const submitPanel = document.getElementById('filingSubmitPanel');
   if (submitPanel) submitPanel.classList.remove('hidden');
 
+  // Initialize mobile tab state (show submit panel by default on mobile)
+  if (typeof switchFilingPanel === 'function' && window.innerWidth < 1024) {
+    switchFilingPanel('submit');
+  }
+
   const histRes = await callServer('getFilingChecklists', { from, to });
   renderFilingHistory(histRes.success ? histRes.data : []);
 }

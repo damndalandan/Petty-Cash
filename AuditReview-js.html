@@ -20,6 +20,11 @@ async function loadAuditReviewPage() {
 
   buildAuditDenomGrid();
 
+  // Initialize mobile tab state (show entries first on mobile)
+  if (typeof switchAuditPanel === 'function' && window.innerWidth < 1024) {
+    switchAuditPanel('entries');
+  }
+
   // Show loading state on entries panel
   const entryList = document.getElementById('auditEntryList');
   if (entryList) entryList.innerHTML = '<div class="px-4 py-8 text-center text-gray-400 text-sm animate-pulse">Loading entries...</div>';

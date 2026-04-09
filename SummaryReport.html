@@ -2,20 +2,24 @@
 <div id="page-summaryreport" class="page-view hidden space-y-6">
 
   <!-- Header + Controls inline -->
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-4 border-b border-gray-200 gap-3">
-    <div>
-      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Summary Report</h1>
-      <p class="text-sm text-gray-500 mt-1">Monthly expense breakdown and fund overview</p>
+  <div class="flex flex-col gap-3 pb-3 border-b border-gray-200">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Summary Report</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Monthly expense breakdown and fund overview</p>
+      </div>
+      <button onclick="printSummaryReport()"
+        class="flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[40px] shrink-0">
+        <span>⬇️</span> <span class="hidden sm:inline">Export</span> PDF
+      </button>
     </div>
 
-    <!-- Right side: dropdown + custom dates + generate + export -->
+    <!-- Controls row — wraps on mobile -->
     <div class="flex flex-wrap items-end gap-2">
-
-      <!-- Period dropdown -->
-      <div>
+      <div class="flex-1 min-w-[140px]">
         <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Period</label>
         <select id="srPeriodSelect" onchange="srOnPeriodChange()"
-          class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium">
+          class="w-full p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium min-h-[44px]">
           <option value="today">Today</option>
           <option value="week">This Week</option>
           <option value="month" selected>This Month</option>
@@ -25,29 +29,23 @@
       </div>
 
       <!-- Custom from/to — hidden unless "Custom Date" selected -->
-      <div id="srCustomRange" class="hidden flex items-end gap-2">
+      <div id="srCustomRange" class="hidden flex items-end gap-2 flex-wrap">
         <div>
           <label class="block text-xs font-bold text-gray-400 uppercase mb-1">From</label>
           <input type="date" id="srFrom"
-            class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            class="p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white min-h-[44px]">
         </div>
         <div>
           <label class="block text-xs font-bold text-gray-400 uppercase mb-1">To</label>
           <input type="date" id="srTo"
-            class="p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            class="p-3 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white min-h-[44px]">
         </div>
       </div>
 
       <button onclick="loadSummaryReport()"
-        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow transition self-end">
+        class="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg shadow transition self-end min-h-[44px]">
         Generate
       </button>
-
-      <button onclick="printSummaryReport()"
-        class="flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow transition self-end">
-        <span>⬇️</span> Export PDF
-      </button>
-
     </div>
   </div>
 
@@ -98,7 +96,7 @@
   <div id="srContent" class="hidden space-y-6">
 
     <!-- Fund Overview Cards -->
-    <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div class="text-xs font-bold text-gray-400 uppercase mb-1">Starting Fund</div>
         <div class="text-2xl font-black font-mono text-gray-800" id="sr-fundCeiling">—</div>

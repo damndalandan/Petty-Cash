@@ -3,6 +3,16 @@
 // REPLENISHMENT PAGE LOGIC
 // =============================================
 
+function toggleReplenishForm() {
+  const panel = document.getElementById('replenishFormPanel');
+  const btn   = document.getElementById('replenishFormToggleBtn');
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none';
+  panel.style.display = isHidden ? '' : 'none';
+  if (btn) btn.textContent = isHidden ? '✕ Close' : '➕ Add Fund';
+  if (isHidden) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function clearReplenishForm() {
   ['replenishDesc','replenishAmount','replenishBy'].forEach(id => {
     const el = document.getElementById(id);

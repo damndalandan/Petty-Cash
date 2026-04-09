@@ -12,10 +12,18 @@
   <!-- Status banner -->
   <div id="auditReviewStatusBanner" class="hidden"></div>
 
-  <div class="grid lg:grid-cols-3 gap-6">
+  <!-- Mobile tab switcher for audit review panels -->
+  <div class="mobile-panel-tabs gap-1 bg-gray-100 p-1 rounded-lg" id="auditReviewMobileTabs">
+    <button onclick="switchAuditPanel('entries')" id="audit-tab-entries"
+      class="flex-1 py-2.5 text-sm font-bold rounded-md bg-white text-gray-800 shadow-sm min-h-[44px]">🧾 Entries</button>
+    <button onclick="switchAuditPanel('decision')" id="audit-tab-decision"
+      class="flex-1 py-2.5 text-sm font-medium rounded-md text-gray-500 min-h-[44px]">📋 Decision</button>
+  </div>
 
-    <!-- LEFT: Compact denomination count -->
-    <div class="lg:col-span-1 space-y-4">
+  <div class="flex flex-col lg:grid lg:grid-cols-3 gap-4">
+
+    <!-- LEFT: Compact denomination count — second on mobile -->
+    <div class="lg:col-span-1 space-y-4 order-2 lg:order-1" id="auditDecisionPanel">
 
       <!-- Denomination Card -->
       <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative group">
@@ -95,22 +103,22 @@
         <textarea id="auditDecisionNote" rows="2" placeholder="Audit notes (optional)..."
           class="w-full text-xs p-2 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-amber-400 resize-none bg-gray-50"></textarea>
         <button id="auditApproveBtn" onclick="confirmAuditDecision('approve')" disabled
-          class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-xl shadow-sm shadow-emerald-200 transition-all">
+          class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold py-3 rounded-xl shadow-sm shadow-emerald-200 transition-all min-h-[48px]">
           ✓ Approve & Close Day
         </button>
         <button id="auditSendBackBtn" onclick="confirmAuditDecision('sendback')" disabled
-          class="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold py-2.5 rounded-xl shadow-sm shadow-rose-200 transition-all">
+          class="w-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold py-3 rounded-xl shadow-sm shadow-rose-200 transition-all min-h-[48px]">
           🚩 Send Back to Cashier
         </button>
-        <button id="auditHolidayBtn" onclick="confirmAuditHoliday()" class="hidden w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-xs font-bold py-2.5 rounded-xl shadow-sm shadow-blue-200 transition-all">
+        <button id="auditHolidayBtn" onclick="confirmAuditHoliday()" class="hidden w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-sm font-bold py-3 rounded-xl shadow-sm shadow-blue-200 transition-all min-h-[48px]">
           🏖️ Mark as Holiday / Closed
         </button>
       </div>
 
     </div>
 
-    <!-- RIGHT: Entry review list -->
-    <div class="lg:col-span-2">
+    <!-- RIGHT: Entry review list — first on mobile -->
+    <div class="lg:col-span-2 order-1 lg:order-2" id="auditEntriesPanel">
       <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative group">
         <div class="px-4 py-3 border-b border-white/50 bg-white/40 flex items-center justify-between">
           <h2 class="text-sm font-bold text-slate-700">🧾 Entries to Review</h2>
@@ -128,6 +136,47 @@
 
   </div>
 
-
-
 </div>
+
+<script>
+// Audit Review mobile tab switcher
+function switchAuditPanel(tab) {
+  const entriesPanel  = document.getElementById('auditEntriesPanel');
+  const decisionPanel = document.getElementById('auditDecisionPanel');
+  const tabEntries    = document.getElementById('audit-tab-entries');
+  const tabDecision   = document.getElementById('audit-tab-decision');
+  if (!entriesPanel || !decisionPanel) return;
+
+  const isLg = window.innerWidth >= 1024;
+  if (isLg) {
+    entriesPanel.style.display = '';
+    decisionPanel.style.display = '';
+    return;
+  }
+
+  if (tab === 'entries') {
+    entriesPanel.style.display = '';
+    decisionPanel.style.display = 'none';
+    tabEntries.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+    tabEntries.classList.remove('text-gray-500');
+    tabDecision.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+    tabDecision.classList.add('text-gray-500');
+  } else {
+    decisionPanel.style.display = '';
+    entriesPanel.style.display = 'none';
+    tabDecision.classList.add('bg-white', 'text-gray-800', 'shadow-sm');
+    tabDecision.classList.remove('text-gray-500');
+    tabEntries.classList.remove('bg-white', 'text-gray-800', 'shadow-sm');
+    tabEntries.classList.add('text-gray-500');
+  }
+}
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth >= 1024) {
+    ['auditEntriesPanel','auditDecisionPanel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = '';
+    });
+  }
+});
+</script>

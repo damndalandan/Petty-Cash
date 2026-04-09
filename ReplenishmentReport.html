@@ -2,14 +2,20 @@
 <div id="page-replenishreport" class="page-view hidden space-y-6">
 
   <!-- Header -->
-  <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center pb-4 border-b border-gray-200 gap-4">
-    <div>
-      <h1 class="text-2xl md:text-3xl font-bold text-gray-800 font-display">Replenishment Report</h1>
-      <p class="text-sm text-gray-500 mt-1">Transaction history from last top-up to today</p>
+  <div class="flex flex-col gap-3 pb-3 border-b border-gray-200">
+    <div class="flex justify-between items-start">
+      <div>
+        <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Replenishment Report</h1>
+        <p class="text-xs text-gray-500 mt-0.5">Transaction history from last top-up to today</p>
+      </div>
+      <button onclick="printReplenishReport()"
+        class="flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-700 text-white text-xs font-bold rounded-lg shadow transition shrink-0 min-h-[40px]">
+        <span>⬇️</span> <span class="hidden sm:inline">Export</span> PDF
+      </button>
     </div>
 
-    <!-- Reporting Period Badge In Header -->
-    <div id="rrHeaderPeriod" class="flex items-center gap-3 px-4 py-2 bg-blue-50/50 border border-blue-100 rounded-xl">
+    <!-- Reporting Period Badge -->
+    <div id="rrHeaderPeriod" class="flex items-center gap-3 px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl self-start">
       <div class="flex flex-col">
         <span class="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Reporting Period</span>
         <span class="text-sm font-bold text-blue-700 font-mono" id="rr-periodLabel">—</span>
@@ -20,11 +26,6 @@
         <span class="text-sm font-black font-mono text-blue-600" id="rr-dayCount">—</span>
       </div>
     </div>
-
-    <button onclick="printReplenishReport()"
-      class="flex items-center gap-2 px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white text-sm font-bold rounded-lg shadow transition shrink-0">
-      <span>⬇️</span> Export PDF
-    </button>
   </div>
 
   <!-- Loading State -->

@@ -328,16 +328,21 @@ function renderDetailList() {
 
     rows.push(`
       <tr class="hover:bg-gray-50 ${isAdvance ? 'bg-blue-50/30' : ''}">
-        <td class="px-6 py-3">
-          <div class="font-medium text-gray-900 flex items-center flex-wrap gap-1">
+        <td class="px-3 py-3">
+          <div class="font-medium text-gray-900 flex items-center flex-wrap gap-1 text-sm leading-snug">
             ${e.description}
             ${expandBtn}
           </div>
           <div class="text-xs text-gray-500 mt-0.5">${e.category || e.type}${e.requestedBy ? ' · ' + e.requestedBy : ''}</div>
           ${isLiquidated && e.liqBreakdown ? `<div class="text-xs text-green-600 mt-0.5 font-medium">Spent: ${fmt(e.liqBreakdown.totalSpent || 0)}${(e.liqBreakdown.change > 0.005) ? ' · Change: ' + fmt(e.liqBreakdown.change) : ' · Fully spent'}</div>` : ''}
+          <!-- Mobile-only: amount + badge inline -->
+          <div class="flex items-center justify-between mt-1.5 sm:hidden">
+            <span class="font-mono font-bold text-sm ${amountClass}">${fmt(e.amount)}</span>
+            ${typeBadge}
+          </div>
         </td>
-        <td class="px-6 py-3 text-right font-mono ${amountClass}">${fmt(e.amount)}</td>
-        <td class="px-6 py-3 text-center">${typeBadge}</td>
+        <td class="px-3 py-3 text-right font-mono text-sm ${amountClass} hidden sm:table-cell">${fmt(e.amount)}</td>
+        <td class="px-3 py-3 text-center hidden sm:table-cell">${typeBadge}</td>
       </tr>`);
 
     // Sub-rows when expanded
@@ -346,16 +351,22 @@ function renderDetailList() {
       liqSubs.forEach(sub => {
         rows.push(`
           <tr class="bg-green-50/50 border-l-4 border-green-300">
-            <td class="pl-12 pr-6 py-2">
-              <div class="flex items-center gap-1 text-xs text-gray-700">
-                <span class="text-gray-300">└</span>
-                <span class="font-medium">${sub.description}</span>
-                <span class="text-gray-400">(${sub.category || ''})</span>
-                ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+            <td class="pl-8 pr-3 py-2">
+              <div class="flex items-start gap-1 text-xs text-gray-700">
+                <span class="text-gray-300 shrink-0 mt-0.5">└</span>
+                <div>
+                  <span class="font-medium">${sub.description}</span>
+                  <span class="text-gray-400 ml-1">(${sub.category || ''})</span>
+                  ${sub.hasReceipt ? '<span class="text-green-600 ml-1">🧾</span>' : '<span class="text-amber-500 ml-1">⚠️</span>'}
+                  <div class="flex items-center justify-between mt-1 sm:hidden">
+                    <span class="font-mono font-bold text-gray-600">${fmt(sub.amount)}</span>
+                    <span class="text-[10px] text-green-600 font-bold">LIQ</span>
+                  </div>
+                </div>
               </div>
             </td>
-            <td class="px-6 py-2 text-right font-mono text-xs text-gray-600">${fmt(sub.amount)}</td>
-            <td class="px-6 py-2 text-center"><span class="text-[10px] text-green-600 font-bold">LIQ</span></td>
+            <td class="px-3 py-2 text-right font-mono text-xs text-gray-600 hidden sm:table-cell">${fmt(sub.amount)}</td>
+            <td class="px-3 py-2 text-center hidden sm:table-cell"><span class="text-[10px] text-green-600 font-bold">LIQ</span></td>
           </tr>`);
       });
 
@@ -363,16 +374,22 @@ function renderDetailList() {
       pendingBreakdown.forEach(sub => {
         rows.push(`
           <tr class="bg-amber-50/50 border-l-4 border-amber-300">
-            <td class="pl-12 pr-6 py-2">
-              <div class="flex items-center gap-1 text-xs text-gray-700">
-                <span class="text-gray-300">└</span>
-                <span class="font-medium">${sub.desc || '—'}</span>
-                <span class="text-gray-400">(${sub.category || ''})</span>
-                ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+            <td class="pl-8 pr-3 py-2">
+              <div class="flex items-start gap-1 text-xs text-gray-700">
+                <span class="text-gray-300 shrink-0 mt-0.5">└</span>
+                <div>
+                  <span class="font-medium">${sub.desc || '—'}</span>
+                  <span class="text-gray-400 ml-1">(${sub.category || ''})</span>
+                  ${sub.hasReceipt ? '<span class="text-green-600 ml-1">🧾</span>' : '<span class="text-amber-500 ml-1">⚠️</span>'}
+                  <div class="flex items-center justify-between mt-1 sm:hidden">
+                    <span class="font-mono font-bold text-gray-600">${fmt(parseFloat(sub.amount) || 0)}</span>
+                    <span class="text-[10px] text-amber-600 font-bold">PENDING</span>
+                  </div>
+                </div>
               </div>
             </td>
-            <td class="px-6 py-2 text-right font-mono text-xs text-gray-600">${fmt(parseFloat(sub.amount) || 0)}</td>
-            <td class="px-6 py-2 text-center"><span class="text-[10px] text-amber-600 font-bold">PENDING</span></td>
+            <td class="px-3 py-2 text-right font-mono text-xs text-gray-600 hidden sm:table-cell">${fmt(parseFloat(sub.amount) || 0)}</td>
+            <td class="px-3 py-2 text-center hidden sm:table-cell"><span class="text-[10px] text-amber-600 font-bold">PENDING</span></td>
           </tr>`);
       });
 
@@ -381,9 +398,14 @@ function renderDetailList() {
       if (bd && bd.change > 0.005) {
         rows.push(`
           <tr class="bg-amber-50/50 border-l-4 border-amber-300">
-            <td class="pl-12 pr-6 py-2 text-xs font-bold text-amber-700">↩ Change to Return</td>
-            <td class="px-6 py-2 text-right font-mono text-xs font-bold text-amber-700">${fmt(bd.change)}</td>
-            <td></td>
+            <td class="pl-8 pr-3 py-2">
+              <div class="flex items-center justify-between text-xs font-bold text-amber-700">
+                <span>↩ Change to Return</span>
+                <span class="font-mono sm:hidden">${fmt(bd.change)}</span>
+              </div>
+            </td>
+            <td class="px-3 py-2 text-right font-mono text-xs font-bold text-amber-700 hidden sm:table-cell">${fmt(bd.change)}</td>
+            <td class="hidden sm:table-cell"></td>
           </tr>`);
       }
     }

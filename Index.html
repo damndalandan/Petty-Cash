@@ -43,6 +43,60 @@
   
   /* Sidebar transition */
   .sidebar-transition { transition: transform 0.3s ease-in-out; }
+
+  /* ── MOBILE GLOBAL ── */
+
+  /* Prevent iOS double-tap zoom on buttons & links */
+  button, a, [role="button"] { touch-action: manipulation; }
+
+  /* Prevent iOS zoom on focused inputs (requires font-size >= 16px) */
+  @media (max-width: 767px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+  }
+
+  /* Smooth momentum scroll on iOS */
+  .overflow-y-auto, .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Safe-area padding for notched / home-bar phones */
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  header {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+
+  /* Minimum touch target (44 × 44 px) on mobile */
+  @media (max-width: 767px) {
+    .touch-target {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+    }
+  }
+
+  /* Mobile form-toggle button (hidden on lg+) */
+  .mobile-form-toggle {
+    display: none;
+  }
+  @media (max-width: 1023px) {
+    .mobile-form-toggle {
+      display: inline-flex;
+    }
+  }
+
+  /* Mobile-only tab bar for pages that use a two-panel layout */
+  .mobile-panel-tabs {
+    display: flex;
+  }
+  @media (min-width: 1024px) {
+    .mobile-panel-tabs { display: none; }
+  }
 </style>
 </head>
 <body class="bg-slate-50 font-body text-slate-800 flex h-screen overflow-hidden relative selection:bg-indigo-200 selection:text-indigo-900">

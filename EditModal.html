@@ -1,44 +1,44 @@
 <!-- EDIT MODAL -->
-<div id="editModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm transition-opacity">
-  <div class="bg-white rounded-lg shadow-xl max-w-md w-full m-4 overflow-hidden transform transition-all scale-100">
-    <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-      <h3 class="text-lg font-bold text-gray-800">✏️ Edit Entry</h3>
-      <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 focus:outline-none text-2xl font-light">&times;</button>
+<div id="editModal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm transition-opacity">
+  <div class="bg-white rounded-t-2xl sm:rounded-lg shadow-xl max-w-md w-full sm:m-4 overflow-hidden transform transition-all scale-100">
+    <div class="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+      <h3 class="text-base font-bold text-gray-800">✏️ Edit Entry</h3>
+      <button onclick="closeEditModal()" class="text-gray-400 hover:text-gray-600 focus:outline-none text-2xl font-light w-10 h-10 flex items-center justify-center">&times;</button>
     </div>
-    
-    <div class="p-6 space-y-4">
+
+    <div class="p-5 space-y-3 overflow-y-auto max-h-[70vh]">
       <input type="hidden" id="editEntryId">
       <div>
          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
-         <select id="editType" class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50">
+         <select id="editType" class="w-full p-3 border border-gray-300 rounded text-sm bg-gray-50 min-h-[44px]">
             <option value="EXPENSE">Expense</option>
             <option value="CASH_ADVANCE">Cash Advance</option>
          </select>
       </div>
       <div>
          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
-         <select id="editCategory" class="w-full p-2 border border-gray-300 rounded text-sm bg-gray-50">
+         <select id="editCategory" class="w-full p-3 border border-gray-300 rounded text-sm bg-gray-50 min-h-[44px]">
            <option value="">Loading...</option>
          </select>
       </div>
       <div>
          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
-         <input type="text" id="editDesc" class="w-full p-2 border border-gray-300 rounded text-sm">
+         <input type="text" id="editDesc" class="w-full p-3 border border-gray-300 rounded text-sm min-h-[44px]">
       </div>
       <div>
          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount</label>
-         <input type="number" id="editAmount" class="w-full p-2 border border-gray-300 rounded text-sm font-mono" step="0.01">
+         <input type="number" id="editAmount" class="w-full p-3 border border-gray-300 rounded text-sm font-mono min-h-[44px]" step="0.01">
       </div>
       <div>
          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Receipt</label>
-         <button type="button" id="editReceiptBtn" onclick="openEditReceiptModal()" class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition">
+         <button type="button" id="editReceiptBtn" onclick="openEditReceiptModal()" class="w-full flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition min-h-[48px]">
            🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>
          </button>
       </div>
     </div>
-    <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-      <button onclick="closeEditModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-lg text-sm font-medium transition">Cancel</button>
-      <button onclick="updateEntry()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition">💾 Save</button>
+    <div class="px-5 py-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+      <button onclick="closeEditModal()" class="flex-1 py-3 text-gray-600 hover:bg-gray-200 rounded-lg text-sm font-medium transition min-h-[48px]">Cancel</button>
+      <button onclick="updateEntry()" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-sm transition min-h-[48px]">💾 Save</button>
     </div>
   </div>
 </div>

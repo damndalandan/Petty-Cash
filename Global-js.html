@@ -233,11 +233,15 @@ function navigate(page) {
   if (page === 'summaryreport')  initSummaryReport();
   if (page === 'replenishreport') loadReplenishReport();
 
-  // Close mobile sidebar
+  // Close mobile sidebar and scroll to top
   const sb = document.getElementById('sidebar');
   const ov = document.getElementById('sidebarOverlay');
   if (sb) sb.classList.add('-translate-x-full');
   if (ov) ov.classList.add('hidden');
+
+  // Scroll main content to top on mobile navigation
+  const main = document.querySelector('main');
+  if (main) main.scrollTop = 0;
 }
 
 function onDateChange() {

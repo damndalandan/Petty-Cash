@@ -5,6 +5,17 @@
 
 let _pendingReceipt = null;
 
+// Mobile form toggle for Entries page
+function toggleEntryForm() {
+  const panel = document.getElementById('entryFormPanel');
+  const btn   = document.getElementById('entryFormToggleBtn');
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none';
+  panel.style.display = isHidden ? '' : 'none';
+  if (btn) btn.textContent = isHidden ? '✕ Close' : '➕ Add Entry';
+  if (isHidden) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function clearEntryForm() {
   ['entryDesc','entryAmount','entryRequested'].forEach(id => {
     const el = document.getElementById(id);

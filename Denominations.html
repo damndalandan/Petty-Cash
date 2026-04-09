@@ -1,5 +1,5 @@
 <!-- DENOMINATIONS: MODERN CARD LAYOUT -->
-<div id="page-denominations" class="page-view hidden space-y-6">
+<div id="page-denominations" class="page-view hidden space-y-4">
 
   <!-- ADMIN ONLY: Opening Card -->
   <div class="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden border-t-4 border-blue-500" id="denomOpeningCard">
@@ -32,16 +32,16 @@
       </div>
     </div>
     <!-- Notes + Actions -->
-    <div class="p-5 border-t border-gray-100 bg-white" id="openingNotesSection">
+    <div class="p-4 border-t border-gray-100 bg-white" id="openingNotesSection">
       <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
       <div class="flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
-          <textarea id="openingNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="3" placeholder="Start typing..."></textarea>
+          <textarea id="openingNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="2" placeholder="Start typing..."></textarea>
           <div class="absolute top-3 left-3 text-gray-400 text-sm">📝</div>
         </div>
         <div class="flex sm:flex-col gap-2 shrink-0">
-          <button onclick="clearDenomForm()" class="flex-1 sm:flex-none px-4 py-2.5 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap">↺ Clear</button>
-          <button onclick="saveDenomination()" class="flex-1 sm:flex-none px-5 py-2.5 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transform active:scale-95 transition-all text-sm flex items-center justify-center gap-2 whitespace-nowrap">
+          <button onclick="clearDenomForm()" class="flex-1 sm:flex-none px-4 py-3 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap min-h-[48px]">↺ Clear</button>
+          <button onclick="saveDenomination()" class="flex-1 sm:flex-none px-5 py-3 bg-blue-600 text-white font-bold rounded-lg shadow hover:bg-blue-700 transform active:scale-95 transition-all text-sm flex items-center justify-center gap-2 whitespace-nowrap min-h-[48px]">
             <span>💾</span> Save Count
           </button>
         </div>
@@ -71,16 +71,16 @@
       </div>
     </div>
     <!-- Notes + Actions -->
-    <div class="p-5 border-t border-gray-100 bg-white" id="closingNotesSection">
+    <div class="p-4 border-t border-gray-100 bg-white" id="closingNotesSection">
       <label class="block text-xs font-bold text-gray-400 uppercase mb-2">Notes &amp; Remarks</label>
       <div class="flex flex-col sm:flex-row gap-3">
         <div class="relative flex-1">
-          <textarea id="closingNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="3" placeholder="Start typing..."></textarea>
+          <textarea id="closingNotes" class="w-full p-3 pl-9 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white focus:border-blue-500 transition-all resize-none outline-none" rows="2" placeholder="Start typing..."></textarea>
           <div class="absolute top-3 left-3 text-gray-400 text-sm">📝</div>
         </div>
         <div class="flex sm:flex-col gap-2 shrink-0">
-          <button onclick="clearClosingForm()" class="flex-1 sm:flex-none px-4 py-2.5 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap">↺ Clear</button>
-          <button onclick="saveClosing()" class="flex-1 sm:flex-none px-5 py-2.5 bg-amber-500 text-white font-bold rounded-lg shadow hover:bg-amber-600 transform active:scale-95 transition-all text-sm flex items-center justify-center gap-2 whitespace-nowrap">
+          <button onclick="clearClosingForm()" class="flex-1 sm:flex-none px-4 py-3 bg-white text-gray-600 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition text-sm whitespace-nowrap min-h-[48px]">↺ Clear</button>
+          <button onclick="saveClosing()" class="flex-1 sm:flex-none px-5 py-3 bg-amber-500 text-white font-bold rounded-lg shadow hover:bg-amber-600 transform active:scale-95 transition-all text-sm flex items-center justify-center gap-2 whitespace-nowrap min-h-[48px]">
             <span>💾</span> Save Count
           </button>
         </div>
@@ -102,13 +102,13 @@
 <!-- =============================================
        CLOSING CONFIRM MODAL
        ============================================= -->
-  <div id="closingModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-    <div class="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+  <div id="closingModal" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
+    <div class="bg-white w-full max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]">
 
       <!-- Modal Header -->
-      <div class="bg-gray-50 p-5 border-b border-gray-100 text-center shrink-0">
-        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-3 text-2xl">🌙</div>
-        <h3 class="text-lg font-bold text-gray-800">Review Closing Count</h3>
+      <div class="bg-gray-50 p-4 border-b border-gray-100 text-center shrink-0">
+        <div class="w-10 h-10 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-2 text-xl">🌙</div>
+        <h3 class="text-base font-bold text-gray-800">Review Closing Count</h3>
         <p class="text-xs text-gray-500">Confirm cash count and file all documents before closing</p>
       </div>
 
@@ -208,9 +208,9 @@
 
       <!-- Footer -->
       <div class="p-4 bg-gray-50 border-t border-gray-100 flex gap-3 shrink-0">
-        <button onclick="closeClosingModal()" class="flex-1 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition">Cancel</button>
+        <button onclick="closeClosingModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[48px]">Cancel</button>
         <button onclick="confirmClosingSave()" id="confirmCloseBtn"
-          class="flex-1 py-2.5 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow transition">
+          class="flex-1 py-3 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow transition min-h-[48px]">
           ✓ Close Day
         </button>
       </div>

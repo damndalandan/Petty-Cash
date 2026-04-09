@@ -1,16 +1,16 @@
 <!-- REPORT PAGE -->
-    <div id="page-report" class="page-view hidden flex flex-col gap-6 md:flex-row md:h-[calc(100vh-5rem)] md:overflow-hidden">
-      
+    <div id="page-report" class="page-view hidden flex flex-col gap-4 md:flex-row md:h-[calc(100vh-5rem)] md:overflow-hidden">
+
       <!-- Left Pane: Daily Summaries List -->
-      <div class="w-full md:w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-80 md:h-full shrink-0">
-         <div class="p-4 border-b border-gray-200 bg-gray-50 flex flex-col gap-3">
+      <div class="w-full md:w-1/3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-56 md:h-full shrink-0">
+         <div class="p-3 border-b border-gray-200 bg-gray-50 flex flex-col gap-2">
            <div class="flex justify-between items-center">
-             <h2 class="font-bold text-gray-700 font-display">Daily Reports</h2>
-             <button onclick="loadReportsList()" class="text-blue-600 hover:bg-blue-100 p-1.5 rounded transition" title="Refresh">↻</button>
+             <h2 class="font-bold text-gray-700 font-display text-sm">Daily Reports</h2>
+             <button onclick="loadReportsList()" class="text-blue-600 hover:bg-blue-100 p-2 rounded transition min-h-[36px] min-w-[36px] flex items-center justify-center" title="Refresh">↻</button>
            </div>
            <div class="flex gap-2">
-              <select id="reportMonth" onchange="loadReportsList()" class="flex-1 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
-              <select id="reportYear" onchange="loadReportsList()" class="w-24 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none"></select>
+              <select id="reportMonth" onchange="loadReportsList()" class="flex-1 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none min-h-[40px]"></select>
+              <select id="reportYear" onchange="loadReportsList()" class="w-24 p-2 bg-white border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 outline-none min-h-[40px]"></select>
            </div>
          </div>
          <div id="reportsList" class="flex-1 overflow-y-auto p-2 space-y-1 bg-gray-50/50">
@@ -19,8 +19,8 @@
       </div>
 
       <!-- Right Pane: Details -->
-      <div class="w-full md:w-2/3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-[32rem] md:h-full relative overflow-hidden">
-         
+      <div class="w-full md:w-2/3 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-[28rem] md:h-full relative overflow-hidden">
+
          <div id="reportDetailEmpty" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400 bg-white z-10">
            <span class="text-5xl mb-4 grayscale opacity-50">📊</span>
            <p class="text-lg font-medium">Select a day to view details</p>
@@ -28,26 +28,26 @@
 
          <div id="reportDetailContent" class="flex flex-col h-full hidden">
             <!-- Header -->
-            <div class="p-6 border-b border-gray-200 bg-white flex justify-between items-start">
-               <div>
+            <div class="p-4 border-b border-gray-200 bg-white flex justify-between items-start gap-3">
+               <div class="min-w-0">
                   <div class="flex items-center gap-2 flex-wrap">
-                    <h2 class="text-2xl font-bold text-gray-800 font-display" id="detailDate">—</h2>
+                    <h2 class="text-lg font-bold text-gray-800 font-display" id="detailDate">—</h2>
                     <span id="reportAuditStatusBadge" class="hidden text-[10px] font-bold px-2.5 py-1 rounded-full"></span>
                   </div>
-                  <div class="flex gap-4 mt-2 text-sm">
-                     <div><span class="text-gray-500 block text-[10px] uppercase">Opening</span><span class="font-mono font-bold" id="d-opening">₱0.00</span></div>
-                     <div><span class="text-gray-500 block text-[10px] uppercase">Expenses</span><span class="font-mono font-bold text-red-600" id="d-expenses">₱0.00</span></div>
-                     <div><span class="text-gray-500 block text-[10px] uppercase">Closing</span><span class="font-mono font-bold text-green-600" id="d-closing">₱0.00</span></div>
+                  <div class="flex flex-wrap gap-3 mt-1.5 text-sm">
+                     <div><span class="text-gray-500 block text-[10px] uppercase">Opening</span><span class="font-mono font-bold text-sm" id="d-opening">₱0.00</span></div>
+                     <div><span class="text-gray-500 block text-[10px] uppercase">Expenses</span><span class="font-mono font-bold text-red-600 text-sm" id="d-expenses">₱0.00</span></div>
+                     <div><span class="text-gray-500 block text-[10px] uppercase">Closing</span><span class="font-mono font-bold text-green-600 text-sm" id="d-closing">₱0.00</span></div>
                   </div>
                </div>
-               <div class="text-right">
+               <div class="text-right shrink-0">
                   <div class="text-[10px] text-gray-500 uppercase tracking-widest">Variance</div>
-                  <div class="text-xl font-mono font-bold" id="d-variance">₱0.00</div>
+                  <div class="text-lg font-mono font-bold" id="d-variance">₱0.00</div>
                </div>
             </div>
 
             <!-- Tabs — includes OVERAGE and REPLENISHMENT tabs -->
-            <div class="flex border-b border-gray-200 bg-gray-50 px-6 pt-2 gap-1 overflow-x-auto" id="detailTabs">
+            <div class="flex border-b border-gray-200 bg-gray-50 px-3 pt-2 gap-1 overflow-x-auto" id="detailTabs">
                <button onclick="setDetailFilter('all')"       id="tab-all"       class="px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 whitespace-nowrap">All</button>
                <button onclick="setDetailFilter('receipt')"   id="tab-receipt"   class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">With Receipt</button>
                <button onclick="setDetailFilter('noreceipt')" id="tab-noreceipt" class="px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap">No Receipt</button>
@@ -61,9 +61,9 @@
                <table class="w-full text-left text-sm">
                   <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200 sticky top-0">
                     <tr>
-                      <th class="px-6 py-3">Category / Desc</th>
-                      <th class="px-6 py-3 text-right">Amount</th>
-                      <th class="px-6 py-3 text-center">Type</th>
+                      <th class="px-3 py-3">Description</th>
+                      <th class="px-3 py-3 text-right hidden sm:table-cell">Amount</th>
+                      <th class="px-3 py-3 text-center hidden sm:table-cell">Type</th>
                     </tr>
                   </thead>
                   <tbody id="detailListBody" class="divide-y divide-gray-100"></tbody>
@@ -71,12 +71,12 @@
             </div>
 
             <!-- Footer Totals -->
-            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end items-center gap-3">
-               <div class="text-right">
-                  <span class="text-xs text-gray-500 uppercase">Expenses Total</span>
-                  <div class="text-xs text-gray-400 italic">Excludes advances, overages &amp; replenishments</div>
+            <div class="px-3 py-3 border-t border-gray-200 bg-gray-50 flex justify-between items-center gap-2">
+               <div>
+                  <span class="text-xs font-bold text-gray-500 uppercase">Expenses Total</span>
+                  <div class="text-[10px] text-gray-400 italic hidden sm:block">Excludes advances, overages &amp; replenishments</div>
                </div>
-               <span class="font-bold font-mono text-lg text-gray-800" id="detailDisplayedTotal">₱0.00</span>
+               <span class="font-bold font-mono text-base text-gray-800" id="detailDisplayedTotal">₱0.00</span>
             </div>
          </div>
       </div>
