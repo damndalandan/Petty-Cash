@@ -238,6 +238,7 @@ function navigate(page) {
   const ov = document.getElementById('sidebarOverlay');
   if (sb) sb.classList.add('-translate-x-full');
   if (ov) ov.classList.add('hidden');
+  document.body.style.overflow = '';
 
   // Scroll main content to top on mobile navigation
   const main = document.querySelector('main');

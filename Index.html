@@ -111,18 +111,18 @@
 <!-- TOAST CONTAINER -->
 <div id="toast-container" class="fixed top-5 right-5 z-50 flex flex-col gap-2"></div>
 
-<!-- MOBILE OVERLAY -->
-<div id="sidebarOverlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/50 z-20 hidden md:hidden transition-all duration-300"></div>
+<!-- MOBILE SIDEBAR OVERLAY — sits above sidebar (z-40) so tapping it closes the sidebar -->
+<div id="sidebarOverlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/60 z-40 hidden transition-all duration-300"></div>
 
-<!-- SIDEBAR -->
-<div class="z-30 flex h-full">
+<!-- SIDEBAR — z-50 so it's above the overlay on mobile -->
+<div class="flex h-full" style="position:relative;z-index:50;">
   <?!= include('Sidebar'); ?>
 </div>
 
-<!-- MAIN CONTENT -->
-<div class="flex-1 flex flex-col h-full overflow-hidden relative z-10">
+<!-- MAIN CONTENT — no z-index stacking context so modals inside can reach the root layer -->
+<div class="flex-1 flex flex-col h-full overflow-hidden">
   <!-- Mobile Header -->
-  <header class="bg-white/80 backdrop-blur-md shadow-sm z-10 md:hidden flex items-center gap-3 px-3 py-2.5 border-b border-gray-100">
+  <header class="bg-white/80 backdrop-blur-md shadow-sm md:hidden flex items-center gap-3 px-3 py-2.5 border-b border-gray-100" style="position:relative;z-index:45;">
     <button onclick="toggleSidebar()" class="text-gray-600 focus:outline-none p-1.5 rounded-lg hover:bg-gray-100 shrink-0">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
     </button>
@@ -132,7 +132,7 @@
     </div>
   </header>
 
-  <main class="flex-1 overflow-x-hidden overflow-y-auto bg-transparent p-3 md:p-6 z-10 w-full h-full relative">
+  <main class="flex-1 overflow-x-hidden overflow-y-auto bg-transparent p-3 md:p-6 w-full h-full">
     <?!= include('Dashboard'); ?>
     <?!= include('Entries'); ?>
     <?!= include('Denominations'); ?>

@@ -5,22 +5,35 @@ function toggleSidebar() {
   if (sb.classList.contains('-translate-x-full')) {
     sb.classList.remove('-translate-x-full');
     ov.classList.remove('hidden');
+    // Prevent background scroll while sidebar is open on mobile
+    if (window.innerWidth < 768) document.body.style.overflow = 'hidden';
   } else {
     sb.classList.add('-translate-x-full');
     ov.classList.add('hidden');
+    document.body.style.overflow = '';
   }
 }
 
 function closeSidebarOnMobile() {
-  if (window.innerWidth < 768) {
-    const sb = document.getElementById('sidebar');
-    const ov = document.getElementById('sidebarOverlay');
-    if (sb && !sb.classList.contains('-translate-x-full')) {
-      sb.classList.add('-translate-x-full');
-      if (ov) ov.classList.add('hidden');
-    }
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebarOverlay');
+  if (sb && !sb.classList.contains('-translate-x-full')) {
+    sb.classList.add('-translate-x-full');
+    if (ov) ov.classList.add('hidden');
   }
 }
+
+// Close sidebar whenever any modal opens
+document.addEventListener('click', function(e) {
+  // If the click target opened a modal (has onclick containing 'Modal' or 'modal')
+  const btn = e.target.closest('[onclick]');
+  if (btn) {
+    const fn = btn.getAttribute('onclick') || '';
+    if (/open.*[Mm]odal|show.*[Mm]odal/i.test(fn)) {
+      closeSidebarOnMobile();
+    }
+  }
+}, true);
 
 // Email is now set by applyRoleUI() in Global-js after getUserRole() loads
 // Keep this as a fallback only
