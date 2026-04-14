@@ -162,7 +162,7 @@ async function checkPreviousDayStatus(currentDateStr) {
         warningEl.dataset.targetDate = targetDate;
 
         if (auditParams)    auditParams.value       = targetDate;
-        if (warningTitle)   warningTitle.textContent = 'Unclosed Past Audit';
+        if (warningTitle)   warningTitle.textContent = 'Previous Day Still Open';
         if (prevDateLabel)  prevDateLabel.textContent = targetDate;
 
     } else {
