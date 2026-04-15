@@ -134,15 +134,13 @@ function updateAuditVariance(actualCash) {
 
   const opening = parseFloat(summary.openingCash || 0);
 
-  // Expected starts at opening cash only.
-  // Each verified entry moves the expected toward the fully-accounted value:
-  //   verified outflow (EXPENSE, CASH_ADVANCE, LIQ_DETAIL) → expected decreases
-  //   verified inflow  (REPLENISHMENT, CASH_OVER, CASH_RETURN) → expected increases
-  // Result: variance = −totalEntries when nothing verified, → ₱0 when all verified.
+  // Expected = opening adjusted by ALL non-flagged entries from the start.
+  // Flagged entries are excluded — they represent disputed amounts that become real variance.
+  // Verified entries are already included (they were never excluded to begin with).
   const reviewableEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
   let expectedAdj = 0;
   reviewableEntries
-    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
+    .filter(e => auditEntryReviews[e.id]?.status !== 'flagged')
     .forEach(e => {
       // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
       if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
@@ -501,20 +499,21 @@ async function confirmAuditDecision(decision) {
   let actualCash = 0;
   AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
 
-  // Same formula as the live variance display: opening + verified adjustments.
-  // At approval time all entries must be verified, so this equals the full expected.
+  // Expected = opening adjusted by all non-flagged entries.
   let expectedAdj = 0;
-  entries.forEach(e => {
-    // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
-    if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+  entries
+    .filter(e => auditEntryReviews[e.id]?.status !== 'flagged')
+    .forEach(e => {
+      // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
+      if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
 
-    const amt = parseFloat(e.amount || 0);
-    if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
-      expectedAdj += amt;
-    } else {
-      expectedAdj -= amt;
-    }
-  });
+      const amt = parseFloat(e.amount || 0);
+      if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
+        expectedAdj += amt;
+      } else {
+        expectedAdj -= amt;
+      }
+    });
   const expected = opening + expectedAdj;
 
   const variance = actualCash - expected;
@@ -556,17 +555,19 @@ function openAuditApproveModal(variance, actualCash) {
 
   const opening = parseFloat(summary?.openingCash || 0);
   let expectedAdjModal = 0;
-  entries.forEach(e => {
-    // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
-    if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+  entries
+    .filter(e => auditEntryReviews[e.id]?.status !== 'flagged')
+    .forEach(e => {
+      // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
+      if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
 
-    const amt = parseFloat(e.amount || 0);
-    if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
-      expectedAdjModal += amt;
-    } else {
-      expectedAdjModal -= amt;
-    }
-  });
+      const amt = parseFloat(e.amount || 0);
+      if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
+        expectedAdjModal += amt;
+      } else {
+        expectedAdjModal -= amt;
+      }
+    });
   const expected = opening + expectedAdjModal;
 
   const isZero = Math.abs(variance) < 0.01;
