@@ -325,7 +325,7 @@ function initializeSheets() {
       'Summary_ID','Date','Opening_Cash','Cash_Advance',
       'Total_Exp_With_Receipt','Total_Exp_No_Receipt','Total_Expenses',
       'Total_Cash_Over','Total_Replenishment','Total_Cash_Return',
-      'Closing_Cash','Variance','Status','Closed_By','Updated_At'
+      'Total_Reimbursement','Closing_Cash','Variance','Status','Closed_By','Updated_At'
     ]);
     s.setFrozenRows(1);
     formatHeaderRow(s);
@@ -1285,8 +1285,8 @@ function generateReportData(params) {
         date:sDate, opening:sRow[2], cashAdvance:sRow[3],
         totalWithReceipt:sRow[4], totalWithoutReceipt:sRow[5],
         expenses:sRow[6], cashOver:sRow[7], replenishment:sRow[8],
-        cashReturn:sRow[9], closing:sRow[10], variance:sRow[11],
-        status:sRow[12]
+        cashReturn:sRow[9], closing:sRow[11], variance:sRow[12],
+        status:sRow[13]
       });
     }
 
@@ -2256,12 +2256,12 @@ function getAdminMetrics() {
       if (row.length < 12) continue;
       const rDate  = normalizeDate(row[1]);
       if (rDate > today) continue;         // skip future dates
-      const status   = row[12] || 'OPEN';
-      const variance = parseFloat(row[11]) || 0;
+      const status   = row[13] || 'OPEN';
+      const variance = parseFloat(row[12]) || 0;
       const cashOver = parseFloat(row[7])  || 0;
       const opening  = parseFloat(row[2])  || 0;
       const expenses = parseFloat(row[6])  || 0;
-      const closing  = parseFloat(row[10]) || 0;
+      const closing  = parseFloat(row[11]) || 0;
 
       // Unclosed = anything not CLOSED (exclude today as it is still active)
       if (status !== 'CLOSED' && rDate !== today) {
@@ -2283,9 +2283,9 @@ function getAdminMetrics() {
     const closedDates = {};
     for (let i = 1; i < sumRows.length; i++) {
       const row = sumRows[i];
-      if ((row[12] || '') === 'CLOSED') {
+      if ((row[13] || '') === 'CLOSED') {
         const d = normalizeDate(row[1]);
-        if (d <= today) closedDates[d] = { date: d, opening: parseFloat(row[2])||0, expenses: parseFloat(row[6])||0, closing: parseFloat(row[10])||0 };
+        if (d <= today) closedDates[d] = { date: d, opening: parseFloat(row[2])||0, expenses: parseFloat(row[6])||0, closing: parseFloat(row[11])||0 };
       }
     }
 
@@ -2384,11 +2384,11 @@ function getAuditorMetrics() {
       if (row.length < 12) continue;
       const rDate  = normalizeDate(row[1]);
       if (rDate > today) continue;
-      const status   = row[12] || 'OPEN';
-      const variance = parseFloat(row[11]) || 0;
+      const status   = row[13] || 'OPEN';
+      const variance = parseFloat(row[12]) || 0;
       const opening  = parseFloat(row[2])  || 0;
       const expenses = parseFloat(row[6])  || 0;
-      const closing  = parseFloat(row[10]) || 0;
+      const closing  = parseFloat(row[11]) || 0;
 
       if (status === 'PENDING_AUDIT') {
         pendingAudit.push({ date: rDate, variance, opening, expenses, closing });
@@ -2465,10 +2465,10 @@ function repairSummarySheet() {
 
     for (let i = 1; i < rows.length; i++) {
       const row   = rows[i];
-      const col12 = row[11]; // index 11 = col 12 = should be Variance (number)
-      const col13 = row[12]; // index 12 = col 13 = should be Status
-      const col14 = row[13]; // index 13 = col 14 = should be Closed_By
-      const col15 = row[14]; // index 14 = col 15 = should be Updated_At
+      const col12 = row[11]; // index 11 = col L = Closing_Cash (old rows: may hold status string due to prior bug)
+      const col13 = row[12]; // index 12 = col M = Variance
+      const col14 = row[13]; // index 13 = col N = Status
+      const col15 = row[14]; // index 14 = col O = Closed_By
       const date  = normalizeDate(row[1]);
 
       // Detect corrupted row: col 12 holds a status string (bug wrote status there)
