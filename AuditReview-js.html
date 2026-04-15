@@ -75,19 +75,20 @@ async function loadAuditReviewPage() {
     state.entries = allEntries;
     const entries = allEntries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
 
-    // If already closed, pre-mark all entries as verified for consistent UI/variance
-    if (state.summary?.status === 'CLOSED') {
-      entries.forEach(e => {
+    // Pre-mark all entries as verified so expected starts fully computed.
+    // The auditor can then flag suspicious entries — flagged entries are excluded
+    // from expected, making any real discrepancy visible as live variance.
+    entries.forEach(e => {
+      if (!auditEntryReviews[e.id]) {
         auditEntryReviews[e.id] = { status: 'verified', note: '' };
-      });
-    }
+      }
+    });
 
     renderAuditEntries(entries);
     updateAuditProgress(entries);
     updateAuditStatusBanner();
 
-    // Re-run after entries are loaded so the Day Summary panel shows live entry totals
-    // and the variance display reflects the initial unverified state correctly.
+    // Re-run after entries are loaded so the Day Summary panel shows live entry totals.
     updateAuditDaySummaryPanel();
     updateAuditDenomTotal();
 
@@ -134,13 +135,13 @@ function updateAuditVariance(actualCash) {
 
   const opening = parseFloat(summary.openingCash || 0);
 
-  // Expected = opening adjusted by ALL non-flagged entries from the start.
-  // Flagged entries are excluded — they represent disputed amounts that become real variance.
-  // Verified entries are already included (they were never excluded to begin with).
+  // Expected = opening + all verified entries. Entries start as verified on load,
+  // so expected is fully computed immediately. Flagging an entry removes it from
+  // expected, making the variance update live.
   const reviewableEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
   let expectedAdj = 0;
   reviewableEntries
-    .filter(e => auditEntryReviews[e.id]?.status !== 'flagged')
+    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
       // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
       if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
@@ -499,10 +500,9 @@ async function confirmAuditDecision(decision) {
   let actualCash = 0;
   AUDIT_BILLS.forEach(bill => { actualCash += (parseFloat(auditDenomValues[bill]) || 0) * bill; });
 
-  // Expected = opening adjusted by all non-flagged entries.
   let expectedAdj = 0;
   entries
-    .filter(e => auditEntryReviews[e.id]?.status !== 'flagged')
+    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
       // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
       if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
@@ -556,7 +556,7 @@ function openAuditApproveModal(variance, actualCash) {
   const opening = parseFloat(summary?.openingCash || 0);
   let expectedAdjModal = 0;
   entries
-    .filter(e => auditEntryReviews[e.id]?.status !== 'flagged')
+    .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
       // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
       if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
