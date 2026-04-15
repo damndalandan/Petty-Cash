@@ -441,7 +441,7 @@ function recalculateDailySummary(date) {
 
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
     let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0;
-    let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0;
+    let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0, totalReimbursement = 0;
     let cashMovementExp = 0;
 
     for (let i = 1; i < entryData.length; i++) {
@@ -465,7 +465,7 @@ function recalculateDailySummary(date) {
         else if (type === 'CASH_OVER')                  totalCashOver      += amt;
         else if (type === 'REPLENISHMENT')              totalReplenishment += amt;
         else if (type === 'CASH_RETURN')                totalCashReturn    += amt;
-        else if (type === 'CASH_ADVANCE_REIMBURSEMENT') cashAdvance        += amt; // outflow like a cash advance
+        else if (type === 'CASH_ADVANCE_REIMBURSEMENT') totalReimbursement += amt; // outflow: petty cash paid employee back
         else if (type === 'LIQ_DETAIL')    {
           totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
@@ -499,14 +499,14 @@ function recalculateDailySummary(date) {
     let existingStatus = '', targetRow = -1, existingClosedBy = '';
     for (let i = 1; i < sumData.length; i++) {
       if (normalizeDate(sumData[i][1]) === date) {
-        existingStatus   = sumData[i][12] || '';
-        existingClosedBy = sumData[i][13] || '';
+        existingStatus   = sumData[i][13] || '';
+        existingClosedBy = sumData[i][14] || '';
         targetRow = i + 1;
         break;
       }
     }
 
-    const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (cashMovementExp + cashAdvance);
+    const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (cashMovementExp + cashAdvance + totalReimbursement);
     const variance = hasClosing ? (closingCash - expected) : 0;
     const status   = hasClosing
       ? (existingStatus === 'CLOSED' ? 'CLOSED' : 'PENDING_AUDIT')
@@ -516,6 +516,7 @@ function recalculateDailySummary(date) {
       openingCash, cashAdvance,
       totalReceipt, totalNoReceipt, totalExp,
       totalCashOver, totalReplenishment, totalCashReturn,
+      totalReimbursement,                // col K — new
       closingCash, variance, status,
       existingClosedBy,
       new Date().toISOString()
@@ -525,7 +526,7 @@ function recalculateDailySummary(date) {
       const sumId = generateId('SUM', date, sumSheet);
       sumSheet.appendRow([sumId, date, ...summaryRow]);
     } else {
-      sumSheet.getRange(targetRow, 3, 1, 13).setValues([summaryRow]);
+      sumSheet.getRange(targetRow, 3, 1, 14).setValues([summaryRow]);
     }
 
     return { success: true };
@@ -1195,11 +1196,12 @@ function getDailySummary(date) {
           totalCashOver      : row[7],
           totalReplenishment : row[8],
           totalCashReturn    : row[9],
-          closingCash        : row[10],
-          variance           : row[11],
-          status             : row[12],
-          closedBy           : row[13],
-          updatedAt          : row[14]
+          totalReimbursement : row[10],
+          closingCash        : row[11],
+          variance           : row[12],
+          status             : row[13],
+          closedBy           : row[14],
+          updatedAt          : row[15]
         }
       };
     }
@@ -1233,6 +1235,7 @@ function getDailySummary(date) {
           totalCashOver      : 0,
           totalReplenishment : 0,
           totalCashReturn    : 0,
+          totalReimbursement : 0,
           closingCash        : 0,
           variance           : 0,
           status             : 'OPEN',
@@ -1330,7 +1333,7 @@ function findUnclosedPastDate(beforeDate) {
     for (let i = 1; i < data.length; i++) {
       if (data[i].length < 12) continue;
       const rDate = normalizeDate(data[i][1]);
-      const s = data[i][12];
+      const s = data[i][13];
       if (rDate < beforeDate && (s === 'OPEN' || s === 'PENDING_AUDIT' || s === 'FLAGGED')) unclosed.push(rDate);
     }
 
@@ -1360,9 +1363,9 @@ function auditApproveDay(data) {
     for (let i = 1; i < rows.length; i++) {
       if (normalizeDate(rows[i][1]) !== data.date) continue;
       const row = i + 1;
-      sheet.getRange(row, 13).setValue('CLOSED');
-      sheet.getRange(row, 14).setValue(email);
-      sheet.getRange(row, 15).setValue(now);
+      sheet.getRange(row, 14).setValue('CLOSED');
+      sheet.getRange(row, 15).setValue(email);
+      sheet.getRange(row, 16).setValue(now);
       SpreadsheetApp.flush(); // commit CLOSED status before any recalculation reads it
       found = true;
 
@@ -2479,7 +2482,7 @@ function repairSummarySheet() {
       // Recompute all totals from Entries sheet
       const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
       let totalExp = 0, totalReceipt = 0, totalNoReceipt = 0;
-      let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0;
+      let cashAdvance = 0, totalCashOver = 0, totalReplenishment = 0, totalCashReturn = 0, totalReimbursement = 0;
       let cashMovementExp = 0;
 
       for (let j = 1; j < entryData.length; j++) {
@@ -2492,7 +2495,7 @@ function repairSummarySheet() {
 
         if (type === 'CASH_ADVANCE') {
           cashAdvance += amt;
-        } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') { cashAdvance += amt; }
+        } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') { totalReimbursement += amt; }
           else if (type === 'CASH_OVER')     { totalCashOver      += amt; }
           else if (type === 'REPLENISHMENT') { totalReplenishment += amt; }
           else if (type === 'CASH_RETURN')   { totalCashReturn    += amt; }
@@ -2519,18 +2522,19 @@ function repairSummarySheet() {
         if (denomData[k][2] === 'END')   closingCash = parseFloat(denomData[k][13]) || 0;
       }
 
-      const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (cashMovementExp + cashAdvance);
+      const expected = (openingCash + totalReplenishment + totalCashReturn + totalCashOver) - (cashMovementExp + cashAdvance + totalReimbursement);
       const variance = closingCash - expected;
       const rowNum   = i + 1;
 
-      sumSheet.getRange(rowNum, 3, 1, 13).setValues([[
+      sumSheet.getRange(rowNum, 3, 1, 14).setValues([[
         openingCash, cashAdvance,
         totalReceipt, totalNoReceipt, totalExp,
         totalCashOver, totalReplenishment, totalCashReturn,
-        closingCash, variance,         // col 12 = Variance (restored as number)
-        corruptedStatus,               // col 13 = Status (moved to correct column)
-        corruptedEmail,                // col 14 = Closed_By (moved to correct column)
-        corruptedTs                    // col 15 = Updated_At (moved to correct column)
+        totalReimbursement,            // col K — new
+        closingCash, variance,         // col L = Closing, col M = Variance
+        corruptedStatus,               // col N = Status
+        corruptedEmail,                // col O = Closed_By
+        corruptedTs                    // col P = Updated_At
       ]]);
 
       repaired++;
@@ -2647,8 +2651,8 @@ function getSummaryReportData(params) {
       const expenses = parseFloat(sumData[i][6]) || 0;
       const opening  = parseFloat(sumData[i][2]) || 0;
       const replenish= parseFloat(sumData[i][8]) || 0;
-      const closing  = parseFloat(sumData[i][10]) || 0;
-      const status   = sumData[i][12] || 'OPEN';
+      const closing  = parseFloat(sumData[i][11]) || 0;
+      const status   = sumData[i][13] || 'OPEN';
       // Only include days with actual activity
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
       dailyRows.push({
@@ -2803,8 +2807,8 @@ function getReplenishmentPeriodReport() {
       const cashAdv   = parseFloat(sumData[i][3])  || 0;
       const expenses  = parseFloat(sumData[i][6])  || 0;
       const replenish = parseFloat(sumData[i][8])  || 0;
-      const closing   = parseFloat(sumData[i][10]) || 0;
-      const status    = String(sumData[i][12] || 'OPEN');
+      const closing   = parseFloat(sumData[i][11]) || 0;
+      const status    = String(sumData[i][13] || 'OPEN');
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
       dailyRows.push({
         date         : rowDate,
@@ -3236,8 +3240,8 @@ function getSummaryReportDataByRange(params) {
       const expenses = parseFloat(sumData[i][6]) || 0;
       const opening  = parseFloat(sumData[i][2]) || 0;
       const replenish= parseFloat(sumData[i][8]) || 0;
-      const closing  = parseFloat(sumData[i][10]) || 0;
-      const status   = String(sumData[i][12] || 'OPEN');
+      const closing  = parseFloat(sumData[i][11]) || 0;
+      const status   = String(sumData[i][13] || 'OPEN');
       if (expenses === 0 && opening === 0 && replenish === 0) continue;
       dailyRows.push({
         date: rowDate, opening,

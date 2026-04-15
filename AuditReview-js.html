@@ -697,7 +697,7 @@ function updateAuditDaySummaryPanel() {
 
   // Compute totals from live entries when available; fall back to summary before entries load.
   const liveEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
-  let replenish = 0, cashOver = 0, expenses = 0, advance = 0, cashReturn = 0;
+  let replenish = 0, cashOver = 0, expenses = 0, advance = 0, cashReturn = 0, reimbursement = 0;
 
   if (liveEntries.length > 0 || state.entries !== undefined) {
     liveEntries.forEach(e => {
@@ -705,10 +705,10 @@ function updateAuditDaySummaryPanel() {
       if (e.type === 'LIQ_DETAIL') return;
 
       const amt = parseFloat(e.amount || 0);
-      if      (e.type === 'REPLENISHMENT')              replenish  += amt;
-      else if (e.type === 'CASH_OVER')                  cashOver   += amt;
-      else if (e.type === 'CASH_RETURN')                cashReturn += amt;
-      else if (e.type === 'CASH_ADVANCE_REIMBURSEMENT') advance    += amt; // outflow: petty cash paid employee back
+      if      (e.type === 'REPLENISHMENT')              replenish     += amt;
+      else if (e.type === 'CASH_OVER')                  cashOver      += amt;
+      else if (e.type === 'CASH_RETURN')                cashReturn    += amt;
+      else if (e.type === 'CASH_ADVANCE_REIMBURSEMENT') reimbursement += amt;
       else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) {
         // Only deduct advance if it was issued today
         if (!e.originalDate || e.originalDate >= state.currentDate) advance += amt;
@@ -716,13 +716,14 @@ function updateAuditDaySummaryPanel() {
       else if (e.type === 'EXPENSE') expenses += amt;
     });
   } else {
-    replenish = parseFloat(s.totalReplenishment || 0);
-    cashOver  = parseFloat(s.totalCashOver      || 0);
-    expenses  = parseFloat(s.totalExpenses      || 0);
-    advance   = parseFloat(s.cashAdvance        || 0);
+    replenish     = parseFloat(s.totalReplenishment  || 0);
+    cashOver      = parseFloat(s.totalCashOver       || 0);
+    expenses      = parseFloat(s.totalExpenses       || 0);
+    advance       = parseFloat(s.cashAdvance         || 0);
+    reimbursement = parseFloat(s.totalReimbursement  || 0);
   }
 
-  const expected = (opening + replenish + cashOver + cashReturn) - (expenses + advance);
+  const expected = (opening + replenish + cashOver + cashReturn) - (expenses + advance + reimbursement);
 
   // Physical: use live denomination inputs; fall back to saved closingCash
   let physical = 0;
