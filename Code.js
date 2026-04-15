@@ -1461,11 +1461,11 @@ function auditApproveDay(data) {
       }
       if (nextSumRowIdx === -1) {
         const nextSumId = generateId('SUM', nextDate, nextSumSheet);
-        // 15 columns: ID, Date, Opening, CashAdv, ExpRcpt, ExpNoRcpt, Expenses,
-        //             CashOver, Repl, CashReturn, Closing, Variance, Status, ClosedBy, UpdatedAt
+        // 16 columns: ID, Date, Opening, CashAdv, ExpRcpt, ExpNoRcpt, Expenses,
+        //             CashOver, Repl, CashReturn, Reimb, Closing, Variance, Status, ClosedBy, UpdatedAt
         nextSumSheet.appendRow([
           nextSumId, nextDate,
-          endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
+          endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
         ]);
       } else {
         nextSumSheet.getRange(nextSumRowIdx, 3).setValue(endTotal);
@@ -1675,9 +1675,9 @@ function getDayStatus(date) {
 
     for (let i = 1; i < sumRows.length; i++) {
       if (normalizeDate(sumRows[i][1]) !== date) continue;
-      summaryStatus = sumRows[i][12] || 'OPEN';
+      summaryStatus = sumRows[i][13] || 'OPEN';
       openingCash   = parseFloat(sumRows[i][2])  || 0;
-      closingCash   = parseFloat(sumRows[i][10]) || 0;
+      closingCash   = parseFloat(sumRows[i][11]) || 0;
       replenishment = parseFloat(sumRows[i][8])  || 0;
       break;
     }
@@ -2081,7 +2081,7 @@ function getFilingChecklists(params) {
       const sumRows = sumSheet.getDataRange().getValues();
       for (let i = 1; i < sumRows.length; i++) {
         const rDate  = normalizeDate(sumRows[i][1]);
-        const status = sumRows[i][12];
+        const status = sumRows[i][13];
         if (params?.from && rDate < params.from) continue;
         if (params?.to   && rDate > params.to)   continue;
         if (status === 'CLOSED') closedDates[rDate] = true;
@@ -2154,7 +2154,7 @@ function getClosedDaysForFiling() {
     const sumRows   = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
     const closedMap = {};
     for (let i = 1; i < sumRows.length; i++) {
-      if (sumRows[i][12] === 'CLOSED') closedMap[normalizeDate(sumRows[i][1])] = true;
+      if (sumRows[i][13] === 'CLOSED') closedMap[normalizeDate(sumRows[i][1])] = true;
     }
 
     // Get all filing records
@@ -2982,6 +2982,8 @@ function autoCloseNonWorkingDays(startDate, openingCash, ss, now) {
           0,            // Total_Expenses
           0,            // Total_Cash_Over
           0,            // Total_Replenishment
+          0,            // Total_Cash_Return
+          0,            // Total_Reimbursement
           openingCash,  // Closing_Cash (same as opening)
           0,            // Variance
           'CLOSED',     // Status
