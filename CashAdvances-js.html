@@ -184,6 +184,8 @@ function renderAdvances() {
                       <div>Spent: <span class="font-mono font-semibold text-gray-700">${fmt(spent)}</span></div>
                       ${change > 0.005
                         ? `<div class="text-green-700 font-semibold">↩ Returned: <span class="font-mono">${fmt(change)}</span></div>`
+                        : change < -0.005
+                        ? `<div class="text-red-600 font-semibold">↑ Reimbursement: <span class="font-mono">${fmt(Math.abs(change))}</span></div>`
                         : `<div class="text-green-600 font-medium">✓ Fully spent</div>`
                       }
                     </div>`;
@@ -357,7 +359,7 @@ function updateLiqTotals() {
     amountEl.textContent = fmt(balance);
     amountEl.className   = 'font-mono text-amber-600';
   } else if (balance < -0.005) {
-    labelEl.textContent  = 'Over by — will be reimbursed from petty cash';
+    labelEl.textContent  = 'Reimbursment';
     amountEl.textContent = fmt(Math.abs(balance));
     amountEl.className   = 'font-mono text-red-600';
   } else {
