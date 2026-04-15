@@ -407,8 +407,11 @@
       const cashInflowMods = state.entries
         .filter(e => (e.type === 'CASH_RETURN' || e.type === 'CASH_OVER') && e.status !== 'DELETED')
         .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+      const totalReimbursement = state.entries
+        .filter(e => e.type === 'CASH_ADVANCE_REIMBURSEMENT' && e.status !== 'DELETED')
+        .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-      const expected = (opening + replenishment + cashInflowMods) - (expenses + liqPendingSpent + cashAdvance);
+      const expected = (opening + replenishment + cashInflowMods) - (expenses + liqPendingSpent + cashAdvance + totalReimbursement);
     const variance = actual - expected;
 
     document.getElementById('modExpected').textContent = fmt(expected);
