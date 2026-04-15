@@ -216,6 +216,11 @@ function updateDashStats() {
 
     const totalExpDisplay = withReceipt + noReceipt + liqPendingSpent;
 
+    // Reimbursements paid out to employees (cash outflow)
+    const totalReimbursement = state.entries
+      .filter(e => e.type === 'CASH_ADVANCE_REIMBURSEMENT' && e.status !== 'DELETED' && !e.carriedForward)
+      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+
     const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
     const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExpDisplay);
     const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
@@ -223,13 +228,13 @@ function updateDashStats() {
     const srpsub = document.getElementById('stat-replenishment-sub');
     if (srpsub) srpsub.textContent = '';
 
-    // Expected = opening + replenishment + inflows - expenses - active advances
+    // Expected = opening + replenishment + inflows - expenses - active advances - reimbursements
     const liveCashAdv = state.entries
       .filter(e => e.type === 'CASH_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward
         && e.status !== 'LIQUIDATION_PENDING' && e.originalDate === state.currentDate)
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-    const expectedInfo = (opening + totalReplenish + cashInflows) - (totalExpDisplay + liveCashAdv);
+    const expectedInfo = (opening + totalReplenish + cashInflows) - (totalExpDisplay + liveCashAdv + totalReimbursement);
 
   const sexp = document.getElementById('stat-expected');
   if (sexp) {
