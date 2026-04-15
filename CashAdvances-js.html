@@ -88,7 +88,7 @@ function renderAdvances() {
           : `<span class="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">${a.daysOutstanding} day${a.daysOutstanding !== 1 ? 's' : ''}</span>`;
 
     const pendingBadge = a.status === 'LIQUIDATION_PENDING'
-      ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 ml-2">⏳ Pending Audit Review</span>'
+      ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 ml-2">📋 Submitted</span>'
       : '';
 
     // Breakdown preview for LIQUIDATION_PENDING and LIQUIDATED
@@ -145,8 +145,14 @@ function renderAdvances() {
           Submit Liquidation
         </button>`;
     }
-    if (a.status === 'LIQUIDATION_PENDING') {
-      actions = `<span class="text-xs text-amber-600 font-medium italic">Awaiting audit review</span>`;
+    if (a.status === 'LIQUIDATION_PENDING' && isCashier()) {
+      actions = `
+        <button onclick="openLiquidationModal('${a.id}', 'edit')"
+          class="px-3 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded-lg shadow transition">
+          ✏️ Edit Liquidation
+        </button>`;
+    } else if (a.status === 'LIQUIDATION_PENDING') {
+      actions = `<span class="text-xs text-amber-600 font-medium italic">Submitted — under review</span>`;
     }
 
     return `
@@ -223,14 +229,28 @@ function openLiquidationModal(id, action) {
   liqAdvanceAmount = parseFloat(advance.amount) || 0;
 
   document.getElementById('liqAdvanceId').value = id;
-  document.getElementById('liqAction').value    = action;
+  document.getElementById('liqAction').value    = 'submit'; // always submit on confirm
 
   // Clear all liqNote fields
   document.querySelectorAll('#liqNote').forEach(el => el.value = '');
 
-  document.getElementById('liqModalTitle').textContent    = 'Submit Liquidation';
-  document.getElementById('liqModalSubtitle').textContent = 'Add expense entries to liquidate this advance';
+  const isEdit = action === 'edit';
+  document.getElementById('liqModalTitle').textContent    = isEdit ? 'Edit Liquidation' : 'Submit Liquidation';
+  document.getElementById('liqModalSubtitle').textContent = isEdit ? 'Update expense entries for this advance' : 'Add expense entries to liquidate this advance';
   document.getElementById('liqConfirmBtn').className      = 'flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition';
+
+  // Pre-fill existing entries when editing a submitted liquidation
+  if (isEdit && advance.liqBreakdown && advance.liqBreakdown.entries) {
+    liqEntries = advance.liqBreakdown.entries.map(e => ({
+      category  : e.category  || '',
+      desc      : e.desc      || '',
+      amount    : e.amount    || 0,
+      receipt   : e.receipt   || null
+    }));
+    // Pre-fill note if present
+    const noteVal = advance.liqBreakdown.note || '';
+    document.querySelectorAll('#liqNote').forEach(el => el.value = noteVal);
+  }
 
   const advanceDetailsHTML = `
     <div class="flex justify-between items-center">
@@ -252,14 +272,15 @@ function openLiquidationModal(id, action) {
   const inner     = document.getElementById('liqModalInner');
 
   if (twoCol && singleCol) {
-    if (action === 'submit') {
+    if (action === 'submit' || action === 'edit') {
       twoCol.classList.remove('hidden');
       twoCol.classList.add('grid');
       singleCol.classList.add('hidden');
       if (inner) { inner.classList.remove('max-w-md'); inner.classList.add('max-w-4xl'); }
       const advAmt = document.getElementById('liqAdvanceAmt');
       if (advAmt) advAmt.textContent = fmt(liqAdvanceAmount);
-      addLiqEntry();
+      // Only add a blank entry if starting fresh (not editing)
+      if (action === 'submit') addLiqEntry();
       renderLiqEntries();
     } else {
       twoCol.classList.add('hidden');
@@ -336,7 +357,7 @@ function updateLiqTotals() {
     amountEl.textContent = fmt(balance);
     amountEl.className   = 'font-mono text-amber-600';
   } else if (balance < -0.005) {
-    labelEl.textContent  = 'Over by';
+    labelEl.textContent  = 'Over by — will be reimbursed from petty cash';
     amountEl.textContent = fmt(Math.abs(balance));
     amountEl.className   = 'font-mono text-red-600';
   } else {
@@ -441,7 +462,7 @@ async function confirmLiquidationAction() {
   btn.disabled = false; btn.textContent = 'Confirm';
 
   if (res.success) {
-    toast('Liquidation submitted ✓ — pending audit review', 'success');
+    toast('Liquidation submitted ✓', 'success');
     closeLiquidationModal();
     loadAdvances();
   } else {

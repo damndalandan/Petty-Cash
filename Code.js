@@ -462,9 +462,10 @@ function recalculateDailySummary(date) {
           // eventual spend but must not rewrite the original day's cash balance.
           cashAdvance += amt;
         }
-        else if (type === 'CASH_OVER')     totalCashOver      += amt;
-        else if (type === 'REPLENISHMENT') totalReplenishment += amt;
-        else if (type === 'CASH_RETURN')   totalCashReturn    += amt;
+        else if (type === 'CASH_OVER')                  totalCashOver      += amt;
+        else if (type === 'REPLENISHMENT')              totalReplenishment += amt;
+        else if (type === 'CASH_RETURN')                totalCashReturn    += amt;
+        else if (type === 'CASH_ADVANCE_REIMBURSEMENT') cashAdvance        += amt; // outflow like a cash advance
         else if (type === 'LIQ_DETAIL')    {
           totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
@@ -1853,6 +1854,21 @@ function submitLiquidation(data) {
       sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
       sheet.getRange(row, 13).setValue(now);
       sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + breakdownJson);
+
+      // If this is a re-submission (edit), void any previously created CASH_RETURN or
+      // CASH_ADVANCE_REIMBURSEMENT entries linked to this advance so we don't double-count
+      const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+      const entryRows  = entrySheet.getDataRange().getValues();
+      const voidTypes  = ['CASH_RETURN', 'CASH_ADVANCE_REIMBURSEMENT'];
+      for (let j = 1; j < entryRows.length; j++) {
+        if (voidTypes.includes(entryRows[j][2]) &&
+            String(entryRows[j][7]) === String(data.id) &&
+            entryRows[j][10] !== 'DELETED') {
+          entrySheet.getRange(j + 1, 11).setValue('DELETED');
+          entrySheet.getRange(j + 1, 13).setValue(now);
+          entrySheet.getRange(j + 1, 15).setValue('[VOIDED — liquidation re-submitted]');
+        }
+      }
 
       // Immediately record the change as CASH_RETURN — cashier has physically returned it on submission
       // Or reimburse the employee from petty cash if they overspent

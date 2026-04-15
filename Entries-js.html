@@ -688,17 +688,27 @@ function openReceiptModal(ctx) {
 
   } else if (ctx.mode === 'view') {
     const d = ctx.receiptData;
-    const setV = (id, v) => { const el = document.getElementById(id); if(el) { el.value = v || ''; el.readOnly = true; } };
-    setV('rcptDate',      d.date);
-    setV('rcptSupplier',  d.supplierName);
-    setV('rcptAddress',   d.address);
-    setV('rcptTin',       d.tin);
-    setV('rcptReceiptNo', d.receiptNo);
-    if (grossEl) { grossEl.value = d.grossAmount; grossEl.readOnly = true; }
+    const fromEditModal = !!ctx.fromEditModal;
+    const setV = (id, v, editable) => {
+      const el = document.getElementById(id);
+      if(el) { el.value = v || ''; el.readOnly = !editable; }
+    };
+    setV('rcptDate',      d.date,         fromEditModal);
+    setV('rcptSupplier',  d.supplierName, fromEditModal);
+    setV('rcptAddress',   d.address,      fromEditModal);
+    setV('rcptTin',       d.tin,          fromEditModal);
+    setV('rcptReceiptNo', d.receiptNo,    fromEditModal);
+    if (grossEl) { grossEl.value = d.grossAmount; grossEl.readOnly = !fromEditModal; }
     computeReceiptVAT();
-    document.getElementById('receiptModalTitle').textContent = '🧾 Receipt Details';
-    document.getElementById('receiptSaveBtn').classList.add('hidden');
-    document.getElementById('receiptSkipBtn').textContent = 'Close';
+    document.getElementById('receiptModalTitle').textContent = fromEditModal ? '🧾 Edit Receipt' : '🧾 Receipt Details';
+    if (fromEditModal) {
+      document.getElementById('receiptSaveBtn').classList.remove('hidden');
+      document.getElementById('receiptSaveBtn').innerHTML = '💾 Save Receipt';
+      document.getElementById('receiptSkipBtn').textContent = 'Cancel';
+    } else {
+      document.getElementById('receiptSaveBtn').classList.add('hidden');
+      document.getElementById('receiptSkipBtn').textContent = 'Close';
+    }
   }
 
   // ── Show the modal ──
@@ -848,12 +858,12 @@ async function openEditReceiptModal() {
   if (state.editHasReceipt) {
     const res = await callServer('getReceiptByEntryId', id);
     if (res.success && res.data) {
-      openReceiptModal({ mode: 'view', receiptData: res.data });
+      openReceiptModal({ mode: 'view', receiptData: res.data, fromEditModal: true });
     } else {
-      openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0 });
+      openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0, fromEditModal: true });
     }
   } else {
-    openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0 });
+    openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0, fromEditModal: true });
   }
 }
 
