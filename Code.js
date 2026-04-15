@@ -2492,7 +2492,8 @@ function repairSummarySheet() {
 
         if (type === 'CASH_ADVANCE') {
           cashAdvance += amt;
-        } else if (type === 'CASH_OVER')     { totalCashOver      += amt; }
+        } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') { cashAdvance += amt; }
+          else if (type === 'CASH_OVER')     { totalCashOver      += amt; }
           else if (type === 'REPLENISHMENT') { totalReplenishment += amt; }
           else if (type === 'CASH_RETURN')   { totalCashReturn    += amt; }
           else if (type === 'LIQ_DETAIL')    {
@@ -2632,6 +2633,8 @@ function getSummaryReportData(params) {
         totalReplenishment += amount;
       } else if (type === 'CASH_RETURN') {
         totalCashReturn += amount;
+      } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
+        advancesIssued += amount; // outflow: petty cash paid employee back for overspend
       }
     }
 
@@ -2773,6 +2776,12 @@ function getReplenishmentPeriodReport() {
         });
       } else if (type === 'REPLENISHMENT') {
         totalReplenishment += amount;
+      } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
+        totalExpenses += amount; // outflow counted against fund usage
+        periodEntries.push({
+          id: row[0], date: rowDate, type, category: row[3],
+          description: row[4], amount, requestedBy: row[8], status
+        });
       } else if (type === 'CASH_ADVANCE' &&
                 (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING')) {
         advancesOutstanding += amount;
@@ -2782,7 +2791,7 @@ function getReplenishmentPeriodReport() {
         });
       }
     }
-    
+
     periodEntries.sort((a, b) => a.date > b.date ? 1 : -1);
 
     // ── Daily breakdown from summary — correct column indexes ──
@@ -3192,6 +3201,8 @@ function getSummaryReportDataByRange(params) {
         totalReplenishment += amount;
       } else if (type === 'CASH_RETURN') {
         totalCashReturn += amount;
+      } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
+        advancesIssued += amount; // outflow: petty cash paid employee back for overspend
       }
     }
 

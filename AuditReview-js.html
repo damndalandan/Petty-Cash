@@ -705,9 +705,10 @@ function updateAuditDaySummaryPanel() {
       if (e.type === 'LIQ_DETAIL') return;
 
       const amt = parseFloat(e.amount || 0);
-      if      (e.type === 'REPLENISHMENT') replenish  += amt;
-      else if (e.type === 'CASH_OVER')     cashOver   += amt;
-      else if (e.type === 'CASH_RETURN')   cashReturn += amt;
+      if      (e.type === 'REPLENISHMENT')              replenish  += amt;
+      else if (e.type === 'CASH_OVER')                  cashOver   += amt;
+      else if (e.type === 'CASH_RETURN')                cashReturn += amt;
+      else if (e.type === 'CASH_ADVANCE_REIMBURSEMENT') advance    += amt; // outflow: petty cash paid employee back
       else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) {
         // Only deduct advance if it was issued today
         if (!e.originalDate || e.originalDate >= state.currentDate) advance += amt;
