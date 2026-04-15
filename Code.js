@@ -1574,6 +1574,7 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
       }
 
       // 3. If there's change, save a CASH_RETURN entry — but only if not already recorded at submission time
+      //    If the employee overspent, guard against a duplicate reimbursement entry too
       if (change > 0.005) {
         const alreadyReturned = entryRows.slice(1).some(r =>
           r[2] === 'CASH_RETURN' && String(r[7]) === String(advId) && r[10] !== 'DELETED'
@@ -1585,6 +1586,23 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
             category   : 'Cash Return',
             description: 'Change return — ' + (row[4] || 'Cash Advance') + ' (' + advId + ')',
             amount     : change,
+            hasReceipt : false,
+            referenceNo: advId,
+            requestedBy: requestedBy,
+            approvedBy : approverEmail
+          });
+        }
+      } else if (change < -0.005) {
+        const alreadyReimbursed = entryRows.slice(1).some(r =>
+          r[2] === 'CASH_ADVANCE_REIMBURSEMENT' && String(r[7]) === String(advId) && r[10] !== 'DELETED'
+        );
+        if (!alreadyReimbursed) {
+          saveExpenseEntry({
+            date       : approvalDate,
+            type       : 'CASH_ADVANCE_REIMBURSEMENT',
+            category   : 'Cash Advance Reimbursement',
+            description: 'Overage reimbursement — ' + (row[4] || 'Cash Advance') + ' (' + advId + ')',
+            amount     : Math.abs(change),
             hasReceipt : false,
             referenceNo: advId,
             requestedBy: requestedBy,
@@ -1837,6 +1855,7 @@ function submitLiquidation(data) {
       sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + breakdownJson);
 
       // Immediately record the change as CASH_RETURN — cashier has physically returned it on submission
+      // Or reimburse the employee from petty cash if they overspent
       const today = normalizeDate(new Date());
       if (change > 0.005) {
         saveExpenseEntry({
@@ -1845,6 +1864,18 @@ function submitLiquidation(data) {
           category   : 'Cash Return',
           description: 'Change return — ' + (rows[i][4] || 'Cash Advance') + ' (' + data.id + ')',
           amount     : change,
+          hasReceipt : false,
+          referenceNo: data.id,
+          requestedBy: rows[i][8] || '',
+          approvedBy : ''
+        });
+      } else if (change < -0.005) {
+        saveExpenseEntry({
+          date       : today,
+          type       : 'CASH_ADVANCE_REIMBURSEMENT',
+          category   : 'Cash Advance Reimbursement',
+          description: 'Overage reimbursement — ' + (rows[i][4] || 'Cash Advance') + ' (' + data.id + ')',
+          amount     : Math.abs(change),
           hasReceipt : false,
           referenceNo: data.id,
           requestedBy: rows[i][8] || '',

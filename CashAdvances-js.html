@@ -115,6 +115,11 @@ function renderAdvances() {
              <span class="text-green-700">✅ Change Returned</span>
              <span class="font-mono text-green-700">${fmt(bd.change)}</span>
            </div>`
+        : bd.change < -0.005
+        ? `<div class="flex justify-between text-xs pt-1 border-t border-red-200 mt-1 font-bold">
+             <span class="text-red-700">⚠ Overspent — Reimbursed from Petty Cash</span>
+             <span class="font-mono text-red-700">${fmt(Math.abs(bd.change))}</span>
+           </div>`
         : `<div class="text-xs text-green-600 pt-1 border-t border-green-200 mt-1 font-medium">✓ Fully spent</div>`;
 
       breakdownHtml = `
