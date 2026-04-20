@@ -669,7 +669,7 @@ function openReceiptModal(ctx) {
       setV('rcptReceiptNo', _pendingReceipt.receiptNo);
       if (grossEl) grossEl.value = _pendingReceipt.grossAmount || '';
     } else {
-      const entryAmt = parseFloat(document.getElementById('entryAmount')?.value) || 0;
+      const entryAmt = parseFloat(document.getElementById('entryAmount')?.value) || ctx.grossAmount || 0;
       if (grossEl && entryAmt) grossEl.value = entryAmt;
     }
     computeReceiptVAT();

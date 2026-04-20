@@ -330,9 +330,9 @@ function updateLiqEntry(idx, field, value) {
 }
 
 function attachLiqReceipt(idx) {
-  // Open the shared receipt modal; on save, store receipt data on the entry
   openReceiptModal({
     mode: 'new',
+    grossAmount: parseFloat(liqEntries[idx].amount) || 0,
     onAttach: (receiptData) => {
       liqEntries[idx].receipt = receiptData;
       renderLiqEntries();
