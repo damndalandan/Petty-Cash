@@ -433,7 +433,7 @@ function initializeSheets() {
   if (!ss.getSheetByName(SHEETS.REQUESTS)) {
     const s = ss.insertSheet(SHEETS.REQUESTS);
     s.appendRow([
-      'Request_ID', 'Date', 'Purpose', 'Amount',
+      'Request_ID', 'Date', 'Purpose', 'Amount', 'Request_Type',
       'Requested_By', 'Submitted_By', 'Status',
       'Approved_By', 'Approved_At', 'Released_At',
       'Rejection_Note', 'Entry_ID', 'Created_At', 'Updated_At'
@@ -3344,17 +3344,18 @@ function getSummaryReportDataByRange(params) {
 // ─────────────────────────────────────────────
 // PETTY CASH REQUESTS (PCR) — Pre-approval workflow
 // Sheet columns:
-//   1: Request_ID     2: Date           3: Purpose         4: Amount
-//   5: Requested_By   6: Submitted_By   7: Status          8: Approved_By
-//   9: Approved_At   10: Released_At   11: Rejection_Note  12: Entry_ID
-//  13: Created_At    14: Updated_At
+//   1: Request_ID    2: Date          3: Purpose        4: Amount
+//   5: Request_Type  6: Requested_By  7: Submitted_By   8: Status
+//   9: Approved_By  10: Approved_At  11: Released_At   12: Rejection_Note
+//  13: Entry_ID     14: Created_At   15: Updated_At
 //
+// Request_Type  = 'Expense' | 'Cash Advance'
 // Requested_By  = employee name (who the cash is for)
 // Submitted_By  = cashier email (who created the request)
 // ─────────────────────────────────────────────
 
 function savePettyCashRequest(data) {
-  // data: { date, purpose, amount, requestedBy }
+  // data: { date, purpose, amount, requestedBy, requestType }
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.REQUESTS);
@@ -3363,21 +3364,23 @@ function savePettyCashRequest(data) {
     const now   = new Date().toISOString();
     const email = getUserEmail();
     const id    = generateId('PCR', data.date, sheet);
+    const rType = data.requestType === 'Cash Advance' ? 'Cash Advance' : 'Expense';
 
     sheet.appendRow([
       id,                                // 1  Request_ID
       data.date,                         // 2  Date
       data.purpose || '',                // 3  Purpose
-      parseFloat(data.amount) || 0,     // 4  Amount
-      data.requestedBy || '',            // 5  Requested_By (employee name)
-      email,                             // 6  Submitted_By (cashier email)
-      'PENDING_APPROVAL',                // 7  Status
-      '', '', '', '', '',                // 8-12 Approved_By, Approved_At, Released_At, Rejection_Note, Entry_ID
-      now, now                           // 13-14 Created_At, Updated_At
+      parseFloat(data.amount) || 0,      // 4  Amount
+      rType,                             // 5  Request_Type
+      data.requestedBy || '',            // 6  Requested_By (employee name)
+      email,                             // 7  Submitted_By (cashier email)
+      'PENDING_APPROVAL',                // 8  Status
+      '', '', '', '', '',                // 9-13 Approved_By, Approved_At, Released_At, Rejection_Note, Entry_ID
+      now, now                           // 14-15 Created_At, Updated_At
     ]);
 
     writeAuditLog('REQUEST_CREATED',
-      `PCR submitted by ${email}. For: ${data.requestedBy || '—'} | Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
+      `PCR [${rType}] submitted by ${email}. For: ${data.requestedBy || '—'} | Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
       id, data.date);
 
     return { success: true, id };
@@ -3402,21 +3405,22 @@ function getPettyCashRequests() {
       const r = rows[i];
       if (!r[0]) continue;
       // Cashiers only see requests they submitted; Admin/Auditor see all
-      if (!isPrivileged && r[5] !== email) continue;
+      if (!isPrivileged && r[6] !== email) continue;
       data.push({
         id              : r[0],
         date            : normalizeDate(r[1]),
         purpose         : r[2],
         amount          : parseFloat(r[3]) || 0,
-        requestedByName : r[4],   // employee name
-        submittedBy     : r[5],   // cashier email
-        status          : r[6],
-        approvedBy      : r[7],
-        approvedAt      : r[8],
-        releasedAt      : r[9],
-        rejectionNote   : r[10],
-        entryId         : r[11],
-        createdAt       : r[12]
+        requestType     : r[4] || 'Expense',  // 'Expense' | 'Cash Advance'
+        requestedByName : r[5],   // employee name
+        submittedBy     : r[6],   // cashier email
+        status          : r[7],
+        approvedBy      : r[8],
+        approvedAt      : r[9],
+        releasedAt      : r[10],
+        rejectionNote   : r[11],
+        entryId         : r[12],
+        createdAt       : r[13]
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -3436,15 +3440,15 @@ function approvePettyCashRequest(requestId) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== requestId) continue;
-      if (rows[i][6] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
+      if (rows[i][7] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
       const row = i + 1;
-      sheet.getRange(row, 7).setValue('APPROVED');
-      sheet.getRange(row, 8).setValue(email);
-      sheet.getRange(row, 9).setValue(now);
-      sheet.getRange(row, 14).setValue(now);
+      sheet.getRange(row, 8).setValue('APPROVED');
+      sheet.getRange(row, 9).setValue(email);
+      sheet.getRange(row, 10).setValue(now);
+      sheet.getRange(row, 15).setValue(now);
 
       writeAuditLog('REQUEST_APPROVED',
-        `PCR approved for ${rows[i][4]}. Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
+        `PCR approved for ${rows[i][5]}. Type: ${rows[i][4]} | Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
         requestId, normalizeDate(rows[i][1]));
 
       return { success: true };
@@ -3466,15 +3470,15 @@ function rejectPettyCashRequest(data) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.requestId) continue;
-      if (rows[i][6] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
+      if (rows[i][7] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
       const row = i + 1;
-      sheet.getRange(row, 7).setValue('REJECTED');
-      sheet.getRange(row, 8).setValue(email);
-      sheet.getRange(row, 11).setValue(data.note || '');
-      sheet.getRange(row, 14).setValue(now);
+      sheet.getRange(row, 8).setValue('REJECTED');
+      sheet.getRange(row, 9).setValue(email);
+      sheet.getRange(row, 12).setValue(data.note || '');
+      sheet.getRange(row, 15).setValue(now);
 
       writeAuditLog('REQUEST_REJECTED',
-        `PCR rejected for ${rows[i][4]}. Purpose: ${rows[i][2]} | Note: ${data.note || '—'}`,
+        `PCR rejected for ${rows[i][5]}. Purpose: ${rows[i][2]} | Note: ${data.note || '—'}`,
         data.requestId, normalizeDate(rows[i][1]));
 
       return { success: true };
@@ -3494,19 +3498,24 @@ function releasePettyCashRequest(requestId) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== requestId) continue;
-      if (rows[i][6] !== 'APPROVED') return { success: false, message: 'Request must be approved before releasing.' };
+      if (rows[i][7] !== 'APPROVED') return { success: false, message: 'Request must be approved before releasing.' };
 
-      const releaseDate  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      const amount       = parseFloat(rows[i][3]) || 0;
-      const purpose      = rows[i][2] || '';
-      const requestedFor = rows[i][4] || '';  // employee name
-      const approvedBy   = rows[i][7] || '';
+      const releaseDate   = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      const requestType   = rows[i][4] || 'Expense';   // col 5
+      const amount        = parseFloat(rows[i][3]) || 0;
+      const purpose       = rows[i][2] || '';
+      const requestedFor  = rows[i][5] || '';           // col 6 - employee name
+      const approvedBy    = rows[i][8] || '';           // col 9
 
-      // Create a PCR_ADVANCE entry so the cash outflow is tracked on the release date
+      // Expense → PCR_ADVANCE (settled via PCR page)
+      // Cash Advance → CASH_ADVANCE (liquidated via Entries/Advances page like a manual advance)
+      const entryType     = requestType === 'Cash Advance' ? 'CASH_ADVANCE' : 'PCR_ADVANCE';
+      const entryCategory = requestType === 'Cash Advance' ? 'Cash Advance' : 'Petty Cash Request';
+
       const entryResult = saveExpenseEntry({
         date       : releaseDate,
-        type       : 'PCR_ADVANCE',
-        category   : 'Petty Cash Request',
+        type       : entryType,
+        category   : entryCategory,
         description: purpose,
         amount     : amount,
         hasReceipt : false,
@@ -3514,18 +3523,18 @@ function releasePettyCashRequest(requestId) {
         requestedBy: requestedFor,
         approvedBy : approvedBy
       });
-      if (!entryResult.success) return { success: false, message: 'Failed to create advance entry: ' + entryResult.message };
+      if (!entryResult.success) return { success: false, message: 'Failed to create entry: ' + entryResult.message };
 
       const row = i + 1;
-      sheet.getRange(row, 7).setValue('RELEASED');
-      sheet.getRange(row, 10).setValue(now);
-      sheet.getRange(row, 12).setValue(entryResult.id);
-      sheet.getRange(row, 14).setValue(now);
+      sheet.getRange(row, 8).setValue('RELEASED');
+      sheet.getRange(row, 11).setValue(now);
+      sheet.getRange(row, 13).setValue(entryResult.id);
+      sheet.getRange(row, 15).setValue(now);
 
       recalculateDailySummary(releaseDate);
 
       writeAuditLog('REQUEST_RELEASED',
-        `PCR released for ${requestedFor}. ₱${amount.toFixed(2)} disbursed. Purpose: ${purpose}`,
+        `PCR [${requestType}] released for ${requestedFor}. ₱${amount.toFixed(2)} disbursed. Entry: ${entryType}`,
         requestId, releaseDate);
 
       return { success: true, entryId: entryResult.id };
@@ -3546,12 +3555,17 @@ function settlePettyCashRequest(data) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.requestId) continue;
-      if (rows[i][6] !== 'RELEASED') return { success: false, message: 'Request must be released before settling.' };
+      if (rows[i][7] !== 'RELEASED') return { success: false, message: 'Request must be released before settling.' };
+
+      const requestType  = rows[i][4] || 'Expense';
+      if (requestType === 'Cash Advance') {
+        return { success: false, message: 'Cash Advance requests are liquidated from the Cash Advances page, not settled here.' };
+      }
 
       const reqAmount    = parseFloat(rows[i][3]) || 0;
-      const requestedFor = rows[i][4] || '';   // employee name
-      const approvedBy   = rows[i][7] || '';
-      const advEntryId   = rows[i][11];
+      const requestedFor = rows[i][5] || '';   // col 6 - employee name
+      const approvedBy   = rows[i][8] || '';   // col 9
+      const advEntryId   = rows[i][12];        // col 13 - entry ID
       const entries      = data.entries || [];
       const settleDate   = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
@@ -3619,9 +3633,9 @@ function settlePettyCashRequest(data) {
 
       // 4. Mark request as SETTLED
       const row = i + 1;
-      sheet.getRange(row, 7).setValue('SETTLED');
-      sheet.getRange(row, 11).setValue(data.note || '');
-      sheet.getRange(row, 14).setValue(now);
+      sheet.getRange(row, 8).setValue('SETTLED');
+      sheet.getRange(row, 12).setValue(data.note || '');
+      sheet.getRange(row, 15).setValue(now);
 
       recalculateDailySummary(settleDate);
 
