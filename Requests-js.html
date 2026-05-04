@@ -110,7 +110,7 @@ function renderRequestCard(r) {
   // Admin/Auditor actions
   if (r.status === 'PENDING_APPROVAL' && (isAdmin() || isAuditor())) {
     actions = `
-      <button onclick="approveRequest('${r.id}')"
+      <button onclick="approveRequest(this,'${r.id}')"
         class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
         Approve
       </button>
@@ -123,7 +123,7 @@ function renderRequestCard(r) {
   // Cashier actions
   if (r.status === 'APPROVED' && isCashier()) {
     actions = `
-      <button onclick="releaseRequest('${r.id}')"
+      <button onclick="releaseRequest(this,'${r.id}')"
         class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
         Mark as Released
       </button>`;
@@ -176,11 +176,15 @@ async function submitPettyCashRequest() {
   const requestedBy = document.getElementById('pcrRequestedBy')?.value.trim();
   const date        = state.currentDate;
 
-  if (!purpose)      { toast('Purpose is required.', 'warning'); return; }
+  if (!purpose)               { toast('Purpose is required.', 'warning'); return; }
   if (!amount || amount <= 0) { toast('Amount must be greater than zero.', 'warning'); return; }
-  if (!requestedBy)  { toast('Please enter who is requesting.', 'warning'); return; }
+  if (!requestedBy)           { toast('Please enter who is requesting.', 'warning'); return; }
 
+  const btn = document.querySelector('#pcr-form-section button[onclick="submitPettyCashRequest()"]');
+  btnLoad(btn, true);
   const res = await callServer('savePettyCashRequest', { date, purpose, amount, requestedBy });
+  btnLoad(btn, false);
+
   if (!res.success) { toast(res.message || 'Failed to submit request.', 'error'); return; }
 
   toast('Request submitted for approval.');
@@ -193,8 +197,10 @@ async function submitPettyCashRequest() {
 
 // ── Approve / Reject ──────────────────────────
 
-async function approveRequest(requestId) {
+async function approveRequest(btn, requestId) {
+  btnLoad(btn, true);
   const res = await callServer('approvePettyCashRequest', requestId);
+  btnLoad(btn, false);
   if (!res.success) { toast(res.message || 'Failed to approve.', 'error'); return; }
   toast('Request approved.');
   loadRequests();
@@ -216,7 +222,10 @@ async function confirmPcrReject() {
   const note      = document.getElementById('pcrRejectNote').value.trim();
   if (!note) { toast('Please enter a reason for rejection.', 'warning'); return; }
 
+  const btn = document.querySelector('#pcrRejectModal button[onclick="confirmPcrReject()"]');
+  btnLoad(btn, true);
   const res = await callServer('rejectPettyCashRequest', { requestId, note });
+  btnLoad(btn, false);
   if (!res.success) { toast(res.message || 'Failed to reject.', 'error'); return; }
   toast('Request rejected.');
   closePcrRejectModal();
@@ -225,9 +234,11 @@ async function confirmPcrReject() {
 
 // ── Release ───────────────────────────────────
 
-async function releaseRequest(requestId) {
+async function releaseRequest(btn, requestId) {
   if (!confirm('Mark this request as released? This will record the cash disbursement in the daily entries.')) return;
+  btnLoad(btn, true);
   const res = await callServer('releasePettyCashRequest', requestId);
+  btnLoad(btn, false);
   if (!res.success) { toast(res.message || 'Failed to release.', 'error'); return; }
   toast('Cash released and recorded.');
   switchRequestTab('released');
@@ -364,11 +375,9 @@ async function confirmPcrSettle() {
   if (!entries.length) { toast('Add at least one expense item.', 'warning'); return; }
 
   const btn = document.querySelector('#pcrSettleModal button[onclick="confirmPcrSettle()"]');
-  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
-
+  btnLoad(btn, true);
   const res = await callServer('settlePettyCashRequest', { requestId, entries, note });
-
-  if (btn) { btn.disabled = false; btn.textContent = 'Confirm Settlement'; }
+  btnLoad(btn, false);
 
   if (!res.success) { toast(res.message || 'Failed to settle request.', 'error'); return; }
 

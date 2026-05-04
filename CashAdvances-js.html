@@ -446,7 +446,7 @@ async function confirmLiquidationAction() {
   if (!valid.length) { toast('Add at least one entry with a description and amount', 'warning'); return; }
 
   const btn = document.getElementById('liqConfirmBtn');
-  btn.disabled = true; btn.textContent = 'Saving...';
+  btnLoad(btn, true);
 
   const payload = {
     id,
@@ -461,7 +461,7 @@ async function confirmLiquidationAction() {
   };
 
   const res = await callServer('submitLiquidation', payload);
-  btn.disabled = false; btn.textContent = 'Confirm';
+  btnLoad(btn, false);
 
   if (res.success) {
     toast('Liquidation submitted ✓', 'success');

@@ -43,6 +43,21 @@ function toast(msg, type = 'success') {
   }, 3500);
 }
 
+// Disable a button and show a spinner while an async operation runs.
+// Call btnLoad(btn, true) before the await, btnLoad(btn, false) after.
+function btnLoad(btn, loading) {
+  if (!btn) return;
+  if (loading) {
+    btn._origHtml = btn.innerHTML;
+    btn.disabled  = true;
+    btn.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid rgba(255,255,255,0.35);border-top-color:white;border-radius:50%;animation:spin 0.6s linear infinite;vertical-align:middle;margin-right:6px;"></span>'
+                  + (btn._origHtml || '');
+  } else {
+    btn.disabled = false;
+    if (btn._origHtml !== undefined) btn.innerHTML = btn._origHtml;
+  }
+}
+
 // Unified server call wrapper — google.script.run supports one argument only
 function callServer(fn, data) {
   return new Promise((resolve) => {
