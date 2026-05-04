@@ -1,78 +1,116 @@
 <!-- PETTY CASH REQUESTS PAGE -->
 <div id="page-requests" class="page-view hidden space-y-4">
 
+  <!-- Page Header -->
   <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 border-b border-gray-200 gap-2">
     <div>
       <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Petty Cash Requests</h1>
       <p class="text-xs text-gray-500 mt-0.5">Submit and track requests for petty cash disbursement</p>
     </div>
-    <button onclick="loadRequests()" class="text-sm text-blue-600 hover:text-blue-800 font-medium transition px-3 py-2 border border-blue-200 rounded-lg min-h-[44px] self-start md:self-auto">↺ Refresh</button>
+    <div class="flex items-center gap-2 self-start md:self-auto">
+      <!-- Mobile: toggle form -->
+      <button id="pcrFormToggleBtn" onclick="togglePcrForm()"
+        class="mobile-form-toggle items-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow min-h-[44px] flex-1 justify-center">
+        ➕ New Request
+      </button>
+      <button onclick="loadRequests()" class="text-sm text-blue-600 hover:text-blue-800 font-medium transition px-3 py-2 border border-blue-200 rounded-lg min-h-[44px]">↺ Refresh</button>
+    </div>
   </div>
 
-  <!-- NEW REQUEST FORM (Cashier only) -->
-  <div id="pcr-form-section" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
-    <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">New Request</p>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <div class="md:col-span-2">
-        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Purpose / Description <span class="text-red-400">*</span></label>
-        <input type="text" id="pcrPurpose" placeholder="e.g. Office supplies for May"
-          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
-      </div>
-      <div>
-        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Needed <span class="text-red-400">*</span></label>
-        <input type="number" id="pcrAmount" placeholder="0.00" min="0" step="0.01"
-          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
-      </div>
-      <div class="md:col-span-3">
-        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested For (Name) <span class="text-red-400">*</span></label>
-        <div class="relative">
-          <input type="text" id="pcrRequestedBy" placeholder="Type to search name..."
-            autocomplete="off"
-            oninput="filterEmployees(this)"
-            onblur="hideEmployeeSuggestions(this)"
-            class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
-          <div id="pcrRequestedBySuggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto"></div>
+  <!-- Two-column desktop layout -->
+  <div class="flex flex-col lg:grid lg:grid-cols-3 gap-4">
+
+    <!-- ── LEFT COLUMN: New Request Form ── -->
+    <div id="pcr-form-col" class="lg:col-span-1 order-2 lg:order-1">
+      <div id="pcr-form-section" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+
+        <!-- Form header -->
+        <div class="px-5 py-4 bg-gradient-to-r from-indigo-600 to-indigo-500">
+          <p class="text-sm font-bold text-white">New Request</p>
+          <p class="text-indigo-200 text-xs mt-0.5">Fill in the details below</p>
+        </div>
+
+        <!-- Form body -->
+        <div class="p-5 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested For (Name) <span class="text-red-400">*</span></label>
+            <div class="relative">
+              <input type="text" id="pcrRequestedBy" placeholder="Type to search name..."
+                autocomplete="off"
+                oninput="filterEmployees(this)"
+                onblur="hideEmployeeSuggestions(this)"
+                class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
+              <div id="pcrRequestedBySuggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto"></div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Purpose / Description <span class="text-red-400">*</span></label>
+            <input type="text" id="pcrPurpose" placeholder="e.g. Office supplies for May"
+              class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Needed <span class="text-red-400">*</span></label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₱</span>
+              <input type="number" id="pcrAmount" placeholder="0.00" min="0" step="0.01"
+                class="w-full pl-7 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
+            </div>
+          </div>
+
+          <button onclick="submitPettyCashRequest()"
+            class="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[48px]">
+            Submit Request
+          </button>
         </div>
       </div>
-    </div>
-    <div class="mt-4 flex justify-end">
-      <button onclick="submitPettyCashRequest()"
-        class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
-        Submit Request
-      </button>
-    </div>
-  </div>
 
-  <!-- STATUS TABS -->
-  <div class="flex gap-1 bg-gray-100 p-1 rounded-lg overflow-x-auto">
-    <button onclick="switchRequestTab('pending')" id="pcr-tab-pending"
-      class="flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all shadow-sm bg-white text-gray-800 min-h-[44px] whitespace-nowrap">
-      Pending Approval
-      <span id="pcr-badge-pending" class="hidden ml-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
-    </button>
-    <button onclick="switchRequestTab('approved')" id="pcr-tab-approved"
-      class="flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px] whitespace-nowrap">
-      Approved
-    </button>
-    <button onclick="switchRequestTab('released')" id="pcr-tab-released"
-      class="flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px] whitespace-nowrap">
-      Released
-      <span id="pcr-badge-released" class="hidden ml-1.5 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
-    </button>
-    <button onclick="switchRequestTab('settled')" id="pcr-tab-settled"
-      class="flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px] whitespace-nowrap">
-      Settled
-    </button>
-    <button onclick="switchRequestTab('rejected')" id="pcr-tab-rejected"
-      class="flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px] whitespace-nowrap">
-      Rejected
-    </button>
-  </div>
+      <!-- Auditor read-only notice -->
+      <div id="pcr-auditor-notice" class="hidden bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-700">
+        <p class="font-bold mb-1">🔍 Audit View</p>
+        <p class="text-xs">You can view all petty cash requests. Only Admin can approve or reject requests.</p>
+      </div>
+    </div>
 
-  <!-- REQUEST LIST -->
-  <div id="pcr-list" class="space-y-3">
-    <div class="text-center py-10 text-gray-400 text-sm">Loading...</div>
-  </div>
+    <!-- ── RIGHT COLUMN: Request List ── -->
+    <div class="lg:col-span-2 order-1 lg:order-2 space-y-3">
+
+      <!-- Status Tabs -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="flex overflow-x-auto">
+          <button onclick="switchRequestTab('pending')" id="pcr-tab-pending"
+            class="pcr-tab flex-none px-5 py-3.5 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-700 bg-indigo-50/60 whitespace-nowrap transition-all">
+            Pending
+            <span id="pcr-badge-pending" class="hidden ml-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
+          </button>
+          <button onclick="switchRequestTab('approved')" id="pcr-tab-approved"
+            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
+            Approved
+          </button>
+          <button onclick="switchRequestTab('released')" id="pcr-tab-released"
+            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
+            Released
+            <span id="pcr-badge-released" class="hidden ml-1.5 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
+          </button>
+          <button onclick="switchRequestTab('settled')" id="pcr-tab-settled"
+            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
+            Settled
+          </button>
+          <button onclick="switchRequestTab('rejected')" id="pcr-tab-rejected"
+            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
+            Rejected
+          </button>
+        </div>
+      </div>
+
+      <!-- Request Cards -->
+      <div id="pcr-list" class="space-y-3">
+        <div class="text-center py-10 text-gray-400 text-sm">Loading...</div>
+      </div>
+
+    </div>
+  </div><!-- end two-column -->
 
 </div><!-- end page-requests -->
 
@@ -123,7 +161,7 @@
               <span class="font-mono font-bold text-indigo-700" id="pcrSettleSpentAmt">₱0.00</span>
             </div>
             <div class="flex justify-between font-bold py-2 text-base">
-              <span id="pcrSettleChangeLabel">Change</span>
+              <span id="pcrSettleChangeLabel">Change to Return</span>
               <span class="font-mono" id="pcrSettleChangeAmt">₱0.00</span>
             </div>
           </div>

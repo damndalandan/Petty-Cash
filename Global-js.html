@@ -169,6 +169,7 @@ function applyRoleUI() {
   } else if (state.userRole === 'Auditor') {
     // Auditor sees review tools
     ['nav-requests', 'nav-auditreview', 'nav-auditlog'].forEach(show);
+    show('pcr-auditor-notice');
   } else if (state.userRole === 'Cashier') {
     // Cashier sees operational tools
     ['nav-requests', 'nav-entries', 'nav-denominations', 'nav-replenishment', 'nav-filing', 'nav-replenishreport'].forEach(show);
