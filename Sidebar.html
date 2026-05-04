@@ -39,6 +39,12 @@
       <span>Denominations</span>
     </button>
 
+    <button onclick="navigate('requests')" id="nav-requests" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="requests">
+      <span class="mr-3 text-lg">📋</span>
+      <span>Petty Cash Requests</span>
+      <span id="requests-badge" class="hidden ml-auto bg-gradient-to-r from-amber-400 to-orange-500 shadow-sm shadow-amber-200 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
+    </button>
+
     <button onclick="navigate('advances')" id="nav-advances" class="nav-item hidden w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]" data-page="advances">
       <span class="mr-3 text-lg">💳</span>
       <span>Cash Advances</span>

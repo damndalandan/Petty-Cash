@@ -14,7 +14,8 @@ const SHEETS = {
   ACCESS       : 'PettyCash_Access',
   AUDIT_LOG    : 'PettyCash_AuditLog',
   FILING       : 'PettyCash_FilingChecklist',
-  CATEGORIES   : 'PettyCash_Categories'
+  CATEGORIES   : 'PettyCash_Categories',
+  REQUESTS     : 'PettyCash_Requests'
 };
 
 // ─────────────────────────────────────────────
@@ -429,6 +430,30 @@ function initializeSheets() {
     defaults.forEach(c => s.appendRow([c]));
   }
 
+  if (!ss.getSheetByName(SHEETS.REQUESTS)) {
+    const s = ss.insertSheet(SHEETS.REQUESTS);
+    s.appendRow([
+      'Request_ID', 'Date', 'Purpose', 'Amount', 'Requested_By',
+      'Status', 'Approved_By', 'Approved_At', 'Released_At',
+      'Rejection_Note', 'Entry_ID', 'Created_At', 'Updated_At'
+    ]);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.setColumnWidth(1, 160);
+    s.setColumnWidth(2, 110);
+    s.setColumnWidth(3, 300);
+    s.setColumnWidth(4, 100);
+    s.setColumnWidth(5, 220);
+    s.setColumnWidth(6, 140);
+    s.setColumnWidth(7, 220);
+    s.setColumnWidth(8, 180);
+    s.setColumnWidth(9, 180);
+    s.setColumnWidth(10, 280);
+    s.setColumnWidth(11, 160);
+    s.setColumnWidth(12, 180);
+    s.setColumnWidth(13, 180);
+  }
+
   return { success: true };
 }
 
@@ -456,17 +481,16 @@ function recalculateDailySummary(date) {
       const amt = parseFloat(row[5]) || 0;
 
       if (rDate === date) {
-        if (type === 'CASH_ADVANCE') {
-          // Cash leaves the drawer on the advance date and stays part of that day's
-          // cash movement even after later liquidation. LIQ_DETAIL rows document the
-          // eventual spend but must not rewrite the original day's cash balance.
+        if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
+          // Cash leaves the drawer on the advance/release date. Detail rows document
+          // the eventual spend but must not rewrite the original day's cash balance.
           cashAdvance += amt;
         }
         else if (type === 'CASH_OVER')                  totalCashOver      += amt;
         else if (type === 'REPLENISHMENT')              totalReplenishment += amt;
         else if (type === 'CASH_RETURN')                totalCashReturn    += amt;
-        else if (type === 'CASH_ADVANCE_REIMBURSEMENT') totalReimbursement += amt; // outflow: petty cash paid employee back
-        else if (type === 'LIQ_DETAIL')    {
+        else if (type === 'CASH_ADVANCE_REIMBURSEMENT') totalReimbursement += amt;
+        else if (type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
           totalExp += amt;
           if (row[6] === 'YES') totalReceipt   += amt;
           else                  totalNoReceipt += amt;
@@ -3310,6 +3334,287 @@ function getSummaryReportDataByRange(params) {
         withReceiptEntries, withoutReceiptEntries
       }
     };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// PETTY CASH REQUESTS (PCR) — Pre-approval workflow
+// Sheet columns:
+//   1: Request_ID  2: Date  3: Purpose  4: Amount  5: Requested_By
+//   6: Status      7: Approved_By  8: Approved_At  9: Released_At
+//  10: Rejection_Note  11: Entry_ID (PCR_ADVANCE)  12: Created_At  13: Updated_At
+// ─────────────────────────────────────────────
+
+function savePettyCashRequest(data) {
+  // data: { date, purpose, amount }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    if (!sheet) return { success: false, message: 'Requests sheet not found. Please run setup.' };
+
+    const now   = new Date().toISOString();
+    const email = getUserEmail();
+    const id    = generateId('PCR', data.date, sheet);
+
+    sheet.appendRow([
+      id,                              // Request_ID
+      data.date,                       // Date
+      data.purpose || '',              // Purpose
+      parseFloat(data.amount) || 0,   // Amount
+      email,                           // Requested_By
+      'PENDING_APPROVAL',              // Status
+      '', '', '', '', '',              // Approved_By, Approved_At, Released_At, Rejection_Note, Entry_ID
+      now, now                         // Created_At, Updated_At
+    ]);
+
+    writeAuditLog('REQUEST_CREATED',
+      `PCR submitted. Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
+      id, data.date);
+
+    return { success: true, id };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function getPettyCashRequests() {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    if (!sheet) return { success: true, data: [] };
+
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const role  = getUserRole();
+    const isPrivileged = role.success && (role.role === 'Admin' || role.role === 'Auditor');
+
+    const data = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r[0]) continue;
+      // Cashiers only see their own requests; Admin/Auditor see all
+      if (!isPrivileged && r[4] !== email) continue;
+      data.push({
+        id            : r[0],
+        date          : normalizeDate(r[1]),
+        purpose       : r[2],
+        amount        : parseFloat(r[3]) || 0,
+        requestedBy   : r[4],
+        status        : r[5],
+        approvedBy    : r[6],
+        approvedAt    : r[7],
+        releasedAt    : r[8],
+        rejectionNote : r[9],
+        entryId       : r[10],
+        createdAt     : r[11]
+      });
+    }
+    data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+    return { success: true, data };
+  } catch(e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+function approvePettyCashRequest(requestId) {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== requestId) continue;
+      if (rows[i][5] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
+      const row = i + 1;
+      sheet.getRange(row, 6).setValue('APPROVED');
+      sheet.getRange(row, 7).setValue(email);
+      sheet.getRange(row, 8).setValue(now);
+      sheet.getRange(row, 13).setValue(now);
+
+      writeAuditLog('REQUEST_APPROVED',
+        `PCR approved. Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
+        requestId, normalizeDate(rows[i][1]));
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function rejectPettyCashRequest(data) {
+  // data: { requestId, note }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.requestId) continue;
+      if (rows[i][5] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
+      const row = i + 1;
+      sheet.getRange(row, 6).setValue('REJECTED');
+      sheet.getRange(row, 7).setValue(email);
+      sheet.getRange(row, 10).setValue(data.note || '');
+      sheet.getRange(row, 13).setValue(now);
+
+      writeAuditLog('REQUEST_REJECTED',
+        `PCR rejected. Purpose: ${rows[i][2]} | Note: ${data.note || '—'}`,
+        data.requestId, normalizeDate(rows[i][1]));
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function releasePettyCashRequest(requestId) {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== requestId) continue;
+      if (rows[i][5] !== 'APPROVED') return { success: false, message: 'Request must be approved before releasing.' };
+
+      const reqDate = normalizeDate(rows[i][1]);
+      const amount  = parseFloat(rows[i][3]) || 0;
+      const purpose = rows[i][2] || '';
+
+      // Create a PCR_ADVANCE entry so the cash outflow is tracked in the daily summary
+      const entryResult = saveExpenseEntry({
+        date       : reqDate,
+        type       : 'PCR_ADVANCE',
+        category   : 'Petty Cash Request',
+        description: purpose,
+        amount     : amount,
+        hasReceipt : false,
+        referenceNo: requestId,
+        requestedBy: rows[i][4],
+        approvedBy : rows[i][6]
+      });
+      if (!entryResult.success) return { success: false, message: 'Failed to create advance entry: ' + entryResult.message };
+
+      const row = i + 1;
+      sheet.getRange(row, 6).setValue('RELEASED');
+      sheet.getRange(row, 9).setValue(now);
+      sheet.getRange(row, 11).setValue(entryResult.id);
+      sheet.getRange(row, 13).setValue(now);
+
+      writeAuditLog('REQUEST_RELEASED',
+        `PCR released. ₱${amount.toFixed(2)} disbursed for: ${purpose}`,
+        requestId, reqDate);
+
+      return { success: true, entryId: entryResult.id };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function settlePettyCashRequest(data) {
+  // data: { requestId, entries: [{category, description, amount, hasReceipt, receipt}], note }
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.requestId) continue;
+      if (rows[i][5] !== 'RELEASED') return { success: false, message: 'Request must be released before settling.' };
+
+      const reqDate    = normalizeDate(rows[i][1]);
+      const reqAmount  = parseFloat(rows[i][3]) || 0;
+      const advEntryId = rows[i][10];
+      const entries    = data.entries || [];
+
+      const totalSpent = entries.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+      const change     = parseFloat((reqAmount - totalSpent).toFixed(2));
+
+      // 1. Create PCR_DETAIL expense entries for each item in the breakdown
+      for (const entry of entries) {
+        const amt = parseFloat(entry.amount) || 0;
+        if (amt <= 0) continue;
+
+        const expResult = saveExpenseEntry({
+          date       : reqDate,
+          type       : 'PCR_DETAIL',
+          category   : entry.category   || 'Miscellaneous',
+          description: entry.description|| '',
+          amount     : amt,
+          hasReceipt : !!entry.hasReceipt,
+          referenceNo: data.requestId,
+          requestedBy: rows[i][4],
+          approvedBy : rows[i][6]
+        });
+
+        if (expResult.success && entry.hasReceipt && entry.receipt) {
+          saveReceiptRecord({
+            entryId     : expResult.id,
+            date        : reqDate,
+            supplierName: entry.receipt.supplierName || '',
+            address     : entry.receipt.address      || '',
+            tin         : entry.receipt.tin          || '',
+            receiptNo   : entry.receipt.receiptNo    || '',
+            grossAmount : amt
+          });
+        }
+      }
+
+      // 2. Record change return if applicable
+      if (change > 0) {
+        saveExpenseEntry({
+          date       : reqDate,
+          type       : 'CASH_RETURN',
+          category   : 'Cash Return',
+          description: `Change returned from ${data.requestId}`,
+          amount     : change,
+          hasReceipt : false,
+          referenceNo: data.requestId
+        });
+      }
+
+      // 3. Mark the PCR_ADVANCE entry as LIQUIDATED
+      if (advEntryId) {
+        const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+        const entryRows  = entrySheet.getDataRange().getValues();
+        for (let j = 1; j < entryRows.length; j++) {
+          if (entryRows[j][0] !== advEntryId) continue;
+          entrySheet.getRange(j + 1, 11).setValue('LIQUIDATED');
+          entrySheet.getRange(j + 1, 13).setValue(now);
+          entrySheet.getRange(j + 1, 15).setValue('[SETTLED] ' + (data.note || ''));
+          break;
+        }
+      }
+
+      // 4. Mark request as SETTLED
+      const row = i + 1;
+      sheet.getRange(row, 6).setValue('SETTLED');
+      sheet.getRange(row, 10).setValue(data.note || '');
+      sheet.getRange(row, 13).setValue(now);
+
+      recalculateDailySummary(reqDate);
+
+      writeAuditLog('REQUEST_SETTLED',
+        `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)} | Items: ${entries.length}`,
+        data.requestId, reqDate);
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
   } catch(e) {
     return { success: false, message: e.toString() };
   }

@@ -1,0 +1,375 @@
+<script>
+// =============================================
+// PETTY CASH REQUESTS PAGE LOGIC
+// =============================================
+
+let allRequests     = [];
+let currentPcrTab   = 'pending';
+let _pcrSettleCtx   = {};   // { requestId, amount, date, purpose }
+
+// ── Load ─────────────────────────────────────
+
+async function loadRequests() {
+  const listEl = document.getElementById('pcr-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm animate-pulse">Loading requests...</div>';
+
+  const res = await callServer('getPettyCashRequests');
+  if (!res.success) {
+    listEl.innerHTML = '<div class="text-center py-10 text-red-400 text-sm">Failed to load requests.</div>';
+    return;
+  }
+  allRequests = res.data || [];
+  updatePcrBadges();
+  renderRequests();
+}
+
+function updatePcrBadges() {
+  const pending  = allRequests.filter(r => r.status === 'PENDING_APPROVAL').length;
+  const released = allRequests.filter(r => r.status === 'RELEASED').length;
+
+  const pb = document.getElementById('pcr-badge-pending');
+  if (pb) { pb.textContent = pending; pending > 0 ? pb.classList.remove('hidden') : pb.classList.add('hidden'); }
+
+  const rb = document.getElementById('pcr-badge-released');
+  if (rb) { rb.textContent = released; released > 0 ? rb.classList.remove('hidden') : rb.classList.add('hidden'); }
+
+  // Update sidebar badge
+  const sb = document.getElementById('requests-badge');
+  const total = pending + released;
+  if (sb) { sb.textContent = total; total > 0 ? sb.classList.remove('hidden') : sb.classList.add('hidden'); }
+}
+
+// ── Tabs ─────────────────────────────────────
+
+function switchRequestTab(tab) {
+  currentPcrTab = tab;
+  ['pending','approved','released','settled','rejected'].forEach(t => {
+    const btn = document.getElementById('pcr-tab-' + t);
+    if (!btn) return;
+    if (t === tab) {
+      btn.className = 'flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all shadow-sm bg-white text-gray-800 min-h-[44px] whitespace-nowrap';
+    } else {
+      btn.className = 'flex-none px-4 py-2.5 text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px] whitespace-nowrap';
+    }
+  });
+  renderRequests();
+}
+
+// ── Render ────────────────────────────────────
+
+function renderRequests() {
+  const listEl = document.getElementById('pcr-list');
+  if (!listEl) return;
+
+  const tabMap = {
+    pending : r => r.status === 'PENDING_APPROVAL',
+    approved: r => r.status === 'APPROVED',
+    released: r => r.status === 'RELEASED',
+    settled : r => r.status === 'SETTLED',
+    rejected: r => r.status === 'REJECTED'
+  };
+  const filtered = allRequests.filter(tabMap[currentPcrTab] || (() => true));
+
+  const emptyMsgs = {
+    pending : 'No requests pending approval.',
+    approved: 'No approved requests awaiting release.',
+    released: 'No released requests awaiting settlement.',
+    settled : 'No settled requests yet.',
+    rejected: 'No rejected requests.'
+  };
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 text-sm">${emptyMsgs[currentPcrTab]}</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(r => renderRequestCard(r)).join('');
+}
+
+function renderRequestCard(r) {
+  const statusStyles = {
+    PENDING_APPROVAL: 'bg-amber-100 text-amber-700',
+    APPROVED        : 'bg-green-100 text-green-700',
+    RELEASED        : 'bg-blue-100 text-blue-700',
+    SETTLED         : 'bg-slate-100 text-slate-600',
+    REJECTED        : 'bg-red-100 text-red-600'
+  };
+  const statusLabels = {
+    PENDING_APPROVAL: 'Pending Approval',
+    APPROVED        : 'Approved',
+    RELEASED        : 'Released',
+    SETTLED         : 'Settled',
+    REJECTED        : 'Rejected'
+  };
+
+  const badge = `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ${statusStyles[r.status] || 'bg-gray-100 text-gray-500'}">${statusLabels[r.status] || r.status}</span>`;
+
+  let actions = '';
+
+  // Admin/Auditor actions
+  if (r.status === 'PENDING_APPROVAL' && (isAdmin() || isAuditor())) {
+    actions = `
+      <button onclick="approveRequest('${r.id}')"
+        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
+        Approve
+      </button>
+      <button onclick="openPcrRejectModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
+        class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
+        Reject
+      </button>`;
+  }
+
+  // Cashier actions
+  if (r.status === 'APPROVED' && isCashier()) {
+    actions = `
+      <button onclick="releaseRequest('${r.id}')"
+        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
+        Mark as Released
+      </button>`;
+  }
+
+  if (r.status === 'RELEASED' && isCashier()) {
+    actions = `
+      <button onclick="openPcrSettleModal('${r.id}','${escHtml(r.purpose)}',${r.amount},'${r.date}')"
+        class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
+        Settle
+      </button>`;
+  }
+
+  const approvalLine = r.approvedBy
+    ? `<span class="text-gray-400">• ${r.status === 'REJECTED' ? 'Rejected' : 'Approved'} by ${r.approvedBy}</span>` : '';
+  const rejectionLine = r.rejectionNote
+    ? `<div class="mt-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">Reason: ${escHtml(r.rejectionNote)}</div>` : '';
+
+  return `
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">
+      <div class="flex flex-wrap items-start gap-2 justify-between">
+        <div class="flex-1 min-w-0">
+          <div class="flex flex-wrap items-center gap-2 mb-0.5">
+            ${badge}
+            <span class="text-xs font-mono text-gray-400">${r.id}</span>
+          </div>
+          <p class="font-semibold text-gray-800 text-sm truncate">${escHtml(r.purpose)}</p>
+          <p class="text-xs text-gray-400 mt-0.5">${r.date} ${approvalLine}</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="text-lg font-bold font-mono text-gray-800">${fmt(r.amount)}</p>
+          <p class="text-xs text-gray-400">requested by <span class="font-medium">${r.requestedBy.split('@')[0]}</span></p>
+        </div>
+      </div>
+      ${rejectionLine}
+      ${actions ? `<div class="flex gap-2 pt-1 border-t border-gray-100 flex-wrap">${actions}</div>` : ''}
+    </div>`;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── New Request Form ──────────────────────────
+
+async function submitPettyCashRequest() {
+  const purpose = document.getElementById('pcrPurpose')?.value.trim();
+  const amount  = parseFloat(document.getElementById('pcrAmount')?.value);
+  const date    = state.currentDate;
+
+  if (!purpose)      { toast('Purpose is required.', 'warning'); return; }
+  if (!amount || amount <= 0) { toast('Amount must be greater than zero.', 'warning'); return; }
+
+  const res = await callServer('savePettyCashRequest', { date, purpose, amount });
+  if (!res.success) { toast(res.message || 'Failed to submit request.', 'error'); return; }
+
+  toast('Request submitted for approval.');
+  document.getElementById('pcrPurpose').value = '';
+  document.getElementById('pcrAmount').value  = '';
+  switchRequestTab('pending');
+  loadRequests();
+}
+
+// ── Approve / Reject ──────────────────────────
+
+async function approveRequest(requestId) {
+  const res = await callServer('approvePettyCashRequest', requestId);
+  if (!res.success) { toast(res.message || 'Failed to approve.', 'error'); return; }
+  toast('Request approved.');
+  loadRequests();
+}
+
+function openPcrRejectModal(requestId, purpose, amountStr) {
+  document.getElementById('pcrRejectId').value   = requestId;
+  document.getElementById('pcrRejectInfo').textContent = `${purpose} — ${amountStr}`;
+  document.getElementById('pcrRejectNote').value  = '';
+  document.getElementById('pcrRejectModal').classList.remove('hidden');
+}
+
+function closePcrRejectModal() {
+  document.getElementById('pcrRejectModal').classList.add('hidden');
+}
+
+async function confirmPcrReject() {
+  const requestId = document.getElementById('pcrRejectId').value;
+  const note      = document.getElementById('pcrRejectNote').value.trim();
+  if (!note) { toast('Please enter a reason for rejection.', 'warning'); return; }
+
+  const res = await callServer('rejectPettyCashRequest', { requestId, note });
+  if (!res.success) { toast(res.message || 'Failed to reject.', 'error'); return; }
+  toast('Request rejected.');
+  closePcrRejectModal();
+  loadRequests();
+}
+
+// ── Release ───────────────────────────────────
+
+async function releaseRequest(requestId) {
+  if (!confirm('Mark this request as released? This will record the cash disbursement in the daily entries.')) return;
+  const res = await callServer('releasePettyCashRequest', requestId);
+  if (!res.success) { toast(res.message || 'Failed to release.', 'error'); return; }
+  toast('Cash released and recorded.');
+  switchRequestTab('released');
+  loadRequests();
+}
+
+// ── Settlement Modal ──────────────────────────
+
+function openPcrSettleModal(requestId, purpose, amount, date) {
+  _pcrSettleCtx = { requestId, amount: parseFloat(amount) || 0, date, purpose };
+  document.getElementById('pcrSettleRequestId').value = requestId;
+  document.getElementById('pcrSettleSubtitle').textContent = purpose;
+  document.getElementById('pcrSettleInfo').innerHTML =
+    `<span class="font-mono font-bold">${fmt(amount)}</span> requested for <em>${escHtml(purpose)}</em> on ${date}`;
+  document.getElementById('pcrSettleRequestAmt').textContent = fmt(amount);
+  document.getElementById('pcrSettleNote').value = '';
+  document.getElementById('pcrItemsList').innerHTML = '';
+  addPcrItem();         // start with one empty row
+  updatePcrSummary();
+  document.getElementById('pcrSettleModal').classList.remove('hidden');
+}
+
+function closePcrSettleModal() {
+  document.getElementById('pcrSettleModal').classList.add('hidden');
+  _pcrSettleCtx = {};
+}
+
+function addPcrItem() {
+  const list = document.getElementById('pcrItemsList');
+  const idx  = list.children.length;
+  const cats = (window.appCategories || ['Office Supplies','Transportation','Meals & Entertainment','Miscellaneous'])
+    .map(c => { const n = c.name || c; return `<option value="${n}">${n}</option>`; }).join('');
+
+  const div = document.createElement('div');
+  div.className = 'pcr-item border border-gray-200 rounded-xl p-3 space-y-2 bg-gray-50';
+  div.innerHTML = `
+    <div class="flex justify-between items-center">
+      <span class="text-xs font-bold text-gray-500 uppercase">Item ${idx + 1}</span>
+      <button onclick="removePcrItem(this)" class="text-gray-400 hover:text-red-500 text-lg font-light leading-none">&times;</button>
+    </div>
+    <div class="grid grid-cols-2 gap-2">
+      <div class="col-span-2">
+        <input type="text" placeholder="Description" class="pcr-desc w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+      </div>
+      <div>
+        <select class="pcr-cat w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">${cats}</select>
+      </div>
+      <div>
+        <input type="number" placeholder="Amount" min="0" step="0.01" class="pcr-amt w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" oninput="updatePcrSummary()">
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <input type="checkbox" class="pcr-has-receipt w-4 h-4 accent-indigo-600" onchange="togglePcrReceipt(this)">
+      <label class="text-xs text-gray-600 font-medium">Has Official Receipt</label>
+    </div>
+    <div class="pcr-receipt-fields hidden space-y-2 pt-1 border-t border-dashed border-indigo-200">
+      <input type="text" placeholder="Supplier Name" class="pcr-supplier w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+      <div class="grid grid-cols-2 gap-2">
+        <input type="text" placeholder="OR / Receipt No." class="pcr-receipt-no w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+        <input type="text" placeholder="TIN (optional)" class="pcr-tin w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+      </div>
+      <input type="text" placeholder="Address (optional)" class="pcr-address w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+    </div>`;
+  list.appendChild(div);
+}
+
+function removePcrItem(btn) {
+  const item = btn.closest('.pcr-item');
+  if (document.querySelectorAll('.pcr-item').length <= 1) {
+    toast('At least one expense item is required.', 'warning');
+    return;
+  }
+  item.remove();
+  // Re-number item labels
+  document.querySelectorAll('.pcr-item').forEach((el, i) => {
+    const label = el.querySelector('.text-xs.font-bold.text-gray-500');
+    if (label) label.textContent = `Item ${i + 1}`;
+  });
+  updatePcrSummary();
+}
+
+function togglePcrReceipt(checkbox) {
+  const fields = checkbox.closest('.pcr-item').querySelector('.pcr-receipt-fields');
+  fields.classList.toggle('hidden', !checkbox.checked);
+}
+
+function updatePcrSummary() {
+  const amts  = [...document.querySelectorAll('.pcr-amt')].map(el => parseFloat(el.value) || 0);
+  const spent = amts.reduce((s, a) => s + a, 0);
+  const req   = _pcrSettleCtx.amount || 0;
+  const change = parseFloat((req - spent).toFixed(2));
+
+  document.getElementById('pcrSettleSpentAmt').textContent  = fmt(spent);
+  document.getElementById('pcrSettleChangeAmt').textContent = fmt(Math.abs(change));
+  document.getElementById('pcrSettleChangeLabel').textContent = change >= 0 ? 'Change to Return' : 'Amount Owed';
+  document.getElementById('pcrSettleChangeAmt').className =
+    'font-mono ' + (change < 0 ? 'text-red-600 font-bold' : change > 0 ? 'text-green-600 font-bold' : '');
+}
+
+async function confirmPcrSettle() {
+  const requestId = document.getElementById('pcrSettleRequestId').value;
+  const note      = document.getElementById('pcrSettleNote').value.trim();
+
+  const items = [...document.querySelectorAll('.pcr-item')];
+  const entries = [];
+  let valid = true;
+
+  for (const item of items) {
+    const desc   = item.querySelector('.pcr-desc')?.value.trim();
+    const cat    = item.querySelector('.pcr-cat')?.value;
+    const amt    = parseFloat(item.querySelector('.pcr-amt')?.value) || 0;
+    const hasRcpt= item.querySelector('.pcr-has-receipt')?.checked;
+
+    if (!desc) { toast('All items must have a description.', 'warning'); valid = false; break; }
+    if (amt <= 0) { toast('All items must have an amount greater than zero.', 'warning'); valid = false; break; }
+
+    const entry = { category: cat, description: desc, amount: amt, hasReceipt: hasRcpt };
+
+    if (hasRcpt) {
+      const supplier = item.querySelector('.pcr-supplier')?.value.trim();
+      if (!supplier) { toast('Supplier name is required for receipted items.', 'warning'); valid = false; break; }
+      entry.receipt = {
+        supplierName: supplier,
+        receiptNo   : item.querySelector('.pcr-receipt-no')?.value.trim() || '',
+        tin         : item.querySelector('.pcr-tin')?.value.trim()        || '',
+        address     : item.querySelector('.pcr-address')?.value.trim()    || ''
+      };
+    }
+    entries.push(entry);
+  }
+
+  if (!valid) return;
+  if (!entries.length) { toast('Add at least one expense item.', 'warning'); return; }
+
+  const btn = document.querySelector('#pcrSettleModal button[onclick="confirmPcrSettle()"]');
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  const res = await callServer('settlePettyCashRequest', { requestId, entries, note });
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Confirm Settlement'; }
+
+  if (!res.success) { toast(res.message || 'Failed to settle request.', 'error'); return; }
+
+  toast('Request settled successfully.');
+  closePcrSettleModal();
+  switchRequestTab('settled');
+  loadRequests();
+}
+</script>
