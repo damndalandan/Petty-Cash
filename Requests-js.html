@@ -243,13 +243,29 @@ async function confirmPcrReject() {
 
 // ── Release ───────────────────────────────────
 
-async function releaseRequest(btn, requestId) {
-  if (!confirm('Mark this request as released? This will record the cash disbursement in the daily entries.')) return;
+function releaseRequest(btn, requestId) {
+  const r = allRequests.find(r => r.id === requestId);
+  if (!r) return;
+  document.getElementById('pcrReleaseId').value = requestId;
+  document.getElementById('pcrReleaseInfo').innerHTML =
+    '<strong>' + escHtml(r.purpose) + '</strong>'
+    + '<br><span class="text-gray-500">' + fmt(r.amount) + ' for ' + escHtml(r.requestedByName || r.requestedBy || '—') + '</span>';
+  document.getElementById('pcrReleaseModal').classList.remove('hidden');
+}
+
+function closePcrReleaseModal() {
+  document.getElementById('pcrReleaseModal').classList.add('hidden');
+}
+
+async function confirmPcrRelease() {
+  const requestId = document.getElementById('pcrReleaseId').value;
+  const btn = document.querySelector('#pcrReleaseModal button[onclick="confirmPcrRelease()"]');
   btnLoad(btn, true);
   const res = await callServer('releasePettyCashRequest', requestId);
   btnLoad(btn, false);
   if (!res.success) { toast(res.message || 'Failed to release.', 'error'); return; }
   toast('Cash released and recorded.');
+  closePcrReleaseModal();
   switchRequestTab('released');
   loadRequests();
 }

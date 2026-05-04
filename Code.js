@@ -3496,15 +3496,15 @@ function releasePettyCashRequest(requestId) {
       if (rows[i][0] !== requestId) continue;
       if (rows[i][6] !== 'APPROVED') return { success: false, message: 'Request must be approved before releasing.' };
 
-      const reqDate      = normalizeDate(rows[i][1]);
+      const releaseDate  = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
       const amount       = parseFloat(rows[i][3]) || 0;
       const purpose      = rows[i][2] || '';
       const requestedFor = rows[i][4] || '';  // employee name
       const approvedBy   = rows[i][7] || '';
 
-      // Create a PCR_ADVANCE entry so the cash outflow is tracked in the daily summary
+      // Create a PCR_ADVANCE entry so the cash outflow is tracked on the release date
       const entryResult = saveExpenseEntry({
-        date       : reqDate,
+        date       : releaseDate,
         type       : 'PCR_ADVANCE',
         category   : 'Petty Cash Request',
         description: purpose,
@@ -3522,9 +3522,11 @@ function releasePettyCashRequest(requestId) {
       sheet.getRange(row, 12).setValue(entryResult.id);
       sheet.getRange(row, 14).setValue(now);
 
+      recalculateDailySummary(releaseDate);
+
       writeAuditLog('REQUEST_RELEASED',
         `PCR released for ${requestedFor}. ₱${amount.toFixed(2)} disbursed. Purpose: ${purpose}`,
-        requestId, reqDate);
+        requestId, releaseDate);
 
       return { success: true, entryId: entryResult.id };
     }
@@ -3546,23 +3548,23 @@ function settlePettyCashRequest(data) {
       if (rows[i][0] !== data.requestId) continue;
       if (rows[i][6] !== 'RELEASED') return { success: false, message: 'Request must be released before settling.' };
 
-      const reqDate      = normalizeDate(rows[i][1]);
       const reqAmount    = parseFloat(rows[i][3]) || 0;
       const requestedFor = rows[i][4] || '';   // employee name
       const approvedBy   = rows[i][7] || '';
       const advEntryId   = rows[i][11];
       const entries      = data.entries || [];
+      const settleDate   = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 
       const totalSpent = entries.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
       const change     = parseFloat((reqAmount - totalSpent).toFixed(2));
 
-      // 1. Create PCR_DETAIL expense entries for each item in the breakdown
+      // 1. Create PCR_DETAIL expense entries for each item (on settlement date)
       for (const entry of entries) {
         const amt = parseFloat(entry.amount) || 0;
         if (amt <= 0) continue;
 
         const expResult = saveExpenseEntry({
-          date       : reqDate,
+          date       : settleDate,
           type       : 'PCR_DETAIL',
           category   : entry.category   || 'Miscellaneous',
           description: entry.description|| '',
@@ -3576,7 +3578,7 @@ function settlePettyCashRequest(data) {
         if (expResult.success && entry.hasReceipt && entry.receipt) {
           saveReceiptRecord({
             entryId     : expResult.id,
-            date        : reqDate,
+            date        : settleDate,
             supplierName: entry.receipt.supplierName || '',
             address     : entry.receipt.address      || '',
             tin         : entry.receipt.tin          || '',
@@ -3586,10 +3588,10 @@ function settlePettyCashRequest(data) {
         }
       }
 
-      // 2. Record change return if applicable
+      // 2. Record change return on settlement date so today's balance reflects cash back
       if (change > 0) {
         saveExpenseEntry({
-          date       : reqDate,
+          date       : settleDate,
           type       : 'CASH_RETURN',
           category   : 'Cash Return',
           description: `Change returned from ${data.requestId}`,
@@ -3605,9 +3607,12 @@ function settlePettyCashRequest(data) {
         const entryRows  = entrySheet.getDataRange().getValues();
         for (let j = 1; j < entryRows.length; j++) {
           if (entryRows[j][0] !== advEntryId) continue;
+          // Read the advance's date so we can recalculate that day's summary too
+          const advDate = normalizeDate(entryRows[j][1]);
           entrySheet.getRange(j + 1, 11).setValue('LIQUIDATED');
           entrySheet.getRange(j + 1, 13).setValue(now);
           entrySheet.getRange(j + 1, 15).setValue('[SETTLED] ' + (data.note || ''));
+          if (advDate && advDate !== settleDate) recalculateDailySummary(advDate);
           break;
         }
       }
@@ -3618,11 +3623,11 @@ function settlePettyCashRequest(data) {
       sheet.getRange(row, 11).setValue(data.note || '');
       sheet.getRange(row, 14).setValue(now);
 
-      recalculateDailySummary(reqDate);
+      recalculateDailySummary(settleDate);
 
       writeAuditLog('REQUEST_SETTLED',
         `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)} | Items: ${entries.length}`,
-        data.requestId, reqDate);
+        data.requestId, settleDate);
 
       return { success: true };
     }
