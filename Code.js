@@ -647,7 +647,8 @@ function updateExpenseEntry(payload) {
       syncNoReceiptOnUpdate(payload, dataRange[i]);
 
       // If cashier is correcting a flagged entry, reset its status to ACTIVE
-      if (dataRange[i][10] === 'FLAGGED') {
+      const wasFlagged = dataRange[i][10] === 'FLAGGED';
+      if (wasFlagged) {
         sheet.getRange(row, 11).setValue('ACTIVE');
         sheet.getRange(row, 15).setValue('');
       }
@@ -655,6 +656,14 @@ function updateExpenseEntry(payload) {
       recalculateDailySummary(payload.date);
       if (oldDate && oldDate !== payload.date) recalculateDailySummary(oldDate);
 
+      if (wasFlagged) {
+        writeAuditLog(
+          'ENTRY_CORRECTED',
+          `Flagged entry corrected and reinstated. Desc: ${payload.description || '—'} | Amount: ₱${parseFloat(payload.amount || 0).toFixed(2)} | Category: ${payload.category || '—'}`,
+          payload.id,
+          payload.date
+        );
+      }
       writeAuditLog(
         'ENTRY_UPDATED',
         `Entry updated. Desc: ${payload.description || '—'} | Amount: ₱${parseFloat(payload.amount || 0).toFixed(2)} | Category: ${payload.category || '—'} | Type: ${payload.type || '—'}`,
@@ -1693,7 +1702,7 @@ function getDayStatus(date) {
       const type   = row[2];
       const status = row[10];
       if (type !== 'CASH_ADVANCE') continue;
-      if (status === 'DELETED' || status === 'LIQUIDATED') continue;
+      if (status === 'DELETED' || status === 'LIQUIDATED' || status === 'LIQUIDATION_PENDING') continue;
       if (rDate > date) continue;
       outstandingAdvances++;
       outstandingTotal += parseFloat(row[5]) || 0;
@@ -1954,6 +1963,12 @@ function updateDenominationRecord(data) {
     ]]);
 
     recalculateDailySummary(data.date);
+    writeAuditLog(
+      'DENOMINATION_UPDATED',
+      `${data.type} denomination count updated. Total: ₱${total.toFixed(2)}`,
+      dataRange[targetRow - 1][0],
+      data.date
+    );
     return { success: true, id: dataRange[targetRow - 1][0], total };
   } catch(e) {
     return { success: false, message: e.toString() };
@@ -2201,9 +2216,9 @@ function flagDay(data) {
     for (let i = 1; i < rows.length; i++) {
       if (normalizeDate(rows[i][1]) !== data.date) continue;
       const row = i + 1;
-      sheet.getRange(row, 13).setValue('FLAGGED');
-      sheet.getRange(row, 14).setValue(email);
-      sheet.getRange(row, 15).setValue(now);
+      sheet.getRange(row, 14).setValue('FLAGGED');
+      sheet.getRange(row, 15).setValue(email);
+      sheet.getRange(row, 16).setValue(now);
 
       // Tag each flagged entry with auditor note in col 15 (notes/remarks)
       if (data.flaggedEntries && data.flaggedEntries.length) {
@@ -2863,14 +2878,25 @@ function syncReceiptsToFinalSheet(approvedDate) {
     "Vatable_Sales", "VAT_Amount"
   ];
 
-  const srcSheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SOURCE_SHEET_NAME);
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const srcSheet = ss.getSheetByName(SOURCE_SHEET_NAME);
   if (!srcSheet) return;
   const srcData    = srcSheet.getDataRange().getValues();
   const headers    = srcData[0];
   const colIndices = COLUMNS_TO_COPY.map(col => headers.indexOf(col));
 
-  const srcRcpIdIdx = headers.indexOf("Receipt_ID");
-  const srcDateIdx  = headers.indexOf("Date");
+  const srcRcpIdIdx    = headers.indexOf("Receipt_ID");
+  const srcDateIdx     = headers.indexOf("Date");
+  const srcEntryIdIdx  = headers.indexOf("Entry_ID");
+
+  // ── Build a map of entryId → {status, hasReceipt} to filter out orphaned receipts ──
+  // Receipts linked to DELETED entries or entries where receipt was later removed must be excluded.
+  const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+  const entryRows  = entrySheet ? entrySheet.getDataRange().getValues() : [];
+  const entryMap   = {};
+  for (let i = 1; i < entryRows.length; i++) {
+    entryMap[entryRows[i][0]] = { status: entryRows[i][10], hasReceipt: entryRows[i][6] };
+  }
 
   const destSS = SpreadsheetApp.openById(DEST_SPREADSHEET_ID);
 
@@ -2881,9 +2907,14 @@ function syncReceiptsToFinalSheet(approvedDate) {
   for (let i = 1; i < srcData.length; i++) {
     const receiptId   = srcData[i][srcRcpIdIdx];
     const receiptDate = normalizeDate(srcData[i][srcDateIdx]);
+    const entryId     = srcData[i][srcEntryIdIdx];
 
     if (!receiptId)                          continue;
     if (approvedDate && receiptDate !== approvedDate) continue; // only this day's receipts
+
+    // Skip receipts whose linked entry was deleted or no longer marked as receipted
+    const entry = entryMap[entryId];
+    if (entry && (entry.status === 'DELETED' || entry.hasReceipt !== 'YES')) continue;
 
     // Determine which monthly tab this receipt belongs to
     const dateObj   = new Date(receiptDate + 'T00:00:00');
