@@ -23,6 +23,17 @@
         <input type="number" id="pcrAmount" placeholder="0.00" min="0" step="0.01"
           class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
       </div>
+      <div class="md:col-span-3">
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested For (Name) <span class="text-red-400">*</span></label>
+        <div class="relative">
+          <input type="text" id="pcrRequestedBy" placeholder="Type to search name..."
+            autocomplete="off"
+            oninput="filterEmployees(this)"
+            onblur="hideEmployeeSuggestions(this)"
+            class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50">
+          <div id="pcrRequestedBySuggestions" class="hidden absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 max-h-48 overflow-y-auto"></div>
+        </div>
+      </div>
     </div>
     <div class="mt-4 flex justify-end">
       <button onclick="submitPettyCashRequest()"

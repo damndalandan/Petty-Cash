@@ -131,14 +131,14 @@ function renderRequestCard(r) {
 
   if (r.status === 'RELEASED' && isCashier()) {
     actions = `
-      <button onclick="openPcrSettleModal('${r.id}','${escHtml(r.purpose)}',${r.amount},'${r.date}')"
+      <button onclick="openPcrSettleModal('${r.id}','${escHtml(r.purpose)}',${r.amount},'${r.date}','${escHtml(r.requestedByName)}')"
         class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[36px]">
         Settle
       </button>`;
   }
 
   const approvalLine = r.approvedBy
-    ? `<span class="text-gray-400">• ${r.status === 'REJECTED' ? 'Rejected' : 'Approved'} by ${r.approvedBy}</span>` : '';
+    ? `<span class="text-gray-400">• ${r.status === 'REJECTED' ? 'Rejected' : 'Approved'} by ${r.approvedBy.split('@')[0]}</span>` : '';
   const rejectionLine = r.rejectionNote
     ? `<div class="mt-2 text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">Reason: ${escHtml(r.rejectionNote)}</div>` : '';
 
@@ -155,7 +155,8 @@ function renderRequestCard(r) {
         </div>
         <div class="text-right shrink-0">
           <p class="text-lg font-bold font-mono text-gray-800">${fmt(r.amount)}</p>
-          <p class="text-xs text-gray-400">requested by <span class="font-medium">${r.requestedBy.split('@')[0]}</span></p>
+          <p class="text-xs text-gray-400">for <span class="font-medium text-gray-600">${escHtml(r.requestedByName || r.requestedBy.split('@')[0])}</span></p>
+          <p class="text-[11px] text-gray-400">by ${r.submittedBy || r.requestedBy.split('@')[0]}</p>
         </div>
       </div>
       ${rejectionLine}
@@ -170,19 +171,22 @@ function escHtml(s) {
 // ── New Request Form ──────────────────────────
 
 async function submitPettyCashRequest() {
-  const purpose = document.getElementById('pcrPurpose')?.value.trim();
-  const amount  = parseFloat(document.getElementById('pcrAmount')?.value);
-  const date    = state.currentDate;
+  const purpose     = document.getElementById('pcrPurpose')?.value.trim();
+  const amount      = parseFloat(document.getElementById('pcrAmount')?.value);
+  const requestedBy = document.getElementById('pcrRequestedBy')?.value.trim();
+  const date        = state.currentDate;
 
   if (!purpose)      { toast('Purpose is required.', 'warning'); return; }
   if (!amount || amount <= 0) { toast('Amount must be greater than zero.', 'warning'); return; }
+  if (!requestedBy)  { toast('Please enter who is requesting.', 'warning'); return; }
 
-  const res = await callServer('savePettyCashRequest', { date, purpose, amount });
+  const res = await callServer('savePettyCashRequest', { date, purpose, amount, requestedBy });
   if (!res.success) { toast(res.message || 'Failed to submit request.', 'error'); return; }
 
   toast('Request submitted for approval.');
-  document.getElementById('pcrPurpose').value = '';
-  document.getElementById('pcrAmount').value  = '';
+  document.getElementById('pcrPurpose').value      = '';
+  document.getElementById('pcrAmount').value       = '';
+  document.getElementById('pcrRequestedBy').value  = '';
   switchRequestTab('pending');
   loadRequests();
 }
@@ -232,12 +236,13 @@ async function releaseRequest(requestId) {
 
 // ── Settlement Modal ──────────────────────────
 
-function openPcrSettleModal(requestId, purpose, amount, date) {
+function openPcrSettleModal(requestId, purpose, amount, date, requestedByName) {
   _pcrSettleCtx = { requestId, amount: parseFloat(amount) || 0, date, purpose };
   document.getElementById('pcrSettleRequestId').value = requestId;
   document.getElementById('pcrSettleSubtitle').textContent = purpose;
   document.getElementById('pcrSettleInfo').innerHTML =
-    `<span class="font-mono font-bold">${fmt(amount)}</span> requested for <em>${escHtml(purpose)}</em> on ${date}`;
+    `<span class="font-mono font-bold">${fmt(amount)}</span> for <strong>${escHtml(requestedByName || '—')}</strong>`
+    + ` — <em>${escHtml(purpose)}</em> on ${date}`;
   document.getElementById('pcrSettleRequestAmt').textContent = fmt(amount);
   document.getElementById('pcrSettleNote').value = '';
   document.getElementById('pcrItemsList').innerHTML = '';

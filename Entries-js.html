@@ -55,43 +55,44 @@ function showCategoryDescription(selectEl) {
 
 function filterEmployees(input) {
   const query = input.value.trim().toLowerCase();
-  const box   = document.getElementById('employeeSuggestions');
+  // The suggestions div is always the nextElementSibling of the input
+  const box   = input.nextElementSibling;
   if (!box) return;
 
-  // Hide if less than 1 character typed
-  if (query.length < 1) {
-    box.classList.add('hidden');
-    return;
-  }
+  if (query.length < 1) { box.classList.add('hidden'); return; }
 
   const employees = window.appEmployees || [];
-  const matches   = employees
-    .filter(name => name.toLowerCase().includes(query))
-    .slice(0, 6); // max 6 suggestions
+  const matches   = employees.filter(name => name.toLowerCase().includes(query)).slice(0, 6);
 
-  if (!matches.length) {
-    box.classList.add('hidden');
-    return;
-  }
+  if (!matches.length) { box.classList.add('hidden'); return; }
 
+  const inputId = input.id;
   box.innerHTML = matches.map(name =>
     `<div class="px-3 py-2 text-sm text-gray-700 hover:bg-blue-50 cursor-pointer"
-      onmousedown="selectEmployee('${name.replace(/'/g, "\\'")}')">${name}</div>`
+      onmousedown="selectEmployee('${name.replace(/'/g, "\\'")}','${inputId}')">${name}</div>`
   ).join('');
   box.classList.remove('hidden');
 }
 
-function selectEmployee(name) {
-  const input = document.getElementById('entryRequested');
-  if (input) input.value = name;
-  hideEmployeeSuggestions();
+function selectEmployee(name, inputId) {
+  const input = document.getElementById(inputId || 'entryRequested');
+  if (input) {
+    input.value = name;
+    const box = input.nextElementSibling;
+    if (box) box.classList.add('hidden');
+  }
 }
 
-function hideEmployeeSuggestions() {
+function hideEmployeeSuggestions(input) {
   // Small delay so onmousedown fires before blur hides the list
   setTimeout(() => {
-    const box = document.getElementById('employeeSuggestions');
-    if (box) box.classList.add('hidden');
+    if (input) {
+      const box = input.nextElementSibling;
+      if (box) box.classList.add('hidden');
+    } else {
+      // Fallback: hide all suggestion dropdowns on the page
+      document.querySelectorAll('[id$="Suggestions"]').forEach(el => el.classList.add('hidden'));
+    }
   }, 150);
 }
 

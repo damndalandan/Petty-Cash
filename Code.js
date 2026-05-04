@@ -433,8 +433,9 @@ function initializeSheets() {
   if (!ss.getSheetByName(SHEETS.REQUESTS)) {
     const s = ss.insertSheet(SHEETS.REQUESTS);
     s.appendRow([
-      'Request_ID', 'Date', 'Purpose', 'Amount', 'Requested_By',
-      'Status', 'Approved_By', 'Approved_At', 'Released_At',
+      'Request_ID', 'Date', 'Purpose', 'Amount',
+      'Requested_By', 'Submitted_By', 'Status',
+      'Approved_By', 'Approved_At', 'Released_At',
       'Rejection_Note', 'Entry_ID', 'Created_At', 'Updated_At'
     ]);
     s.setFrozenRows(1);
@@ -448,10 +449,11 @@ function initializeSheets() {
     s.setColumnWidth(7, 220);
     s.setColumnWidth(8, 180);
     s.setColumnWidth(9, 180);
-    s.setColumnWidth(10, 280);
-    s.setColumnWidth(11, 160);
-    s.setColumnWidth(12, 180);
+    s.setColumnWidth(10, 180);
+    s.setColumnWidth(11, 280);
+    s.setColumnWidth(12, 160);
     s.setColumnWidth(13, 180);
+    s.setColumnWidth(14, 180);
   }
 
   return { success: true };
@@ -3342,13 +3344,17 @@ function getSummaryReportDataByRange(params) {
 // ─────────────────────────────────────────────
 // PETTY CASH REQUESTS (PCR) — Pre-approval workflow
 // Sheet columns:
-//   1: Request_ID  2: Date  3: Purpose  4: Amount  5: Requested_By
-//   6: Status      7: Approved_By  8: Approved_At  9: Released_At
-//  10: Rejection_Note  11: Entry_ID (PCR_ADVANCE)  12: Created_At  13: Updated_At
+//   1: Request_ID     2: Date           3: Purpose         4: Amount
+//   5: Requested_By   6: Submitted_By   7: Status          8: Approved_By
+//   9: Approved_At   10: Released_At   11: Rejection_Note  12: Entry_ID
+//  13: Created_At    14: Updated_At
+//
+// Requested_By  = employee name (who the cash is for)
+// Submitted_By  = cashier email (who created the request)
 // ─────────────────────────────────────────────
 
 function savePettyCashRequest(data) {
-  // data: { date, purpose, amount }
+  // data: { date, purpose, amount, requestedBy }
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.REQUESTS);
@@ -3359,18 +3365,19 @@ function savePettyCashRequest(data) {
     const id    = generateId('PCR', data.date, sheet);
 
     sheet.appendRow([
-      id,                              // Request_ID
-      data.date,                       // Date
-      data.purpose || '',              // Purpose
-      parseFloat(data.amount) || 0,   // Amount
-      email,                           // Requested_By
-      'PENDING_APPROVAL',              // Status
-      '', '', '', '', '',              // Approved_By, Approved_At, Released_At, Rejection_Note, Entry_ID
-      now, now                         // Created_At, Updated_At
+      id,                                // 1  Request_ID
+      data.date,                         // 2  Date
+      data.purpose || '',                // 3  Purpose
+      parseFloat(data.amount) || 0,     // 4  Amount
+      data.requestedBy || '',            // 5  Requested_By (employee name)
+      email,                             // 6  Submitted_By (cashier email)
+      'PENDING_APPROVAL',                // 7  Status
+      '', '', '', '', '',                // 8-12 Approved_By, Approved_At, Released_At, Rejection_Note, Entry_ID
+      now, now                           // 13-14 Created_At, Updated_At
     ]);
 
     writeAuditLog('REQUEST_CREATED',
-      `PCR submitted. Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
+      `PCR submitted by ${email}. For: ${data.requestedBy || '—'} | Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
       id, data.date);
 
     return { success: true, id };
@@ -3394,21 +3401,22 @@ function getPettyCashRequests() {
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
       if (!r[0]) continue;
-      // Cashiers only see their own requests; Admin/Auditor see all
-      if (!isPrivileged && r[4] !== email) continue;
+      // Cashiers only see requests they submitted; Admin/Auditor see all
+      if (!isPrivileged && r[5] !== email) continue;
       data.push({
-        id            : r[0],
-        date          : normalizeDate(r[1]),
-        purpose       : r[2],
-        amount        : parseFloat(r[3]) || 0,
-        requestedBy   : r[4],
-        status        : r[5],
-        approvedBy    : r[6],
-        approvedAt    : r[7],
-        releasedAt    : r[8],
-        rejectionNote : r[9],
-        entryId       : r[10],
-        createdAt     : r[11]
+        id              : r[0],
+        date            : normalizeDate(r[1]),
+        purpose         : r[2],
+        amount          : parseFloat(r[3]) || 0,
+        requestedByName : r[4],   // employee name
+        submittedBy     : r[5],   // cashier email
+        status          : r[6],
+        approvedBy      : r[7],
+        approvedAt      : r[8],
+        releasedAt      : r[9],
+        rejectionNote   : r[10],
+        entryId         : r[11],
+        createdAt       : r[12]
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -3428,15 +3436,15 @@ function approvePettyCashRequest(requestId) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== requestId) continue;
-      if (rows[i][5] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
+      if (rows[i][6] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
       const row = i + 1;
-      sheet.getRange(row, 6).setValue('APPROVED');
-      sheet.getRange(row, 7).setValue(email);
-      sheet.getRange(row, 8).setValue(now);
-      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 7).setValue('APPROVED');
+      sheet.getRange(row, 8).setValue(email);
+      sheet.getRange(row, 9).setValue(now);
+      sheet.getRange(row, 14).setValue(now);
 
       writeAuditLog('REQUEST_APPROVED',
-        `PCR approved. Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
+        `PCR approved for ${rows[i][4]}. Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
         requestId, normalizeDate(rows[i][1]));
 
       return { success: true };
@@ -3458,15 +3466,15 @@ function rejectPettyCashRequest(data) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.requestId) continue;
-      if (rows[i][5] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
+      if (rows[i][6] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
       const row = i + 1;
-      sheet.getRange(row, 6).setValue('REJECTED');
-      sheet.getRange(row, 7).setValue(email);
-      sheet.getRange(row, 10).setValue(data.note || '');
-      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 7).setValue('REJECTED');
+      sheet.getRange(row, 8).setValue(email);
+      sheet.getRange(row, 11).setValue(data.note || '');
+      sheet.getRange(row, 14).setValue(now);
 
       writeAuditLog('REQUEST_REJECTED',
-        `PCR rejected. Purpose: ${rows[i][2]} | Note: ${data.note || '—'}`,
+        `PCR rejected for ${rows[i][4]}. Purpose: ${rows[i][2]} | Note: ${data.note || '—'}`,
         data.requestId, normalizeDate(rows[i][1]));
 
       return { success: true };
@@ -3486,11 +3494,13 @@ function releasePettyCashRequest(requestId) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== requestId) continue;
-      if (rows[i][5] !== 'APPROVED') return { success: false, message: 'Request must be approved before releasing.' };
+      if (rows[i][6] !== 'APPROVED') return { success: false, message: 'Request must be approved before releasing.' };
 
-      const reqDate = normalizeDate(rows[i][1]);
-      const amount  = parseFloat(rows[i][3]) || 0;
-      const purpose = rows[i][2] || '';
+      const reqDate      = normalizeDate(rows[i][1]);
+      const amount       = parseFloat(rows[i][3]) || 0;
+      const purpose      = rows[i][2] || '';
+      const requestedFor = rows[i][4] || '';  // employee name
+      const approvedBy   = rows[i][7] || '';
 
       // Create a PCR_ADVANCE entry so the cash outflow is tracked in the daily summary
       const entryResult = saveExpenseEntry({
@@ -3501,19 +3511,19 @@ function releasePettyCashRequest(requestId) {
         amount     : amount,
         hasReceipt : false,
         referenceNo: requestId,
-        requestedBy: rows[i][4],
-        approvedBy : rows[i][6]
+        requestedBy: requestedFor,
+        approvedBy : approvedBy
       });
       if (!entryResult.success) return { success: false, message: 'Failed to create advance entry: ' + entryResult.message };
 
       const row = i + 1;
-      sheet.getRange(row, 6).setValue('RELEASED');
-      sheet.getRange(row, 9).setValue(now);
-      sheet.getRange(row, 11).setValue(entryResult.id);
-      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 7).setValue('RELEASED');
+      sheet.getRange(row, 10).setValue(now);
+      sheet.getRange(row, 12).setValue(entryResult.id);
+      sheet.getRange(row, 14).setValue(now);
 
       writeAuditLog('REQUEST_RELEASED',
-        `PCR released. ₱${amount.toFixed(2)} disbursed for: ${purpose}`,
+        `PCR released for ${requestedFor}. ₱${amount.toFixed(2)} disbursed. Purpose: ${purpose}`,
         requestId, reqDate);
 
       return { success: true, entryId: entryResult.id };
@@ -3534,12 +3544,14 @@ function settlePettyCashRequest(data) {
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.requestId) continue;
-      if (rows[i][5] !== 'RELEASED') return { success: false, message: 'Request must be released before settling.' };
+      if (rows[i][6] !== 'RELEASED') return { success: false, message: 'Request must be released before settling.' };
 
-      const reqDate    = normalizeDate(rows[i][1]);
-      const reqAmount  = parseFloat(rows[i][3]) || 0;
-      const advEntryId = rows[i][10];
-      const entries    = data.entries || [];
+      const reqDate      = normalizeDate(rows[i][1]);
+      const reqAmount    = parseFloat(rows[i][3]) || 0;
+      const requestedFor = rows[i][4] || '';   // employee name
+      const approvedBy   = rows[i][7] || '';
+      const advEntryId   = rows[i][11];
+      const entries      = data.entries || [];
 
       const totalSpent = entries.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
       const change     = parseFloat((reqAmount - totalSpent).toFixed(2));
@@ -3557,8 +3569,8 @@ function settlePettyCashRequest(data) {
           amount     : amt,
           hasReceipt : !!entry.hasReceipt,
           referenceNo: data.requestId,
-          requestedBy: rows[i][4],
-          approvedBy : rows[i][6]
+          requestedBy: requestedFor,
+          approvedBy : approvedBy
         });
 
         if (expResult.success && entry.hasReceipt && entry.receipt) {
@@ -3602,9 +3614,9 @@ function settlePettyCashRequest(data) {
 
       // 4. Mark request as SETTLED
       const row = i + 1;
-      sheet.getRange(row, 6).setValue('SETTLED');
-      sheet.getRange(row, 10).setValue(data.note || '');
-      sheet.getRange(row, 13).setValue(now);
+      sheet.getRange(row, 7).setValue('SETTLED');
+      sheet.getRange(row, 11).setValue(data.note || '');
+      sheet.getRange(row, 14).setValue(now);
 
       recalculateDailySummary(reqDate);
 
