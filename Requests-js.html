@@ -291,19 +291,41 @@ function addPcrItem() {
         <input type="number" placeholder="Amount" min="0" step="0.01" class="pcr-amt w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" oninput="updatePcrSummary()">
       </div>
     </div>
-    <div class="flex items-center gap-2">
-      <input type="checkbox" class="pcr-has-receipt w-4 h-4 accent-indigo-600" onchange="togglePcrReceipt(this)">
-      <label class="text-xs text-gray-600 font-medium">Has Official Receipt</label>
-    </div>
-    <div class="pcr-receipt-fields hidden space-y-2 pt-1 border-t border-dashed border-indigo-200">
-      <input type="text" placeholder="Supplier Name" class="pcr-supplier w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-      <div class="grid grid-cols-2 gap-2">
-        <input type="text" placeholder="OR / Receipt No." class="pcr-receipt-no w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
-        <input type="text" placeholder="TIN (optional)" class="pcr-tin w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
+    <div class="pt-1 border-t border-dashed border-gray-200">
+      <button type="button" class="pcr-receipt-btn w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition"
+        onclick="openPcrItemReceipt(this)">
+        🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>
+      </button>
+      <div class="pcr-receipt-preview hidden mt-1.5 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+        <span class="text-xs text-green-700 font-medium pcr-receipt-label"></span>
+        <button type="button" onclick="clearPcrItemReceipt(this)" class="text-xs text-red-400 hover:text-red-600 font-medium ml-2 shrink-0">Remove</button>
       </div>
-      <input type="text" placeholder="Address (optional)" class="pcr-address w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white">
     </div>`;
   list.appendChild(div);
+}
+
+function openPcrItemReceipt(btn) {
+  const item = btn.closest('.pcr-item');
+  const amt  = parseFloat(item.querySelector('.pcr-amt')?.value) || 0;
+  openReceiptModal({
+    mode       : 'new',
+    grossAmount: amt,
+    onAttach   : (receiptData) => {
+      item._receipt = receiptData;
+      btn.classList.add('hidden');
+      const preview = item.querySelector('.pcr-receipt-preview');
+      const label   = item.querySelector('.pcr-receipt-label');
+      label.textContent = `✓ ${receiptData.supplierName}${receiptData.receiptNo ? ' — OR# ' + receiptData.receiptNo : ''} (${fmt(receiptData.grossAmount)})`;
+      preview.classList.remove('hidden');
+    }
+  });
+}
+
+function clearPcrItemReceipt(clearBtn) {
+  const item    = clearBtn.closest('.pcr-item');
+  item._receipt = null;
+  item.querySelector('.pcr-receipt-preview').classList.add('hidden');
+  item.querySelector('.pcr-receipt-btn').classList.remove('hidden');
 }
 
 function removePcrItem(btn) {
@@ -313,17 +335,11 @@ function removePcrItem(btn) {
     return;
   }
   item.remove();
-  // Re-number item labels
   document.querySelectorAll('.pcr-item').forEach((el, i) => {
     const label = el.querySelector('.text-xs.font-bold.text-gray-500');
     if (label) label.textContent = `Item ${i + 1}`;
   });
   updatePcrSummary();
-}
-
-function togglePcrReceipt(checkbox) {
-  const fields = checkbox.closest('.pcr-item').querySelector('.pcr-receipt-fields');
-  fields.classList.toggle('hidden', !checkbox.checked);
 }
 
 function updatePcrSummary() {
@@ -348,27 +364,15 @@ async function confirmPcrSettle() {
   let valid = true;
 
   for (const item of items) {
-    const desc   = item.querySelector('.pcr-desc')?.value.trim();
-    const cat    = item.querySelector('.pcr-cat')?.value;
-    const amt    = parseFloat(item.querySelector('.pcr-amt')?.value) || 0;
-    const hasRcpt= item.querySelector('.pcr-has-receipt')?.checked;
+    const desc    = item.querySelector('.pcr-desc')?.value.trim();
+    const cat     = item.querySelector('.pcr-cat')?.value;
+    const amt     = parseFloat(item.querySelector('.pcr-amt')?.value) || 0;
+    const receipt = item._receipt || null;
 
     if (!desc) { toast('All items must have a description.', 'warning'); valid = false; break; }
     if (amt <= 0) { toast('All items must have an amount greater than zero.', 'warning'); valid = false; break; }
 
-    const entry = { category: cat, description: desc, amount: amt, hasReceipt: hasRcpt };
-
-    if (hasRcpt) {
-      const supplier = item.querySelector('.pcr-supplier')?.value.trim();
-      if (!supplier) { toast('Supplier name is required for receipted items.', 'warning'); valid = false; break; }
-      entry.receipt = {
-        supplierName: supplier,
-        receiptNo   : item.querySelector('.pcr-receipt-no')?.value.trim() || '',
-        tin         : item.querySelector('.pcr-tin')?.value.trim()        || '',
-        address     : item.querySelector('.pcr-address')?.value.trim()    || ''
-      };
-    }
-    entries.push(entry);
+    entries.push({ category: cat, description: desc, amount: amt, hasReceipt: !!receipt, receipt });
   }
 
   if (!valid) return;
