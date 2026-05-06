@@ -265,6 +265,10 @@ function renderDetailList() {
   // Skip LIQ_DETAIL as top-level — shown as sub-rows under advances
   entries = entries.filter(e => e.type !== 'LIQ_DETAIL');
 
+  // Skip PCR_DETAIL and PCR-related CASH_RETURN as top-level — shown under PCR_ADVANCE
+  const pcrRefNos = new Set(allEntries.filter(e => e.type === 'PCR_ADVANCE').map(e => e.referenceNo).filter(Boolean));
+  entries = entries.filter(e => e.type !== 'PCR_DETAIL' && !(e.type === 'CASH_RETURN' && pcrRefNos.has(e.referenceNo)));
+
   const tbody = document.getElementById('detailListBody');
   if (entries.length === 0) {
     tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-8 text-center text-gray-400 italic">No entries found</td></tr>';
@@ -279,6 +283,15 @@ function renderDetailList() {
     liqDetailMap[sub.referenceNo].push(sub);
   });
 
+  // Build PCR sub-entries map: PCR_DETAIL + CASH_RETURN grouped under PCR_ADVANCE by referenceNo
+  const pcrSubMap = {};
+  allEntries.filter(e => e.type === 'PCR_ADVANCE').forEach(adv => {
+    const subs = allEntries.filter(s =>
+      (s.type === 'PCR_DETAIL' || s.type === 'CASH_RETURN') && s.referenceNo === adv.referenceNo
+    );
+    if (subs.length) pcrSubMap[adv.id] = subs;
+  });
+
   let total = 0;
   const rows = [];
 
@@ -290,6 +303,16 @@ function renderDetailList() {
     const isAdvance = e.type === 'CASH_ADVANCE';
     const isLiquidated = isAdvance && e.status === 'LIQUIDATED';
     const isLiqPending = isAdvance && e.status === 'LIQUIDATION_PENDING';
+    const isPcrRelease = e.type === 'PCR_ADVANCE';
+    const isPcrSettled = isPcrRelease && e.status === 'LIQUIDATED';
+
+    // PCR sub-entries for this release
+    const pcrSubs    = isPcrRelease ? (pcrSubMap[e.id] || []) : [];
+    const pcrDetails = pcrSubs.filter(s => s.type === 'PCR_DETAIL');
+    const pcrCashRet = pcrSubs.find(s => s.type === 'CASH_RETURN');
+    const pcrSpent   = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+
+    if (isPcrRelease) total += isPcrSettled ? pcrSpent : (parseFloat(e.amount) || 0);
 
     // Finalized sub-entries (LIQ_DETAIL rows)
     const liqSubs = liqDetailMap[e.id] || [];
@@ -297,7 +320,7 @@ function renderDetailList() {
     // Pending breakdown from notes JSON
     const pendingBreakdown = (isLiqPending && e.liqBreakdown) ? (e.liqBreakdown.entries || []) : [];
 
-    const hasBreakdown = liqSubs.length > 0 || pendingBreakdown.length > 0;
+    const hasBreakdown = liqSubs.length > 0 || pendingBreakdown.length > 0 || pcrSubs.length > 0;
     const isExpanded = reportExpandedAdvances.has(e.id);
 
     let typeBadge;
@@ -308,6 +331,10 @@ function renderDetailList() {
         typeBadge = '<span class="text-amber-600 text-xs font-bold bg-amber-100 px-2 py-1 rounded">⏳ PENDING</span>';
       else
         typeBadge = '<span class="text-blue-600 text-xs font-bold bg-blue-100 px-2 py-1 rounded">ADVANCE</span>';
+    } else if (isPcrRelease) {
+      typeBadge = isPcrSettled
+        ? '<span class="text-green-700 text-xs font-bold bg-green-100 px-2 py-1 rounded">✅ Settled</span>'
+        : '<span class="text-indigo-600 text-xs font-bold bg-indigo-100 px-2 py-1 rounded">Released</span>';
     } else if (e.type === 'CASH_OVER') {
       typeBadge = '<span class="text-emerald-600 text-xs font-bold bg-emerald-100 px-2 py-1 rounded">OVERAGE</span>';
     } else if (e.type === 'REPLENISHMENT') {
@@ -318,26 +345,39 @@ function renderDetailList() {
         : '<span class="text-yellow-600 text-xs font-bold bg-yellow-100 px-2 py-1 rounded">NO</span>';
     }
 
+    const pcrExpandCount = pcrSubs.length;
+    const expandBtnColor = isPcrRelease ? 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100' : 'bg-blue-50 text-blue-600 hover:bg-blue-100';
     const expandBtn = hasBreakdown
-      ? `<button onclick="toggleReportAdvance('${e.id}')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100 transition">
-           ${isExpanded ? '▼ Hide' : '▶ Breakdown'} (${liqSubs.length || pendingBreakdown.length})
+      ? `<button onclick="toggleReportAdvance('${e.id}')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded ${expandBtnColor} transition">
+           ${isExpanded ? '▼ Hide items' : '▶ View items'} (${isPcrRelease ? pcrExpandCount : (liqSubs.length || pendingBreakdown.length)})
          </button>`
       : '';
 
-    const amountClass = isLiquidated ? 'text-gray-400 line-through' : 'text-gray-700';
+    const amountClass = (isLiquidated || isPcrSettled) ? 'text-gray-400 line-through' : 'text-gray-700';
+
+    // For PCR: show the PCR RELEASE badge + description on the same line
+    const pcrReleaseBadge = isPcrRelease
+      ? '<span class="text-indigo-600 text-xs font-bold bg-indigo-100 px-2 py-1 rounded mr-1">PCR RELEASE</span>'
+      : '';
+
+    // Spent summary line for settled PCR entries
+    const pcrSpentLine = isPcrSettled
+      ? `<div class="text-xs text-indigo-700 font-semibold mt-0.5">Spent: ${fmt(pcrSpent)}${pcrCashRet ? ' · ↩ Cash returned: ' + fmt(pcrCashRet.amount) : ' · Fully spent'}</div>`
+      : '';
 
     rows.push(`
-      <tr class="hover:bg-gray-50 ${isAdvance ? 'bg-blue-50/30' : ''}">
+      <tr class="hover:bg-gray-50 ${isAdvance ? 'bg-blue-50/30' : isPcrRelease ? 'bg-indigo-50/30' : ''}">
         <td class="px-3 py-3">
           <div class="font-medium text-gray-900 flex items-center flex-wrap gap-1 text-sm leading-snug">
-            ${e.description}
+            ${pcrReleaseBadge}${e.description}
             ${expandBtn}
           </div>
-          <div class="text-xs text-gray-500 mt-0.5">${e.category || e.type}${e.requestedBy ? ' · ' + e.requestedBy : ''}</div>
+          <div class="text-xs text-gray-500 mt-0.5">${isPcrRelease ? 'Petty Cash Request' : (e.category || e.type)}${e.requestedBy ? ' · ' + e.requestedBy : ''}</div>
           ${isLiquidated && e.liqBreakdown ? `<div class="text-xs text-green-600 mt-0.5 font-medium">Spent: ${fmt(e.liqBreakdown.totalSpent || 0)}${(e.liqBreakdown.change > 0.005) ? ' · Change: ' + fmt(e.liqBreakdown.change) : ' · Fully spent'}</div>` : ''}
+          ${pcrSpentLine}
           <!-- Mobile-only: amount + badge inline -->
           <div class="flex items-center justify-between mt-1.5 sm:hidden">
-            <span class="font-mono font-bold text-sm ${amountClass}">${fmt(e.amount)}</span>
+            <span class="font-mono font-bold text-sm ${amountClass}">${fmt(isPcrSettled ? pcrSpent : e.amount)}</span>
             ${typeBadge}
           </div>
         </td>
@@ -347,6 +387,38 @@ function renderDetailList() {
 
     // Sub-rows when expanded
     if (isExpanded) {
+      // PCR_DETAIL sub-entries
+      if (isPcrRelease) {
+        pcrDetails.forEach(sub => {
+          rows.push(`
+            <tr class="bg-indigo-50/60 border-l-4 border-indigo-200">
+              <td class="pl-8 pr-3 py-2">
+                <div class="flex items-start gap-1 text-xs text-gray-700">
+                  <span class="text-gray-300 shrink-0 mt-0.5">└</span>
+                  <div>
+                    <span class="font-medium">${sub.description}</span>
+                    <span class="text-gray-400 ml-1">(${sub.category || ''})</span>
+                    ${sub.hasReceipt ? '<span class="text-green-600 ml-1">🧾</span>' : '<span class="text-amber-500 ml-1">⚠️</span>'}
+                    <div class="flex items-center justify-between mt-1 sm:hidden">
+                      <span class="font-mono font-bold text-gray-600">${fmt(sub.amount)}</span>
+                    </div>
+                  </div>
+                </div>
+              </td>
+              <td class="px-3 py-2 text-right font-mono text-xs text-gray-600 hidden sm:table-cell">${fmt(sub.amount)}</td>
+              <td class="px-3 py-2 text-center hidden sm:table-cell">${sub.hasReceipt ? '<span class="text-[10px] text-green-600 font-bold">YES</span>' : '<span class="text-[10px] text-yellow-600 font-bold">NO</span>'}</td>
+            </tr>`);
+        });
+        if (pcrCashRet) {
+          rows.push(`
+            <tr class="bg-teal-50/60 border-l-4 border-teal-200">
+              <td class="pl-8 pr-3 py-2 text-xs font-bold text-teal-700">↩ Cash Returned</td>
+              <td class="px-3 py-2 text-right font-mono text-xs font-bold text-teal-700 hidden sm:table-cell">${fmt(pcrCashRet.amount)}</td>
+              <td class="hidden sm:table-cell"></td>
+            </tr>`);
+        }
+      }
+
       // Finalized LIQ_DETAIL sub-entries
       liqSubs.forEach(sub => {
         rows.push(`
