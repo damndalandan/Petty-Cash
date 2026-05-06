@@ -26,8 +26,15 @@
 
         <!-- Form header -->
         <div class="px-5 py-4 bg-gradient-to-r from-indigo-600 to-indigo-500">
-          <p class="text-sm font-bold text-white">New Request</p>
-          <p class="text-indigo-200 text-xs mt-0.5">Fill in the details below</p>
+          <!-- Drag handle (mobile only) -->
+          <div class="w-10 h-1 bg-white/30 rounded-full mx-auto mb-3 lg:hidden"></div>
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-sm font-bold text-white">New Request</p>
+              <p class="text-indigo-200 text-xs mt-0.5">Fill in the details below</p>
+            </div>
+            <button onclick="togglePcrForm()" class="text-white/70 hover:text-white text-2xl font-light lg:hidden leading-none">&times;</button>
+          </div>
         </div>
 
         <!-- Form body -->
@@ -135,6 +142,9 @@
   </div><!-- end two-column -->
 
 </div><!-- end page-requests -->
+
+<!-- Mobile bottom-sheet backdrop for New Request form -->
+<div id="pcrFormBackdrop" class="hidden fixed inset-0 bg-black/50 z-[9998] lg:hidden" onclick="togglePcrForm()"></div>
 
 <!-- ══════════════════════════════════════════
      PCR SETTLEMENT MODAL

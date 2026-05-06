@@ -3361,10 +3361,15 @@ function savePettyCashRequest(data) {
     const sheet = ss.getSheetByName(SHEETS.REQUESTS);
     if (!sheet) return { success: false, message: 'Requests sheet not found. Please run setup.' };
 
-    const now   = new Date().toISOString();
-    const email = getUserEmail();
-    const id    = generateId('PCR', data.date, sheet);
-    const rType = data.requestType === 'Cash Advance' ? 'Cash Advance' : 'Expense';
+    const now      = new Date().toISOString();
+    const email    = getUserEmail();
+    const id       = generateId('PCR', data.date, sheet);
+    const rType    = data.requestType === 'Cash Advance' ? 'Cash Advance' : 'Expense';
+    const roleInfo = getUserRole();
+    const creatorIsAdmin = roleInfo.success && roleInfo.role === 'Admin';
+
+    // Admin-created requests skip approval — they start as APPROVED immediately
+    const initialStatus = creatorIsAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
 
     sheet.appendRow([
       id,                                // 1  Request_ID
@@ -3374,14 +3379,22 @@ function savePettyCashRequest(data) {
       rType,                             // 5  Request_Type
       data.requestedBy || '',            // 6  Requested_By (employee name)
       email,                             // 7  Submitted_By (cashier email)
-      'PENDING_APPROVAL',                // 8  Status
-      '', '', '', '', '',                // 9-13 Approved_By, Approved_At, Released_At, Rejection_Note, Entry_ID
+      initialStatus,                     // 8  Status
+      creatorIsAdmin ? email : '',       // 9  Approved_By
+      creatorIsAdmin ? now   : '',       // 10 Approved_At
+      '', '', '',                        // 11-13 Released_At, Rejection_Note, Entry_ID
       now, now                           // 14-15 Created_At, Updated_At
     ]);
 
     writeAuditLog('REQUEST_CREATED',
       `PCR [${rType}] submitted by ${email}. For: ${data.requestedBy || '—'} | Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
       id, data.date);
+
+    if (creatorIsAdmin) {
+      writeAuditLog('REQUEST_APPROVED',
+        `Auto-approved: created by Admin (${email}).`,
+        id, data.date);
+    }
 
     return { success: true, id };
   } catch(e) {

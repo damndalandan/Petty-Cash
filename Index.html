@@ -88,6 +88,20 @@
     .mobile-form-toggle {
       display: inline-flex;
     }
+
+    /* PCR New Request form: rises as a bottom-sheet on mobile */
+    #pcr-form-section:not(.hidden) {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      border-radius: 1.5rem 1.5rem 0 0;
+      max-height: 88vh;
+      overflow-y: auto;
+      box-shadow: 0 -8px 32px rgba(0,0,0,0.18);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
   }
 
   /* Mobile-only tab bar for pages that use a two-panel layout */
