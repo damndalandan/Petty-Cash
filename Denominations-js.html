@@ -410,8 +410,12 @@
       const totalReimbursement = state.entries
         .filter(e => e.type === 'CASH_ADVANCE_REIMBURSEMENT' && e.status !== 'DELETED')
         .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+      // PCR released amounts reduce expected cash (CASH_RETURN from settlements already offsets via cashInflowMods)
+      const pcrReleased = state.entries
+        .filter(e => e.type === 'PCR_ADVANCE' && e.status !== 'DELETED' && !e.carriedForward)
+        .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
-      const expected = (opening + replenishment + cashInflowMods) - (expenses + liqPendingSpent + cashAdvance + totalReimbursement);
+      const expected = (opening + replenishment + cashInflowMods) - (expenses + liqPendingSpent + cashAdvance + totalReimbursement + pcrReleased);
     const variance = actual - expected;
 
     document.getElementById('modExpected').textContent = fmt(expected);

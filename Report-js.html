@@ -353,16 +353,16 @@ function renderDetailList() {
          </button>`
       : '';
 
-    const amountClass = (isLiquidated || isPcrSettled) ? 'text-gray-400 line-through' : 'text-gray-700';
+    const amountClass = isLiquidated ? 'text-gray-400 line-through' : isPcrSettled ? 'text-indigo-700 font-bold' : 'text-gray-700';
 
     // For PCR: show the PCR RELEASE badge + description on the same line
     const pcrReleaseBadge = isPcrRelease
       ? '<span class="text-indigo-600 text-xs font-bold bg-indigo-100 px-2 py-1 rounded mr-1">PCR RELEASE</span>'
       : '';
 
-    // Spent summary line for settled PCR entries
+    // Released/returned sub-info line for settled PCR entries
     const pcrSpentLine = isPcrSettled
-      ? `<div class="text-xs text-indigo-700 font-semibold mt-0.5">Spent: ${fmt(pcrSpent)}${pcrCashRet ? ' · ↩ Cash returned: ' + fmt(pcrCashRet.amount) : ' · Fully spent'}</div>`
+      ? `<div class="text-[10px] text-gray-400 mt-0.5">Released: ${fmt(e.amount)}${pcrCashRet ? ' &nbsp;&middot;&nbsp; Returned: ' + fmt(pcrCashRet.amount) : ''}</div>`
       : '';
 
     rows.push(`
@@ -381,7 +381,7 @@ function renderDetailList() {
             ${typeBadge}
           </div>
         </td>
-        <td class="px-3 py-3 text-right font-mono text-sm ${amountClass} hidden sm:table-cell">${fmt(e.amount)}</td>
+        <td class="px-3 py-3 text-right font-mono text-sm ${amountClass} hidden sm:table-cell">${fmt(isPcrSettled ? pcrSpent : e.amount)}</td>
         <td class="px-3 py-3 text-center hidden sm:table-cell">${typeBadge}</td>
       </tr>`);
 
