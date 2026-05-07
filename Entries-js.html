@@ -516,9 +516,12 @@ function renderEntries() {
       const subCount   = pcrSubs.length;
       const isSettled  = e.status === 'LIQUIDATED';
 
-      const pcrDetails = pcrSubs.filter(s => s.type === 'PCR_DETAIL');
-      const cashRet    = pcrSubs.find(s => s.type === 'CASH_RETURN');
-      const pcrSpent   = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      const pcrDetails  = pcrSubs.filter(s => s.type === 'PCR_DETAIL');
+      const cashRet     = pcrSubs.find(s => s.type === 'CASH_RETURN');
+      const detailTotal = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      const pcrSpent    = pcrDetails.length > 0
+        ? detailTotal
+        : (parseFloat(e.amount) || 0) - (cashRet ? parseFloat(cashRet.amount) : 0);
 
       const expandBtn = subCount > 0
         ? '<button onclick="toggleAdvanceExpand(\'' + e.id + '\')" class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 hover:bg-indigo-200 transition">'

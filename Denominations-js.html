@@ -461,13 +461,27 @@
 
     const entriesListEl = document.getElementById('closingEntriesList');
     if (entriesListEl) {
-      // Only show entries from today — exclude carried-forward advances from previous days
-      const dayEntries = state.entries.filter(e => e.status !== 'DELETED' && !e.carriedForward && e.date === state.currentDate);
+      // Exclude sub-entries (PCR_DETAIL, CASH_RETURN) — they are represented by their parent PCR_ADVANCE
+      const dayEntries = state.entries.filter(e =>
+        e.status !== 'DELETED' && !e.carriedForward && e.date === state.currentDate &&
+        e.type !== 'PCR_DETAIL' && e.type !== 'CASH_RETURN'
+      );
       if (!dayEntries.length) {
         entriesListEl.innerHTML = '<div class="px-4 py-3 text-xs text-gray-400 text-center italic">No entries for today</div>';
       } else {
         entriesListEl.innerHTML = dayEntries.map(e => {
-          const typeLabel = e.type === 'CASH_ADVANCE' ? '💳' : e.type === 'REPLENISHMENT' ? '🔄' : '💸';
+          const isPcrAdv     = e.type === 'PCR_ADVANCE';
+          const isPcrSettled = isPcrAdv && e.status === 'LIQUIDATED';
+          let displayAmount  = parseFloat(e.amount || 0);
+          if (isPcrSettled) {
+            const pcrDetails  = state.entries.filter(s => s.type === 'PCR_DETAIL' && s.referenceNo === e.referenceNo);
+            const cashRet     = state.entries.find(s => s.type === 'CASH_RETURN' && s.referenceNo === e.referenceNo);
+            const detailTotal = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+            displayAmount = pcrDetails.length > 0
+              ? detailTotal
+              : displayAmount - (cashRet ? parseFloat(cashRet.amount) : 0);
+          }
+          const typeLabel = e.type === 'CASH_ADVANCE' ? '💳' : e.type === 'REPLENISHMENT' ? '🔄' : isPcrAdv ? '📋' : '💸';
           const rcptBadge = e.type === 'EXPENSE'
             ? (e.hasReceipt
                 ? '<span class="text-[10px] font-bold text-green-700 bg-green-100 px-1.5 py-0.5 rounded">🧾 OR</span>'
@@ -480,7 +494,7 @@
                 <span class="truncate text-gray-700 font-medium">${e.description || '—'}</span>
                 ${rcptBadge}
               </div>
-              <span class="font-mono text-gray-600 shrink-0">${fmt(e.amount)}</span>
+              <span class="font-mono text-gray-600 shrink-0">${fmt(displayAmount)}</span>
             </div>`;
         }).join('');
       }

@@ -308,9 +308,12 @@ function renderDetailList() {
 
     // PCR sub-entries for this release
     const pcrSubs    = isPcrRelease ? (pcrSubMap[e.id] || []) : [];
-    const pcrDetails = pcrSubs.filter(s => s.type === 'PCR_DETAIL');
-    const pcrCashRet = pcrSubs.find(s => s.type === 'CASH_RETURN');
-    const pcrSpent   = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const pcrDetails  = pcrSubs.filter(s => s.type === 'PCR_DETAIL');
+    const pcrCashRet  = pcrSubs.find(s => s.type === 'CASH_RETURN');
+    const detailTotal = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+    const pcrSpent    = pcrDetails.length > 0
+      ? detailTotal
+      : (parseFloat(e.amount) || 0) - (pcrCashRet ? parseFloat(pcrCashRet.amount) : 0);
 
     if (isPcrRelease) total += isPcrSettled ? pcrSpent : (parseFloat(e.amount) || 0);
 
