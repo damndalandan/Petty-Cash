@@ -74,6 +74,8 @@ async function loadAuditReviewPage() {
     const allEntries = entriesRes.success ? (entriesRes.data || []) : [];
     state.entries = allEntries;
     const entries = allEntries.filter(e => e.status !== 'DELETED' && !e.carriedForward);
+    // PCR_DETAIL and CASH_RETURN are sub-entries of PCR_ADVANCE — not individually auditable
+    const auditableEntries = entries.filter(e => e.type !== 'PCR_DETAIL' && e.type !== 'CASH_RETURN');
 
     // Pre-mark all entries as verified so expected starts fully computed.
     // The auditor can then flag suspicious entries — flagged entries are excluded
@@ -84,8 +86,8 @@ async function loadAuditReviewPage() {
       }
     });
 
-    renderAuditEntries(entries);
-    updateAuditProgress(entries);
+    renderAuditEntries(auditableEntries);
+    updateAuditProgress(auditableEntries);
     updateAuditStatusBanner();
 
     // Re-run after entries are loaded so the Day Summary panel shows live entry totals.
@@ -143,8 +145,8 @@ function updateAuditVariance(actualCash) {
   reviewableEntries
     .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
-      // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
-      if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+      // Skip sub-entries — PCR_DETAIL is netted via PCR_ADVANCE minus CASH_RETURN
+      if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
 
       const amt = parseFloat(e.amount || 0);
       if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
@@ -208,10 +210,29 @@ function renderAuditEntries(entries) {
 
   container.innerHTML = entries.map(e => {
     const isLiqPending = e.type === 'CASH_ADVANCE' && e.status === 'LIQUIDATION_PENDING';
+    const isPcrAdv     = e.type === 'PCR_ADVANCE';
+    const isPcrSettled = isPcrAdv && e.status === 'LIQUIDATED';
+
+    // For settled PCR: compute spent = sum of detail items, fallback to released − returned
+    let displayAmount = parseFloat(e.amount || 0);
+    let pcrSubInfoHtml = '';
+    if (isPcrAdv) {
+      const pcrDetails  = (state.entries || []).filter(s => s.type === 'PCR_DETAIL' && s.referenceNo === e.referenceNo);
+      const pcrCashRet  = (state.entries || []).find(s => s.type === 'CASH_RETURN' && s.referenceNo === e.referenceNo);
+      const detailTotal = pcrDetails.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0);
+      if (isPcrSettled) {
+        displayAmount = pcrDetails.length > 0
+          ? detailTotal
+          : displayAmount - (pcrCashRet ? parseFloat(pcrCashRet.amount) : 0);
+        pcrSubInfoHtml = `<div class="text-[10px] text-gray-400 mt-0.5">Released: ${fmt(e.amount)}${pcrCashRet ? ' &nbsp;·&nbsp; Returned: ' + fmt(pcrCashRet.amount) : ''}</div>`;
+      }
+    }
 
     const typeBadge = isLiqPending
       ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">💳 LIQUIDATION</span>`
-      : `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[e.type] || 'bg-gray-100 text-gray-600'}">${e.type.replace(/_/g,' ')}</span>`;
+      : isPcrAdv
+        ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">PCR ADVANCE</span>`
+        : `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[e.type] || 'bg-gray-100 text-gray-600'}">${e.type.replace(/_/g,' ')}</span>`;
 
     const receiptBadge = e.hasReceipt
       ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200">🧾 Receipt</span>'
@@ -279,10 +300,10 @@ function renderAuditEntries(entries) {
           </div>
           <!-- Amount -->
           <div class="text-right shrink-0">
-            <div class="font-mono font-bold text-gray-800">${fmt(e.amount)}</div>
+            <div class="font-mono font-bold text-gray-800">${fmt(displayAmount)}</div>
             ${isLiqPending && e.liqBreakdown
               ? `<div class="text-[10px] text-amber-600 font-mono mt-0.5">spent: ${fmt(e.liqBreakdown.totalSpent || 0)}</div>`
-              : ''}
+              : pcrSubInfoHtml}
           </div>
         </div>
 
@@ -504,8 +525,8 @@ async function confirmAuditDecision(decision) {
   entries
     .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
-      // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
-      if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+      // Skip sub-entries — PCR_DETAIL is netted via PCR_ADVANCE minus CASH_RETURN
+      if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
 
       const amt = parseFloat(e.amount || 0);
       if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
@@ -558,8 +579,8 @@ function openAuditApproveModal(variance, actualCash) {
   entries
     .filter(e => auditEntryReviews[e.id]?.status === 'verified')
     .forEach(e => {
-      // Skip LIQ_DETAIL and past cash advances; they do not alter today's physical cash expected balance
-      if (e.type === 'LIQ_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
+      // Skip sub-entries — PCR_DETAIL is netted via PCR_ADVANCE minus CASH_RETURN
+      if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL' || (e.type === 'CASH_ADVANCE' && e.originalDate && e.originalDate < state.currentDate)) return;
 
       const amt = parseFloat(e.amount || 0);
       if (e.type === 'REPLENISHMENT' || e.type === 'CASH_OVER' || e.type === 'CASH_RETURN') {
@@ -698,18 +719,19 @@ function updateAuditDaySummaryPanel() {
 
   // Compute totals from live entries when available; fall back to summary before entries load.
   const liveEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
-  let replenish = 0, cashOver = 0, expenses = 0, advance = 0, cashReturn = 0, reimbursement = 0;
+  let replenish = 0, cashOver = 0, expenses = 0, advance = 0, cashReturn = 0, reimbursement = 0, pcrReleased = 0;
 
   if (liveEntries.length > 0 || state.entries !== undefined) {
     liveEntries.forEach(e => {
-      // Skip LIQ_DETAIL from cash movement calculations
-      if (e.type === 'LIQ_DETAIL') return;
+      // Skip sub-entries — PCR_DETAIL is netted via PCR_ADVANCE minus CASH_RETURN
+      if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL') return;
 
       const amt = parseFloat(e.amount || 0);
       if      (e.type === 'REPLENISHMENT')              replenish     += amt;
       else if (e.type === 'CASH_OVER')                  cashOver      += amt;
       else if (e.type === 'CASH_RETURN')                cashReturn    += amt;
       else if (e.type === 'CASH_ADVANCE_REIMBURSEMENT') reimbursement += amt;
+      else if (e.type === 'PCR_ADVANCE')                pcrReleased   += amt;
       else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) {
         // Only deduct advance if it was issued today
         if (!e.originalDate || e.originalDate >= state.currentDate) advance += amt;
@@ -724,7 +746,7 @@ function updateAuditDaySummaryPanel() {
     reimbursement = parseFloat(s.totalReimbursement  || 0);
   }
 
-  const expected = (opening + replenish + cashOver + cashReturn) - (expenses + advance + reimbursement);
+  const expected = (opening + replenish + cashOver + cashReturn) - (expenses + advance + reimbursement + pcrReleased);
 
   // Physical: use live denomination inputs; fall back to saved closingCash
   let physical = 0;
