@@ -3413,6 +3413,26 @@ function getPettyCashRequests() {
     const role  = getUserRole();
     const isPrivileged = role.success && (role.role === 'Admin' || role.role === 'Auditor');
 
+    // Build a map of PCR_DETAIL entries grouped by referenceNo for settlement breakdowns
+    const settlementMap = {};
+    const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+    if (entrySheet) {
+      const eRows = entrySheet.getDataRange().getValues();
+      for (let j = 1; j < eRows.length; j++) {
+        const e = eRows[j];
+        if (!e[0] || e[2] !== 'PCR_DETAIL' || e[10] === 'VOID') continue;
+        const ref = e[7];
+        if (!ref) continue;
+        if (!settlementMap[ref]) settlementMap[ref] = [];
+        settlementMap[ref].push({
+          category   : e[3],
+          description: e[4],
+          amount     : parseFloat(e[5]) || 0,
+          hasReceipt : e[6] === 'YES'
+        });
+      }
+    }
+
     const data = [];
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
@@ -3433,7 +3453,8 @@ function getPettyCashRequests() {
         releasedAt      : r[10],
         rejectionNote   : r[11],
         entryId         : r[12],
-        createdAt       : r[13]
+        createdAt       : r[13],
+        settlementItems : r[7] === 'SETTLED' ? (settlementMap[r[0]] || []) : undefined
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
