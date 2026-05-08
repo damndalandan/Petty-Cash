@@ -4,7 +4,7 @@
 // =============================================
 
 let allRequests     = [];
-let currentPcrTab   = 'pending';
+let currentPcrFilter = 'active';
 let _pcrSettleCtx   = {};   // { requestId, amount, date, purpose }
 
 // ── Load ─────────────────────────────────────
@@ -20,40 +20,66 @@ async function loadRequests() {
     return;
   }
   allRequests = res.data || [];
-  updatePcrBadges();
+  updatePcrCards();
   renderRequests();
 }
 
-function updatePcrBadges() {
+function updatePcrCards() {
+  const today    = state.currentDate;
   const pending  = allRequests.filter(r => r.status === 'PENDING_APPROVAL').length;
+  const approved = allRequests.filter(r => r.status === 'APPROVED').length;
   const released = allRequests.filter(r => r.status === 'RELEASED').length;
+  const settled  = allRequests.filter(r => r.status === 'SETTLED' && r.date === today).length;
 
-  const pb = document.getElementById('pcr-badge-pending');
-  if (pb) { pb.textContent = pending; pending > 0 ? pb.classList.remove('hidden') : pb.classList.add('hidden'); }
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  set('pcr-count-pending',  pending);
+  set('pcr-count-approved', approved);
+  set('pcr-count-released', released);
+  set('pcr-count-settled',  settled);
 
-  const rb = document.getElementById('pcr-badge-released');
-  if (rb) { rb.textContent = released; released > 0 ? rb.classList.remove('hidden') : rb.classList.add('hidden'); }
-
-  // Update sidebar badge
+  // Sidebar badge: pending + released need action
   const sb = document.getElementById('requests-badge');
-  const total = pending + released;
-  if (sb) { sb.textContent = total; total > 0 ? sb.classList.remove('hidden') : sb.classList.add('hidden'); }
+  const actionable = pending + released;
+  if (sb) { sb.textContent = actionable; actionable > 0 ? sb.classList.remove('hidden') : sb.classList.add('hidden'); }
+
+  highlightPcrCard(currentPcrFilter);
 }
 
-// ── Tabs ─────────────────────────────────────
+// ── Filter Cards ──────────────────────────────
 
-function switchRequestTab(tab) {
-  currentPcrTab = tab;
-  ['pending','approved','released','settled','rejected'].forEach(t => {
-    const btn = document.getElementById('pcr-tab-' + t);
-    if (!btn) return;
-    if (t === tab) {
-      btn.className = 'pcr-tab flex-none px-5 py-3.5 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-700 bg-indigo-50/60 whitespace-nowrap transition-all';
-    } else {
-      btn.className = 'pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all';
-    }
-  });
+function switchPcrFilter(filter) {
+  currentPcrFilter = filter;
+  highlightPcrCard(filter);
   renderRequests();
+}
+
+function highlightPcrCard(filter) {
+  const cardStyles = {
+    pending : { active: 'border-amber-400 bg-amber-50',  inactive: 'border-transparent bg-white' },
+    approved: { active: 'border-green-400 bg-green-50',  inactive: 'border-transparent bg-white' },
+    released: { active: 'border-blue-400 bg-blue-50',    inactive: 'border-transparent bg-white' },
+    settled : { active: 'border-slate-400 bg-slate-50',  inactive: 'border-transparent bg-white' },
+  };
+  ['pending','approved','released','settled'].forEach(f => {
+    const card = document.getElementById('pcr-card-' + f);
+    if (!card) return;
+    const s = cardStyles[f];
+    const base = 'pcr-metric-card text-left p-4 rounded-2xl border-2 shadow-sm hover:shadow-md transition-all ';
+    card.className = base + (filter === f ? s.active : s.inactive);
+  });
+
+  const labels = {
+    active  : 'Showing: All Active',
+    pending : 'Showing: Pending Approval',
+    approved: 'Showing: Approved — Ready to Release',
+    released: 'Showing: Released — Pending Settlement',
+    settled : 'Showing: Settled Today',
+  };
+  const labelEl = document.getElementById('pcr-filter-label');
+  if (labelEl) labelEl.textContent = labels[filter] || 'Showing: All Active';
+
+  const showAllBtn = document.getElementById('pcr-show-all-btn');
+  if (showAllBtn) showAllBtn.classList.toggle('hidden', filter === 'active');
 }
 
 function togglePcrForm() {
@@ -73,25 +99,26 @@ function renderRequests() {
   const listEl = document.getElementById('pcr-list');
   if (!listEl) return;
 
-  const tabMap = {
+  const today = state.currentDate;
+  const filterMap = {
+    active  : r => ['PENDING_APPROVAL','APPROVED','RELEASED'].includes(r.status),
     pending : r => r.status === 'PENDING_APPROVAL',
     approved: r => r.status === 'APPROVED',
     released: r => r.status === 'RELEASED',
-    settled : r => r.status === 'SETTLED',
-    rejected: r => r.status === 'REJECTED'
+    settled : r => r.status === 'SETTLED'  && r.date === today,
   };
-  const filtered = allRequests.filter(tabMap[currentPcrTab] || (() => true));
+  const filtered = allRequests.filter(filterMap[currentPcrFilter] || filterMap.active);
 
   const emptyMsgs = {
+    active  : 'No active requests. All caught up!',
     pending : 'No requests pending approval.',
     approved: 'No approved requests awaiting release.',
     released: 'No released requests awaiting settlement.',
-    settled : 'No settled requests yet.',
-    rejected: 'No rejected requests.'
+    settled : 'No requests settled today.',
   };
 
   if (!filtered.length) {
-    listEl.innerHTML = `<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 text-sm">${emptyMsgs[currentPcrTab]}</div>`;
+    listEl.innerHTML = `<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 text-sm">${emptyMsgs[currentPcrFilter] || emptyMsgs.active}</div>`;
     return;
   }
 
@@ -221,7 +248,7 @@ async function submitPettyCashRequest() {
   document.getElementById('pcrPurpose').value      = '';
   document.getElementById('pcrAmount').value       = '';
   document.getElementById('pcrRequestedBy').value  = '';
-  switchRequestTab('pending');
+  switchPcrFilter('pending');
   loadRequests();
 }
 
@@ -287,7 +314,7 @@ async function confirmPcrRelease() {
   if (!res.success) { toast(res.message || 'Failed to release.', 'error'); return; }
   toast('Cash released and recorded.');
   closePcrReleaseModal();
-  switchRequestTab('released');
+  switchPcrFilter('released');
   loadRequests();
 }
 
@@ -433,7 +460,7 @@ async function confirmPcrSettle() {
 
   toast('Request settled successfully.');
   closePcrSettleModal();
-  switchRequestTab('settled');
+  switchPcrFilter('settled');
   loadRequests();
 }
 </script>

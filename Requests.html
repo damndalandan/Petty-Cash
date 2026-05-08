@@ -105,32 +105,43 @@
     <!-- ── RIGHT COLUMN: Request List ── -->
     <div class="lg:col-span-2 order-1 lg:order-2 space-y-3">
 
-      <!-- Status Tabs -->
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="flex overflow-x-auto">
-          <button onclick="switchRequestTab('pending')" id="pcr-tab-pending"
-            class="pcr-tab flex-none px-5 py-3.5 text-sm font-semibold border-b-2 border-indigo-600 text-indigo-700 bg-indigo-50/60 whitespace-nowrap transition-all">
-            Pending
-            <span id="pcr-badge-pending" class="hidden ml-1.5 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
-          </button>
-          <button onclick="switchRequestTab('approved')" id="pcr-tab-approved"
-            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
-            Approved
-          </button>
-          <button onclick="switchRequestTab('released')" id="pcr-tab-released"
-            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
-            Released
-            <span id="pcr-badge-released" class="hidden ml-1.5 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full"></span>
-          </button>
-          <button onclick="switchRequestTab('settled')" id="pcr-tab-settled"
-            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
-            Settled
-          </button>
-          <button onclick="switchRequestTab('rejected')" id="pcr-tab-rejected"
-            class="pcr-tab flex-none px-5 py-3.5 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 whitespace-nowrap transition-all">
-            Rejected
-          </button>
-        </div>
+      <!-- Metric Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+        <button onclick="switchPcrFilter('pending')" id="pcr-card-pending"
+          class="pcr-metric-card text-left p-4 rounded-2xl border-2 border-transparent bg-white shadow-sm hover:shadow-md transition-all">
+          <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Pending</div>
+          <div id="pcr-count-pending" class="text-3xl font-black text-amber-500">0</div>
+          <div class="text-[10px] text-gray-400 mt-1">awaiting approval</div>
+        </button>
+
+        <button onclick="switchPcrFilter('approved')" id="pcr-card-approved"
+          class="pcr-metric-card text-left p-4 rounded-2xl border-2 border-transparent bg-white shadow-sm hover:shadow-md transition-all">
+          <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Approved</div>
+          <div id="pcr-count-approved" class="text-3xl font-black text-green-600">0</div>
+          <div class="text-[10px] text-gray-400 mt-1">ready for release</div>
+        </button>
+
+        <button onclick="switchPcrFilter('released')" id="pcr-card-released"
+          class="pcr-metric-card text-left p-4 rounded-2xl border-2 border-transparent bg-white shadow-sm hover:shadow-md transition-all">
+          <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Released</div>
+          <div id="pcr-count-released" class="text-3xl font-black text-blue-600">0</div>
+          <div class="text-[10px] text-gray-400 mt-1">pending settlement</div>
+        </button>
+
+        <button onclick="switchPcrFilter('settled')" id="pcr-card-settled"
+          class="pcr-metric-card text-left p-4 rounded-2xl border-2 border-transparent bg-white shadow-sm hover:shadow-md transition-all">
+          <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Settled Today</div>
+          <div id="pcr-count-settled" class="text-3xl font-black text-slate-500">0</div>
+          <div class="text-[10px] text-gray-400 mt-1">completed today</div>
+        </button>
+
+      </div>
+
+      <!-- Filter label -->
+      <div class="flex items-center justify-between px-1">
+        <p id="pcr-filter-label" class="text-xs text-gray-400 font-medium">Showing: All Active</p>
+        <button id="pcr-show-all-btn" onclick="switchPcrFilter('active')" class="hidden text-xs text-indigo-600 hover:text-indigo-800 font-semibold transition">Show All Active</button>
       </div>
 
       <!-- Request Cards -->
