@@ -590,8 +590,9 @@ function saveExpenseEntry(data) {
       ''                           // col 15 — Notes/Remarks
     ]);
 
-    // ── Auto-log to PettyCash_NoReceipts if no receipt and type is EXPENSE ──
-    if (!data.hasReceipt && (data.type === 'EXPENSE' || !data.type)) {
+    // ── Auto-log to PettyCash_NoReceipts if no receipt and type is EXPENSE/LIQ_DETAIL/PCR_DETAIL ──
+    const expenseTypes = ['EXPENSE', 'LIQ_DETAIL', 'PCR_DETAIL'];
+    if (!data.hasReceipt && expenseTypes.includes(data.type || 'EXPENSE')) {
       saveNoReceiptRecord({
         entryId    : id,
         date       : data.date,

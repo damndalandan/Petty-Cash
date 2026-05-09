@@ -276,6 +276,41 @@ function renderAuditEntries(entries) {
             ${bd.note ? `<div class="text-[10px] text-gray-400 italic mt-1">Note: ${bd.note}</div>` : ''}
           </div>
         </div>`;
+    } else if (isPcrSettled && typeof pcrDetails !== 'undefined' && pcrDetails.length > 0) {
+      const toggleId = 'auditPcrBreakdown-' + e.id;
+      const subRows = pcrDetails.map(sub =>
+        `<div class="flex justify-between text-xs py-0.5 gap-2">
+          <span class="text-gray-600 flex items-center gap-1">
+            <span class="text-gray-300">└</span>
+            ${sub.description || '—'}
+            <span class="text-gray-400">(${sub.category || ''})</span>
+            ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+          </span>
+          <span class="font-mono text-gray-700 shrink-0">${fmt(parseFloat(sub.amount) || 0)}</span>
+        </div>`
+      ).join('');
+
+      let changeRow = '';
+      if (typeof pcrCashRet !== 'undefined' && pcrCashRet) {
+        changeRow = `<div class="flex justify-between text-xs pt-1 border-t border-amber-200 mt-1 font-bold">
+                       <span class="text-amber-700">↩ Change Returned</span>
+                       <span class="font-mono text-amber-700">${fmt(parseFloat(pcrCashRet.amount) || 0)}</span>
+                     </div>`;
+      } else {
+        changeRow = `<div class="text-xs text-green-600 pt-1 border-t border-green-200 mt-1 font-medium">✓ Fully spent</div>`;
+      }
+
+      breakdownHtml = `
+        <div class="mt-1.5">
+          <button onclick="document.getElementById('${toggleId}').classList.toggle('hidden')"
+            class="text-[10px] font-bold text-purple-600 hover:text-purple-800 transition">
+            ▼ View breakdown (${pcrDetails.length} item${pcrDetails.length !== 1 ? 's' : ''})
+          </button>
+          <div id="${toggleId}" class="hidden mt-1 bg-amber-50 border border-amber-200 rounded-lg p-2 space-y-0.5">
+            ${subRows}
+            ${changeRow}
+          </div>
+        </div>`;
     }
 
     const isClosed = state.summary?.status === 'CLOSED';
@@ -287,7 +322,7 @@ function renderAuditEntries(entries) {
           <div class="flex-1 min-w-0">
             <div class="flex flex-wrap items-center gap-1.5 mb-1">
               ${typeBadge}
-              ${isLiqPending ? '' : receiptBadge}
+              ${isLiqPending || isPcrAdv || e.type === 'CASH_ADVANCE' ? '' : receiptBadge}
               <span class="text-[10px] text-gray-400 font-mono">${e.referenceNo || ''}</span>
               ${isClosed ? '<span class="text-[10px] font-bold text-green-600 ml-1">✓ Verified</span>' : ''}
             </div>
