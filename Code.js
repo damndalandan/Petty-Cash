@@ -1671,23 +1671,6 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
         notesCol + ' | [LIQUIDATED BY ' + approverEmail + ' on ' + approvalDate + ']'
       );
 
-      // 1b. If this advance is linked to a Petty Cash Request, mark the PCR SETTLED
-      //     so it leaves the "Released — Pending Settlement" bucket.
-      const reqSheet = ss.getSheetByName(SHEETS.REQUESTS);
-      if (reqSheet) {
-        const reqRows = reqSheet.getDataRange().getValues();
-        for (let k = 1; k < reqRows.length; k++) {
-          if (reqRows[k][12] === advId && reqRows[k][7] === 'RELEASED') {
-            reqSheet.getRange(k + 1, 8).setValue('SETTLED');
-            reqSheet.getRange(k + 1, 15).setValue(now);
-            writeAuditLog('REQUEST_SETTLED',
-              `PCR auto-settled on advance liquidation. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)}`,
-              reqRows[k][0], approvalDate);
-            break;
-          }
-        }
-      }
-
       // 2. Save LIQ_DETAIL entries on the current approval date (accounting standard)
       if (breakdown.entries && breakdown.entries.length) {
         breakdown.entries.forEach(entry => {
