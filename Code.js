@@ -1647,6 +1647,22 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
         entrySheet.getRange(i + 1, 13).setValue(now);
         entrySheet.getRange(i + 1, 15).setValue(notesCol + ' | [FLAGGED BY AUDITOR] Returned to outstanding.');
         recalculateDailySummary(advDate);
+
+        // Revert the linked PCR back to RELEASED so the cashier sees it needs re-liquidation.
+        const reqSheet = ss.getSheetByName(SHEETS.REQUESTS);
+        if (reqSheet) {
+          const reqRows = reqSheet.getDataRange().getValues();
+          for (let k = 1; k < reqRows.length; k++) {
+            if (reqRows[k][12] === advId && reqRows[k][7] === 'SETTLED') {
+              reqSheet.getRange(k + 1, 8).setValue('RELEASED');
+              reqSheet.getRange(k + 1, 15).setValue(now);
+              writeAuditLog('REQUEST_REOPENED',
+                `PCR reopened — linked advance ${advId} flagged by auditor and returned to outstanding.`,
+                reqRows[k][0], approvalDate);
+              break;
+            }
+          }
+        }
         continue;
       }
 
@@ -2030,6 +2046,25 @@ function submitLiquidation(data) {
         data.id,
         advanceDate
       );
+
+      // Settle the linked Petty Cash Request, if any. The auditor's day-close is
+      // verification only — the cashier's liquidation is what settles the PCR.
+      // (finalizePendingLiquidations will revert this to RELEASED if the advance
+      // is flagged during audit.)
+      const reqSheet = ss.getSheetByName(SHEETS.REQUESTS);
+      if (reqSheet) {
+        const reqRows = reqSheet.getDataRange().getValues();
+        for (let k = 1; k < reqRows.length; k++) {
+          if (reqRows[k][12] === data.id && reqRows[k][7] === 'RELEASED') {
+            reqSheet.getRange(k + 1, 8).setValue('SETTLED');
+            reqSheet.getRange(k + 1, 15).setValue(now);
+            writeAuditLog('REQUEST_SETTLED',
+              `PCR settled on advance liquidation. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)}`,
+              reqRows[k][0], advanceDate);
+            break;
+          }
+        }
+      }
 
       return { success: true };
     }
