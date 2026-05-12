@@ -320,8 +320,18 @@ function toggleAdvanceExpand(id) {
 
 function renderEntries() {
   let filtered = state.entries;
+
+  // PCR_DETAIL / CASH_RETURN whose parent PCR_ADVANCE is not in today's list
+  // are "orphans" (settled on a day after release). They must render top-level.
+  const todayPcrAdvanceRefs = new Set(
+    state.entries.filter(e => e.type === 'PCR_ADVANCE').map(e => e.referenceNo)
+  );
+  const isOrphanPcrSub = e =>
+    (e.type === 'PCR_DETAIL' || e.type === 'CASH_RETURN') &&
+    !todayPcrAdvanceRefs.has(e.referenceNo);
+
   // All tab: show expenses and advances only — replenishments have their own page
-  if (state.entryTab === 'all')         filtered = filtered.filter(e => e.type !== 'REPLENISHMENT' && e.type !== 'CASH_RETURN' && e.type !== 'LIQ_DETAIL' && e.type !== 'PCR_DETAIL');
+  if (state.entryTab === 'all')         filtered = filtered.filter(e => e.type !== 'REPLENISHMENT' && e.type !== 'LIQ_DETAIL' && !(e.type === 'CASH_RETURN' && !isOrphanPcrSub(e)) && !(e.type === 'PCR_DETAIL' && !isOrphanPcrSub(e)));
   if (state.entryTab === 'withReceipt') filtered = filtered.filter(e => e.hasReceipt && e.type === 'EXPENSE');
   if (state.entryTab === 'noReceipt')   filtered = filtered.filter(e => !e.hasReceipt && e.type === 'EXPENSE');
 
@@ -367,7 +377,10 @@ function renderEntries() {
 
   filtered.forEach(e => {
     // Detail rows shown as sub-rows under their parent — skip as top-level
-    if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL') return;
+    // (but render orphan PCR sub-entries whose parent advance isn't in today's list)
+    if (e.type === 'LIQ_DETAIL') return;
+    if (e.type === 'PCR_DETAIL' && !isOrphanPcrSub(e)) return;
+    if (e.type === 'CASH_RETURN' && !isOrphanPcrSub(e)) return;
 
     const isSpecial = ['CASH_ADVANCE','CASH_OVER','REPLENISHMENT','CASH_RETURN','PCR_ADVANCE'].includes(e.type);
     const isCarried = !!e.carriedForward;
