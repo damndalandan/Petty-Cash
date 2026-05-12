@@ -3438,8 +3438,14 @@ function getPettyCashRequests() {
     for (let i = 1; i < rows.length; i++) {
       const r = rows[i];
       if (!r[0]) continue;
-      // Cashiers only see requests they submitted; Admin/Auditor see all
-      if (!isPrivileged && r[6] !== email) continue;
+      // Cashiers see: requests they submitted, plus any request that has moved
+      // past pending approval (Admin-created requests are auto-APPROVED and the
+      // cashier needs to release/settle them). Admin/Auditor see all.
+      if (!isPrivileged) {
+        const submittedByMe = r[6] === email;
+        const needsCashierAction = r[7] !== 'PENDING_APPROVAL' && r[7] !== 'REJECTED';
+        if (!submittedByMe && !needsCashierAction) continue;
+      }
       data.push({
         id              : r[0],
         date            : normalizeDate(r[1]),
