@@ -3461,6 +3461,7 @@ function getPettyCashRequests() {
         rejectionNote   : r[11],
         entryId         : r[12],
         createdAt       : r[13],
+        settledAt       : r[7] === 'SETTLED' ? (r[14] || '') : '',
         settlementItems : r[7] === 'SETTLED' ? (settlementMap[r[0]] || []) : undefined
       });
     }

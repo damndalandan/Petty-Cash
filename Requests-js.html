@@ -29,7 +29,7 @@ function updatePcrCards() {
   const pending  = allRequests.filter(r => r.status === 'PENDING_APPROVAL').length;
   const approved = allRequests.filter(r => r.status === 'APPROVED').length;
   const released = allRequests.filter(r => r.status === 'RELEASED').length;
-  const settled  = allRequests.filter(r => r.status === 'SETTLED' && r.date === today).length;
+  const settled  = allRequests.filter(r => r.status === 'SETTLED' && (r.settledAt || '').slice(0, 10) === today).length;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('pcr-count-pending',  pending);
@@ -105,7 +105,7 @@ function renderRequests() {
     pending : r => r.status === 'PENDING_APPROVAL',
     approved: r => r.status === 'APPROVED',
     released: r => r.status === 'RELEASED',
-    settled : r => r.status === 'SETTLED'  && r.date === today,
+    settled : r => r.status === 'SETTLED'  && (r.settledAt || '').slice(0, 10) === today,
   };
   const filtered = allRequests.filter(filterMap[currentPcrFilter] || filterMap.active);
 
