@@ -152,7 +152,15 @@ function renderRequestCard(r) {
     ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">ADVANCE</span>`
     : `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">EXPENSE</span>`;
 
-  const badge = `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ${statusStyles[r.status] || 'bg-gray-100 text-gray-500'}">${statusLabels[r.status] || r.status}</span>`;
+  // Cash Advance PCRs whose linked advance is awaiting auditor sign-off get a
+  // distinct badge so cashier/auditor can tell at a glance that liquidation was
+  // already submitted and is just waiting on day-close approval.
+  const isAdvanceAwaiting = r.status === 'RELEASED'
+    && r.requestType === 'Cash Advance'
+    && r.advanceStatus === 'LIQUIDATION_PENDING';
+  const badgeStyle = isAdvanceAwaiting ? 'bg-amber-100 text-amber-700' : (statusStyles[r.status] || 'bg-gray-100 text-gray-500');
+  const badgeLabel = isAdvanceAwaiting ? 'Awaiting Audit' : (statusLabels[r.status] || r.status);
+  const badge = `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>`;
 
   let actions = '';
 
@@ -181,8 +189,13 @@ function renderRequestCard(r) {
   // Cashier: released state differs by type
   if (r.status === 'RELEASED' && isCashier()) {
     if (r.requestType === 'Cash Advance') {
-      actions = `<span class="text-xs text-blue-600 font-medium flex items-center gap-1">
-        💳 Liquidate this advance from the <button onclick="navigate('advances')" class="underline font-bold">Cash Advances</button> or <button onclick="navigate('entries')" class="underline font-bold">Entries</button> page</span>`;
+      if (r.advanceStatus === 'LIQUIDATION_PENDING') {
+        actions = `<span class="text-xs text-amber-600 font-medium flex items-center gap-1">
+          🕒 Liquidation submitted — awaiting audit approval to mark settled.</span>`;
+      } else {
+        actions = `<span class="text-xs text-blue-600 font-medium flex items-center gap-1">
+          💳 Liquidate this advance from the <button onclick="navigate('advances')" class="underline font-bold">Cash Advances</button> or <button onclick="navigate('entries')" class="underline font-bold">Entries</button> page</span>`;
+      }
     } else {
       actions = `
         <button onclick="openPcrSettleModal('${r.id}','${escHtml(r.purpose)}',${r.amount},'${r.date}','${escHtml(r.requestedByName || '')}')"

@@ -1671,6 +1671,23 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
         notesCol + ' | [LIQUIDATED BY ' + approverEmail + ' on ' + approvalDate + ']'
       );
 
+      // 1b. If this advance is linked to a Petty Cash Request, mark the PCR SETTLED
+      //     so it leaves the "Released — Pending Settlement" bucket.
+      const reqSheet = ss.getSheetByName(SHEETS.REQUESTS);
+      if (reqSheet) {
+        const reqRows = reqSheet.getDataRange().getValues();
+        for (let k = 1; k < reqRows.length; k++) {
+          if (reqRows[k][12] === advId && reqRows[k][7] === 'RELEASED') {
+            reqSheet.getRange(k + 1, 8).setValue('SETTLED');
+            reqSheet.getRange(k + 1, 15).setValue(now);
+            writeAuditLog('REQUEST_SETTLED',
+              `PCR auto-settled on advance liquidation. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)}`,
+              reqRows[k][0], approvalDate);
+            break;
+          }
+        }
+      }
+
       // 2. Save LIQ_DETAIL entries on the current approval date (accounting standard)
       if (breakdown.entries && breakdown.entries.length) {
         breakdown.entries.forEach(entry => {
@@ -3498,23 +3515,39 @@ function getPettyCashRequests() {
     const role  = getUserRole();
     const isPrivileged = role.success && (role.role === 'Admin' || role.role === 'Auditor');
 
-    // Build a map of PCR_DETAIL entries grouped by referenceNo for settlement breakdowns
-    const settlementMap = {};
+    // Build a map of PCR_DETAIL entries grouped by referenceNo for settlement breakdowns.
+    // Also collect LIQ_DETAIL items (for Cash Advance PCRs) and CASH_ADVANCE statuses
+    // so we can show the right label/items for advance-backed requests.
+    const settlementMap = {};       // referenceNo -> [{category, description, amount, hasReceipt}]
+    const advanceItemsMap = {};     // advId       -> [...]
+    const advanceStatusMap = {};    // advId       -> status (ACTIVE | LIQUIDATION_PENDING | LIQUIDATED | …)
     const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
     if (entrySheet) {
       const eRows = entrySheet.getDataRange().getValues();
       for (let j = 1; j < eRows.length; j++) {
         const e = eRows[j];
-        if (!e[0] || e[2] !== 'PCR_DETAIL' || e[10] === 'VOID') continue;
-        const ref = e[7];
-        if (!ref) continue;
-        if (!settlementMap[ref]) settlementMap[ref] = [];
-        settlementMap[ref].push({
-          category   : e[3],
-          description: e[4],
-          amount     : parseFloat(e[5]) || 0,
-          hasReceipt : e[6] === 'YES'
-        });
+        if (!e[0] || e[10] === 'VOID' || e[10] === 'DELETED') continue;
+        const type = e[2];
+        const ref  = e[7];
+        if (type === 'PCR_DETAIL' && ref) {
+          if (!settlementMap[ref]) settlementMap[ref] = [];
+          settlementMap[ref].push({
+            category   : e[3],
+            description: e[4],
+            amount     : parseFloat(e[5]) || 0,
+            hasReceipt : e[6] === 'YES'
+          });
+        } else if (type === 'LIQ_DETAIL' && ref) {
+          if (!advanceItemsMap[ref]) advanceItemsMap[ref] = [];
+          advanceItemsMap[ref].push({
+            category   : e[3],
+            description: e[4],
+            amount     : parseFloat(e[5]) || 0,
+            hasReceipt : e[6] === 'YES'
+          });
+        } else if (type === 'CASH_ADVANCE') {
+          advanceStatusMap[e[0]] = e[10];
+        }
       }
     }
 
@@ -3530,23 +3563,36 @@ function getPettyCashRequests() {
         const needsCashierAction = r[7] !== 'PENDING_APPROVAL' && r[7] !== 'REJECTED';
         if (!submittedByMe && !needsCashierAction) continue;
       }
+      const requestType = r[4] || 'Expense';
+      const isAdvance   = requestType === 'Cash Advance';
+      const entryId     = r[12];
+      const status      = r[7];
+
+      let settlementItems;
+      if (status === 'SETTLED') {
+        settlementItems = isAdvance
+          ? (advanceItemsMap[entryId] || [])
+          : (settlementMap[r[0]] || []);
+      }
+
       data.push({
         id              : r[0],
         date            : normalizeDate(r[1]),
         purpose         : r[2],
         amount          : parseFloat(r[3]) || 0,
-        requestType     : r[4] || 'Expense',  // 'Expense' | 'Cash Advance'
+        requestType     : requestType,        // 'Expense' | 'Cash Advance'
         requestedByName : r[5],   // employee name
         submittedBy     : r[6],   // cashier email
-        status          : r[7],
+        status          : status,
         approvedBy      : r[8],
         approvedAt      : r[9],
         releasedAt      : r[10],
         rejectionNote   : r[11],
-        entryId         : r[12],
+        entryId         : entryId,
         createdAt       : r[13],
-        settledAt       : r[7] === 'SETTLED' ? (r[14] || '') : '',
-        settlementItems : r[7] === 'SETTLED' ? (settlementMap[r[0]] || []) : undefined
+        settledAt       : status === 'SETTLED' ? (r[14] || '') : '',
+        settlementItems : settlementItems,
+        advanceStatus   : isAdvance ? (advanceStatusMap[entryId] || '') : ''
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
