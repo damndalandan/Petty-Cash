@@ -460,6 +460,90 @@ function initializeSheets() {
 }
 
 // ─────────────────────────────────────────────
+// DATABASE INITIALIZATION / HEADER REPAIR
+// ─────────────────────────────────────────────
+// Canonical schema for every managed sheet. Header order here is authoritative —
+// any mismatch in the spreadsheet is overwritten when initializeDatabase() runs.
+const SHEET_SCHEMA = {
+  [SHEETS.ENTRIES]: [
+    'Entry_ID','Date','Type','Category','Description',
+    'Amount','Has_Receipt','Reference_No','Requested_By','Approved_By',
+    'Status','Created_At','Updated_At','Deleted_At'
+  ],
+  [SHEETS.DENOMINATIONS]: [
+    'Record_ID','Date','Type',
+    'D_1000','D_500','D_200','D_100','D_50',
+    'D_20','D_10','D_5','D_1','D_025',
+    'Total','Notes','Created_At'
+  ],
+  [SHEETS.SUMMARY]: [
+    'Summary_ID','Date','Opening_Cash','Cash_Advance',
+    'Total_Exp_With_Receipt','Total_Exp_No_Receipt','Total_Expenses',
+    'Total_Cash_Over','Total_Replenishment','Total_Cash_Return',
+    'Total_Reimbursement','Closing_Cash','Variance','Status','Closed_By','Updated_At'
+  ],
+  [SHEETS.RECEIPTS]: [
+    'Receipt_ID','Entry_ID','Date','Supplier_Name',
+    'Address','TIN','Receipt_No',
+    'Gross_Amount','Vatable_Sales','VAT_Amount',
+    'Created_By','Created_At'
+  ],
+  [SHEETS.NO_RECEIPTS]: [
+    'NR_ID','Entry_ID','Date','Description',
+    'Amount','Requested_By','Created_By','Created_At'
+  ],
+  [SHEETS.ACCESS]: ['Email','Name','Role','Status','Added_At','Notes'],
+  [SHEETS.AUDIT_LOG]: [
+    'Log_ID','Timestamp','Date','Action',
+    'Actor_Email','Actor_Role','Details','Reference_ID'
+  ],
+  [SHEETS.CATEGORIES]: ['Category'],
+  [SHEETS.REQUESTS]: [
+    'Request_ID','Date','Purpose','Amount','Request_Type',
+    'Requested_By','Submitted_By','Status',
+    'Approved_By','Approved_At','Released_At',
+    'Rejection_Note','Entry_ID','Created_At','Updated_At'
+  ]
+};
+
+// Idempotent: creates any missing sheet (via initializeSheets), then rewrites
+// row 1 of every managed sheet to match SHEET_SCHEMA. Data rows are untouched.
+// Safe to run repeatedly. Returns a per-sheet report of what changed.
+function initializeDatabase() {
+  try {
+    initializeSheets();
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const report = [];
+
+    Object.keys(SHEET_SCHEMA).forEach(name => {
+      const expected = SHEET_SCHEMA[name];
+      const sheet = ss.getSheetByName(name);
+      if (!sheet) { report.push({ sheet: name, status: 'missing' }); return; }
+
+      const lastCol = Math.max(sheet.getLastColumn(), expected.length);
+      const current = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      const matches = expected.every((h, i) => current[i] === h);
+
+      if (matches && current.length === expected.length) {
+        report.push({ sheet: name, status: 'ok' });
+        return;
+      }
+
+      const newRow = expected.slice();
+      while (newRow.length < lastCol) newRow.push('');
+      sheet.getRange(1, 1, 1, newRow.length).setValues([newRow]);
+      sheet.setFrozenRows(1);
+      formatHeaderRow(sheet);
+      report.push({ sheet: name, status: 'headers_repaired', before: current, after: expected });
+    });
+
+    return { success: true, report };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
 // SUMMARY RECALCULATION
 // ─────────────────────────────────────────────
 function recalculateDailySummary(date) {
