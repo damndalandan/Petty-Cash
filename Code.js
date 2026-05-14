@@ -1703,11 +1703,19 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
 
           // Save receipt if attached
           if (entry.hasReceipt && entry.receipt && liqEntry.id) {
-            saveReceiptRecord({
+            const rcptResult = saveReceiptRecord({
               ...entry.receipt,
               entryId: liqEntry.id,
               date   : approvalDate
             });
+            if (!rcptResult || !rcptResult.success) {
+              writeAuditLog(
+                'RECEIPT_SAVE_FAILED',
+                'Receipt save failed for LIQ_DETAIL ' + liqEntry.id + ' (advance ' + advId + '). Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+                liqEntry.id,
+                approvalDate
+              );
+            }
           }
         });
       }
@@ -3120,6 +3128,197 @@ function syncReceiptsToFinalSheet(approvedDate) {
 }
 
 // ─────────────────────────────────────────────
+// ONE-OFF DATA REPAIR — restore PCR_DETAIL / LIQ_DETAIL Reference_No values
+// that were overwritten by an old saveReceiptRecord bug (the receipt number
+// was written into the entry's Reference_No column, severing the link back
+// to the parent PCR / Cash Advance and hiding the item from settlement panels).
+//
+// Run manually from the Apps Script editor. Pass { dryRun: true } first to
+// see what would change without writing anything:
+//   repairDetailReferenceNos({ dryRun: true })
+//   repairDetailReferenceNos()
+// Both return a results object and also write Logger output + an audit log
+// entry for every fix applied.
+// ─────────────────────────────────────────────
+function repairDetailReferenceNos(opts) {
+  const dryRun = !!(opts && opts.dryRun);
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+  const reqSheet   = ss.getSheetByName(SHEETS.REQUESTS);
+  if (!entrySheet) throw new Error('PettyCash_Entries sheet not found');
+
+  const entryRows = entrySheet.getDataRange().getValues();
+  const reqRows   = reqSheet ? reqSheet.getDataRange().getValues() : [];
+
+  // Index settled PCRs by (settledDate | requestedByName) for fallback matching.
+  // r[0]=id, r[1]=date, r[3]=amount, r[4]=requestType, r[5]=requestedByName, r[7]=status, r[14]=settledAt
+  const settledPcrsByKey = {};
+  for (let i = 1; i < reqRows.length; i++) {
+    const r = reqRows[i];
+    if (!r[0]) continue;
+    if (r[7] !== 'SETTLED') continue;
+    if ((r[4] || 'Expense') !== 'Expense') continue;
+    const settledDate = normalizeDate(r[14]) || normalizeDate(r[1]);
+    const requestedBy = r[5] || '';
+    const key = settledDate + '|' + requestedBy;
+    if (!settledPcrsByKey[key]) settledPcrsByKey[key] = [];
+    settledPcrsByKey[key].push({ id: r[0], amount: parseFloat(r[3]) || 0 });
+  }
+
+  // Index cash advance entries by (date | requestedBy) for LIQ_DETAIL fallback.
+  // For an advance entry e[2]==='CASH_ADVANCE', the entry's id is what
+  // LIQ_DETAIL.Reference_No should point at.
+  const advancesByKey = {};
+  for (let i = 1; i < entryRows.length; i++) {
+    const e = entryRows[i];
+    if (!e[0]) continue;
+    if (e[2] !== 'CASH_ADVANCE') continue;
+    if (e[10] === 'DELETED' || e[10] === 'VOID') continue;
+    const advDate = normalizeDate(e[1]);
+    const requestedBy = e[8] || '';
+    const key = advDate + '|' + requestedBy;
+    if (!advancesByKey[key]) advancesByKey[key] = [];
+    advancesByKey[key].push({ id: e[0], amount: parseFloat(e[5]) || 0 });
+  }
+
+  // Build per-batch grouping for sibling lookup. A "batch" = same settlement
+  // pass: same Date + Requested_By + Approved_By + same target type.
+  // PCR_DETAIL Reference_No should start with 'PCR-'.
+  // LIQ_DETAIL Reference_No should start with 'EXP-' (the cash advance entry id).
+  const batches = {};
+  for (let i = 1; i < entryRows.length; i++) {
+    const e = entryRows[i];
+    if (!e[0]) continue;
+    const type = e[2];
+    if (type !== 'PCR_DETAIL' && type !== 'LIQ_DETAIL') continue;
+    if (e[10] === 'DELETED' || e[10] === 'VOID') continue;
+
+    const date = normalizeDate(e[1]);
+    const requestedBy = e[8] || '';
+    const approvedBy  = e[9] || '';
+    const key = type + '|' + date + '|' + requestedBy + '|' + approvedBy;
+    if (!batches[key]) batches[key] = [];
+    batches[key].push({
+      rowIdx : i + 1,        // 1-based row number for setValue
+      entryId: e[0],
+      type   : type,
+      refNo  : String(e[7] || ''),
+      amount : parseFloat(e[5]) || 0,
+      date   : date,
+      requestedBy: requestedBy
+    });
+  }
+
+  const expectedPrefix = function(type) { return type === 'PCR_DETAIL' ? 'PCR-' : 'EXP-'; };
+  const fixes   = [];
+  const skipped = [];
+  const now     = new Date().toISOString();
+
+  Object.keys(batches).forEach(function(key) {
+    const group = batches[key];
+    const type  = group[0].type;
+    const prefix = expectedPrefix(type);
+
+    // The "canonical" id is the first sibling whose refNo already has the
+    // right prefix. If multiple distinct canonicals exist, this group is
+    // ambiguous and we fall back to lookup-by-amount on the PCR/advance list.
+    const goodRefs = Array.from(new Set(
+      group.filter(function(g){ return g.refNo.indexOf(prefix) === 0; })
+           .map(function(g){ return g.refNo; })
+    ));
+
+    let canonical = '';
+    let strategy  = '';
+
+    if (goodRefs.length === 1) {
+      canonical = goodRefs[0];
+      strategy  = 'sibling';
+    } else if (goodRefs.length === 0) {
+      // No good sibling — try to look up by date + requestedBy
+      const lookupKey = group[0].date + '|' + group[0].requestedBy;
+      const candidates = type === 'PCR_DETAIL'
+        ? (settledPcrsByKey[lookupKey] || [])
+        : (advancesByKey[lookupKey]   || []);
+
+      if (candidates.length === 1) {
+        canonical = candidates[0].id;
+        strategy  = 'lookup-unique';
+      } else if (candidates.length > 1) {
+        // Multiple candidates same day same employee — try matching by total amount
+        const groupTotal = group.reduce(function(s, x){ return s + x.amount; }, 0);
+        const amountMatches = candidates.filter(function(c){
+          // PCR amount >= spent (allow up to small variance for floating point)
+          return c.amount >= groupTotal - 0.01;
+        });
+        if (amountMatches.length === 1) {
+          canonical = amountMatches[0].id;
+          strategy  = 'lookup-by-amount';
+        }
+      }
+    } else {
+      // Multiple good sibling refs in the same batch — group bucket is too
+      // coarse (probably two settlements collapsed together). Skip for safety.
+      strategy = 'ambiguous-' + goodRefs.length + '-canonicals';
+    }
+
+    group.forEach(function(g) {
+      if (g.refNo.indexOf(prefix) === 0) return; // already good
+      if (!canonical) {
+        skipped.push({
+          entryId: g.entryId, type: g.type, oldRef: g.refNo,
+          date: g.date, requestedBy: g.requestedBy,
+          reason: strategy || 'no-match'
+        });
+        return;
+      }
+      fixes.push({
+        entryId: g.entryId, type: g.type,
+        oldRef: g.refNo, newRef: canonical,
+        rowIdx: g.rowIdx,
+        strategy: strategy
+      });
+    });
+  });
+
+  // Apply fixes (unless dryRun)
+  if (!dryRun) {
+    fixes.forEach(function(f) {
+      entrySheet.getRange(f.rowIdx, 8).setValue(f.newRef);          // Reference_No
+      entrySheet.getRange(f.rowIdx, 13).setValue(now);              // Updated_At
+      const existingNotes = String(entrySheet.getRange(f.rowIdx, 15).getValue() || '');
+      const fixNote = '[REF_REPAIRED ' + now + ' "' + f.oldRef + '" -> "' + f.newRef + '" via ' + f.strategy + ']';
+      entrySheet.getRange(f.rowIdx, 15).setValue(existingNotes ? existingNotes + ' | ' + fixNote : fixNote);
+      writeAuditLog(
+        'DETAIL_REF_REPAIRED',
+        f.type + ' ' + f.entryId + ' Reference_No restored from "' + f.oldRef + '" to "' + f.newRef + '" via ' + f.strategy,
+        f.entryId,
+        normalizeDate(new Date())
+      );
+    });
+    SpreadsheetApp.flush();
+
+    // Recalculate summaries for any affected dates so settlement panels refresh
+    const datesToRecalc = Array.from(new Set(fixes.map(function(f){
+      const e = entryRows[f.rowIdx - 1];
+      return e ? normalizeDate(e[1]) : '';
+    }).filter(Boolean)));
+    datesToRecalc.forEach(function(d){ try { recalculateDailySummary(d); } catch(_) {} });
+  }
+
+  Logger.log('=== repairDetailReferenceNos (' + (dryRun ? 'DRY RUN' : 'APPLIED') + ') ===');
+  Logger.log('Would fix: ' + fixes.length);
+  fixes.forEach(function(f) {
+    Logger.log('  ' + f.type + ' ' + f.entryId + ': "' + f.oldRef + '" -> "' + f.newRef + '" (' + f.strategy + ')');
+  });
+  Logger.log('Skipped (need manual review): ' + skipped.length);
+  skipped.forEach(function(s) {
+    Logger.log('  ' + s.type + ' ' + s.entryId + ': "' + s.oldRef + '" date=' + s.date + ' requestedBy=' + s.requestedBy + ' reason=' + s.reason);
+  });
+
+  return { dryRun: dryRun, fixed: fixes, skipped: skipped };
+}
+
+// ─────────────────────────────────────────────
 // AUTO-CLOSE NON-WORKING DAYS (Sundays)
 // ─────────────────────────────────────────────
 function autoCloseNonWorkingDays(startDate, openingCash, ss, now) {
@@ -3760,6 +3959,7 @@ function settlePettyCashRequest(data) {
 
       const totalSpent = entries.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
       const change     = parseFloat((reqAmount - totalSpent).toFixed(2));
+      const receiptSaveFailures = [];
 
       // 1. Create PCR_DETAIL expense entries for each item (on settlement date)
       for (const entry of entries) {
@@ -3779,7 +3979,7 @@ function settlePettyCashRequest(data) {
         });
 
         if (expResult.success && entry.hasReceipt && entry.receipt) {
-          saveReceiptRecord({
+          const rcptResult = saveReceiptRecord({
             entryId     : expResult.id,
             date        : settleDate,
             supplierName: entry.receipt.supplierName || '',
@@ -3788,6 +3988,19 @@ function settlePettyCashRequest(data) {
             receiptNo   : entry.receipt.receiptNo    || '',
             grossAmount : amt
           });
+          if (!rcptResult || !rcptResult.success) {
+            receiptSaveFailures.push({
+              entryId : expResult.id,
+              supplier: entry.receipt.supplierName || '',
+              reason  : (rcptResult && rcptResult.message) || 'unknown'
+            });
+            writeAuditLog(
+              'RECEIPT_SAVE_FAILED',
+              'Receipt save failed for PCR_DETAIL ' + expResult.id + ' on ' + data.requestId + '. Supplier: ' + (entry.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+              expResult.id,
+              settleDate
+            );
+          }
         }
       }
 
@@ -3832,6 +4045,13 @@ function settlePettyCashRequest(data) {
         `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)} | Items: ${entries.length}`,
         data.requestId, settleDate);
 
+      if (receiptSaveFailures.length) {
+        return {
+          success: true,
+          warning: 'Settlement saved, but ' + receiptSaveFailures.length + ' receipt(s) failed to record. Check the audit log (RECEIPT_SAVE_FAILED) and reattach those receipts from the entry.',
+          receiptSaveFailures: receiptSaveFailures
+        };
+      }
       return { success: true };
     }
     return { success: false, message: 'Request not found.' };
