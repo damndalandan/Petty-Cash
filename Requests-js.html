@@ -527,7 +527,11 @@ async function confirmPcrSettle() {
 
   if (!res.success) { toast(res.message || 'Failed to settle request.', 'error'); return; }
 
-  toast('Request settled successfully.');
+  if (res.warning) {
+    toast(res.warning, 'warning');
+  } else {
+    toast('Request settled successfully.');
+  }
   closePcrSettleModal();
   switchPcrFilter('settled');
   loadRequests();
