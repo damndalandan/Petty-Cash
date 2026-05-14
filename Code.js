@@ -3165,20 +3165,26 @@ function repairDetailReferenceNos(opts) {
     settledPcrsByKey[key].push({ id: r[0], amount: parseFloat(r[3]) || 0 });
   }
 
-  // Index cash advance entries by (date | requestedBy) for LIQ_DETAIL fallback.
-  // For an advance entry e[2]==='CASH_ADVANCE', the entry's id is what
-  // LIQ_DETAIL.Reference_No should point at.
-  const advancesByKey = {};
+  // Index cash advance entries by requestedBy for LIQ_DETAIL fallback.
+  // We can't key by date here: an advance's e[1] is its ISSUANCE date,
+  // while a LIQ_DETAIL's date is the audit APPROVAL date (when the day was
+  // closed), and those are usually different. Instead we scan by employee
+  // and disambiguate via the advance's "[LIQUIDATED BY ... on YYYY-MM-DD]"
+  // notes marker (set in finalizePendingLiquidations) or by amount.
+  const advancesByEmployee = {};
   for (let i = 1; i < entryRows.length; i++) {
     const e = entryRows[i];
     if (!e[0]) continue;
     if (e[2] !== 'CASH_ADVANCE') continue;
     if (e[10] === 'DELETED' || e[10] === 'VOID') continue;
-    const advDate = normalizeDate(e[1]);
     const requestedBy = e[8] || '';
-    const key = advDate + '|' + requestedBy;
-    if (!advancesByKey[key]) advancesByKey[key] = [];
-    advancesByKey[key].push({ id: e[0], amount: parseFloat(e[5]) || 0 });
+    if (!advancesByEmployee[requestedBy]) advancesByEmployee[requestedBy] = [];
+    advancesByEmployee[requestedBy].push({
+      id    : e[0],
+      amount: parseFloat(e[5]) || 0,
+      status: e[10],
+      notes : String(e[14] || '')
+    });
   }
 
   // Build per-batch grouping for sibling lookup. A "batch" = same settlement
@@ -3234,26 +3240,41 @@ function repairDetailReferenceNos(opts) {
       canonical = goodRefs[0];
       strategy  = 'sibling';
     } else if (goodRefs.length === 0) {
-      // No good sibling — try to look up by date + requestedBy
-      const lookupKey = group[0].date + '|' + group[0].requestedBy;
-      const candidates = type === 'PCR_DETAIL'
-        ? (settledPcrsByKey[lookupKey] || [])
-        : (advancesByKey[lookupKey]   || []);
+      // No good sibling — fall back to looking up the parent by employee +
+      // a type-appropriate date hint.
+      //   * PCR_DETAIL.date  === PCR.settledAt date (same flow), so we use it.
+      //   * LIQ_DETAIL.date  === audit-approval date, which is recorded in
+      //                         the advance's Notes column as "on <date>".
+      let candidates;
+      if (type === 'PCR_DETAIL') {
+        const lookupKey = group[0].date + '|' + group[0].requestedBy;
+        candidates = settledPcrsByKey[lookupKey] || [];
+      } else {
+        const allForEmp = advancesByEmployee[group[0].requestedBy] || [];
+        const liqMarker = 'on ' + group[0].date;
+        candidates = allForEmp.filter(function(a) {
+          return a.status === 'LIQUIDATED' && a.notes.indexOf(liqMarker) !== -1;
+        });
+      }
 
       if (candidates.length === 1) {
         canonical = candidates[0].id;
         strategy  = 'lookup-unique';
       } else if (candidates.length > 1) {
-        // Multiple candidates same day same employee — try matching by total amount
+        // Multiple candidates — try matching by total amount (the parent's
+        // amount should be >= the spent total in this batch).
         const groupTotal = group.reduce(function(s, x){ return s + x.amount; }, 0);
         const amountMatches = candidates.filter(function(c){
-          // PCR amount >= spent (allow up to small variance for floating point)
           return c.amount >= groupTotal - 0.01;
         });
         if (amountMatches.length === 1) {
           canonical = amountMatches[0].id;
           strategy  = 'lookup-by-amount';
+        } else {
+          strategy = 'ambiguous-' + candidates.length + '-candidates';
         }
+      } else {
+        strategy = 'no-candidates';
       }
     } else {
       // Multiple good sibling refs in the same batch — group bucket is too
