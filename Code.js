@@ -1116,7 +1116,6 @@ function saveReceiptRecord(data) {
       for (let i = 1; i < entryRows.length; i++) {
         if (entryRows[i][0] === data.entryId) {
           entrySheet.getRange(i + 1, 7).setValue('YES');
-          entrySheet.getRange(i + 1, 8).setValue(data.receiptNo || '');
           entrySheet.getRange(i + 1, 13).setValue(now);
           markNoReceiptDeleted(data.entryId);
           recalculateDailySummary(data.date);
