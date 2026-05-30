@@ -1642,6 +1642,18 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
 
       // If this advance was flagged by auditor — reset to ACTIVE, skip finalization
       if (flaggedIds.has(advId)) {
+        // Void the expense/return rows created at submission time — the advance is
+        // going back to outstanding, so its spend must not remain counted.
+        const flagVoidTypes = ['LIQ_DETAIL', 'CASH_RETURN', 'CASH_ADVANCE_REIMBURSEMENT'];
+        for (let v = 1; v < entryRows.length; v++) {
+          if (flagVoidTypes.includes(entryRows[v][2]) &&
+              String(entryRows[v][7]) === String(advId) &&
+              entryRows[v][10] !== 'DELETED') {
+            entrySheet.getRange(v + 1, 11).setValue('DELETED');
+            entrySheet.getRange(v + 1, 13).setValue(now);
+            entrySheet.getRange(v + 1, 15).setValue('[VOIDED — advance flagged by auditor]');
+          }
+        }
         entrySheet.getRange(i + 1, 11).setValue('ACTIVE');
         entrySheet.getRange(i + 1, 13).setValue(now);
         entrySheet.getRange(i + 1, 15).setValue(notesCol + ' | [FLAGGED BY AUDITOR] Returned to outstanding.');
@@ -1686,8 +1698,13 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
         notesCol + ' | [LIQUIDATED BY ' + approverEmail + ' on ' + approvalDate + ']'
       );
 
-      // 2. Save LIQ_DETAIL entries on the current approval date (accounting standard)
-      if (breakdown.entries && breakdown.entries.length) {
+      // 2. Save LIQ_DETAIL entries — only if not already recorded at submission time.
+      //    New flow: submitLiquidation records them immediately, so this is skipped.
+      //    Legacy: advances submitted under the old code have none yet, so create here.
+      const liqAlreadyRecorded = entryRows.slice(1).some(r =>
+        r[2] === 'LIQ_DETAIL' && String(r[7]) === String(advId) && r[10] !== 'DELETED'
+      );
+      if (!liqAlreadyRecorded && breakdown.entries && breakdown.entries.length) {
         breakdown.entries.forEach(entry => {
           const liqEntry = saveExpenseEntry({
             date       : approvalDate,
@@ -2005,7 +2022,7 @@ function submitLiquidation(data) {
       // CASH_ADVANCE_REIMBURSEMENT entries linked to this advance so we don't double-count
       const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
       const entryRows  = entrySheet.getDataRange().getValues();
-      const voidTypes  = ['CASH_RETURN', 'CASH_ADVANCE_REIMBURSEMENT'];
+      const voidTypes  = ['CASH_RETURN', 'CASH_ADVANCE_REIMBURSEMENT', 'LIQ_DETAIL'];
       for (let j = 1; j < entryRows.length; j++) {
         if (voidTypes.includes(entryRows[j][2]) &&
             String(entryRows[j][7]) === String(data.id) &&
@@ -2044,6 +2061,38 @@ function submitLiquidation(data) {
           approvedBy : ''
         });
       }
+      // Record the liquidated spend as LIQ_DETAIL expense entries immediately, so the
+      // amount counts toward the day's expenses right away (no waiting for day-close
+      // audit). The day-level audit still reviews these like any other expense entry.
+      // Dated `today` to match the CASH_RETURN above; the original advance outflow was
+      // already booked on its issue date, so these are documentary (no cash movement).
+      (data.entries || []).forEach(entry => {
+        const amt = parseFloat(entry.amount) || 0;
+        if (amt <= 0) return;
+        const liqEntry = saveExpenseEntry({
+          date       : today,
+          type       : 'LIQ_DETAIL',
+          category   : entry.category   || 'Miscellaneous',
+          description: entry.desc       || '',
+          amount     : amt,
+          hasReceipt : !!entry.hasReceipt,
+          referenceNo: data.id,
+          requestedBy: rows[i][8] || '',
+          approvedBy : ''
+        });
+        if (entry.hasReceipt && entry.receipt && liqEntry && liqEntry.id) {
+          const rcptResult = saveReceiptRecord({ ...entry.receipt, entryId: liqEntry.id, date: today });
+          if (!rcptResult || !rcptResult.success) {
+            writeAuditLog(
+              'RECEIPT_SAVE_FAILED',
+              'Receipt save failed for LIQ_DETAIL ' + liqEntry.id + ' (advance ' + data.id + '). Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+              liqEntry.id,
+              today
+            );
+          }
+        }
+      });
+
       recalculateDailySummary(advanceDate);
       if (today !== advanceDate) recalculateDailySummary(today);
 
