@@ -13,3 +13,9 @@ Thumbs.db
 .vscode/
 .idea/
 EOF
+# Added by code-review-graph
+.code-review-graph/
+
+.claude/
+.mcp.json
+CLAUDE.md

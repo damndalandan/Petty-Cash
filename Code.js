@@ -1987,8 +1987,9 @@ function getAllCashAdvances() {
 }
 
 function submitLiquidation(data) {
-  // Stores breakdown as JSON in the advance's notes column.
-  // No EXPENSE rows created here — those are finalized on audit approval.
+  // Settles the advance immediately (no audit gate): marks it LIQUIDATED,
+  // stores the breakdown JSON in the notes column, and records the spend as
+  // LIQ_DETAIL expense rows plus any change as CASH_RETURN.
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.ENTRIES);
@@ -2014,9 +2015,14 @@ function submitLiquidation(data) {
         submittedAt: now
       });
 
-      sheet.getRange(row, 11).setValue('LIQUIDATION_PENDING');
+      // Mark the advance LIQUIDATED right away — cash advances are settled by the
+      // cashier's liquidation and no longer wait for a day-close audit. The marker
+      // is kept BEFORE the JSON so the notes still parse, and so the LIQ_DETAIL
+      // reference-repair fallback can match by "on <date>".
+      const today = normalizeDate(new Date());
+      sheet.getRange(row, 11).setValue('LIQUIDATED');
       sheet.getRange(row, 13).setValue(now);
-      sheet.getRange(row, 15).setValue('[LIQUIDATION SUBMITTED] ' + breakdownJson);
+      sheet.getRange(row, 15).setValue('[LIQUIDATED on ' + today + '] ' + breakdownJson);
 
       // If this is a re-submission (edit), void any previously created CASH_RETURN or
       // CASH_ADVANCE_REIMBURSEMENT entries linked to this advance so we don't double-count
@@ -2035,7 +2041,6 @@ function submitLiquidation(data) {
 
       // Immediately record the change as CASH_RETURN — cashier has physically returned it on submission
       // Or reimburse the employee from petty cash if they overspent
-      const today = normalizeDate(new Date());
       if (change > 0.005) {
         saveExpenseEntry({
           date       : today,
@@ -2098,15 +2103,13 @@ function submitLiquidation(data) {
 
       writeAuditLog(
         'LIQUIDATION_SUBMITTED',
-        `Liquidation submitted for advance ${data.id}. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)} (immediately returned). Notes: ${data.note || '—'}`,
+        `Advance ${data.id} liquidated & settled. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)} (immediately returned). Notes: ${data.note || '—'}`,
         data.id,
         advanceDate
       );
 
-      // Settle the linked Petty Cash Request, if any. The auditor's day-close is
-      // verification only — the cashier's liquidation is what settles the PCR.
-      // (finalizePendingLiquidations will revert this to RELEASED if the advance
-      // is flagged during audit.)
+      // Settle the linked Petty Cash Request, if any — the cashier's liquidation
+      // is what settles the PCR.
       const reqSheet = ss.getSheetByName(SHEETS.REQUESTS);
       if (reqSheet) {
         const reqRows = reqSheet.getDataRange().getValues();
