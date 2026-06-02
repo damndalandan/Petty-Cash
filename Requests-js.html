@@ -37,12 +37,14 @@ function updatePcrCards() {
   const approved = allRequests.filter(r => r.status === 'APPROVED').length;
   const released = allRequests.filter(r => r.status === 'RELEASED').length;
   const settled  = allRequests.filter(r => r.status === 'SETTLED' && (r.settledAt || '').slice(0, 10) === today).length;
+  const rejected = allRequests.filter(r => ['REJECTED', 'VOIDED'].includes(r.status)).length;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('pcr-count-pending',  pending);
   set('pcr-count-approved', approved);
   set('pcr-count-released', released);
   set('pcr-count-settled',  settled);
+  set('pcr-count-rejected', rejected);
 
   // Sidebar badge: pending + released need action
   const sb = document.getElementById('requests-badge');
@@ -66,8 +68,9 @@ function highlightPcrCard(filter) {
     approved: { active: 'border-green-400 bg-green-50',  inactive: 'border-transparent bg-white' },
     released: { active: 'border-blue-400 bg-blue-50',    inactive: 'border-transparent bg-white' },
     settled : { active: 'border-slate-400 bg-slate-50',  inactive: 'border-transparent bg-white' },
+    rejected: { active: 'border-red-400 bg-red-50',      inactive: 'border-transparent bg-white' },
   };
-  ['pending','approved','released','settled'].forEach(f => {
+  ['pending','approved','released','settled','rejected'].forEach(f => {
     const card = document.getElementById('pcr-card-' + f);
     if (!card) return;
     const s = cardStyles[f];
@@ -81,6 +84,7 @@ function highlightPcrCard(filter) {
     approved: 'Showing: Approved — Ready to Release',
     released: 'Showing: Released — Pending Settlement',
     settled : 'Showing: Settled Today',
+    rejected: 'Showing: Rejected / Voided',
   };
   const labelEl = document.getElementById('pcr-filter-label');
   if (labelEl) labelEl.textContent = labels[filter] || 'Showing: All Active';
@@ -113,6 +117,7 @@ function renderRequests() {
     approved: r => r.status === 'APPROVED',
     released: r => r.status === 'RELEASED',
     settled : r => r.status === 'SETTLED'  && (r.settledAt || '').slice(0, 10) === today,
+    rejected: r => ['REJECTED', 'VOIDED'].includes(r.status),
   };
   const filtered = allRequests.filter(filterMap[currentPcrFilter] || filterMap.active);
 
@@ -122,6 +127,7 @@ function renderRequests() {
     approved: 'No approved requests awaiting release.',
     released: 'No released requests awaiting settlement.',
     settled : 'No requests settled today.',
+    rejected: 'No rejected or voided requests.',
   };
 
   if (!filtered.length) {
@@ -138,14 +144,16 @@ function renderRequestCard(r) {
     APPROVED        : 'bg-green-100 text-green-700',
     RELEASED        : 'bg-blue-100 text-blue-700',
     SETTLED         : 'bg-slate-100 text-slate-600',
-    REJECTED        : 'bg-red-100 text-red-600'
+    REJECTED        : 'bg-red-100 text-red-600',
+    VOIDED          : 'bg-gray-200 text-gray-600'
   };
   const statusLabels = {
     PENDING_APPROVAL: 'Pending Approval',
     APPROVED        : 'Approved',
     RELEASED        : 'Released',
     SETTLED         : 'Settled',
-    REJECTED        : 'Rejected'
+    REJECTED        : 'Rejected',
+    VOIDED          : 'Voided'
   };
 
   const typeBadge = r.requestType === 'Cash Advance'
@@ -183,6 +191,16 @@ function renderRequestCard(r) {
       <button onclick="releaseRequest(this,'${r.id}')"
         class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
         💵 Release Cash
+      </button>`;
+  }
+
+  // Admin: void an approved request before it is released (no cash disbursed yet).
+  // Appended so an Admin (who is also a cashier) keeps the Release button too.
+  if (r.status === 'APPROVED' && isAdmin()) {
+    actions += `
+      <button onclick="openPcrVoidModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
+        class="flex-1 py-2.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
+        Void
       </button>`;
   }
 
@@ -355,6 +373,34 @@ async function confirmPcrReject() {
   if (!res.success) { toast(res.message || 'Failed to reject.', 'error'); return; }
   toast('Request rejected.');
   closePcrRejectModal();
+  loadRequests();
+}
+
+// ── Void (admin, approved-but-not-released) ───
+
+function openPcrVoidModal(requestId, purpose, amountStr) {
+  document.getElementById('pcrVoidId').value = requestId;
+  document.getElementById('pcrVoidInfo').textContent = `${purpose} — ${amountStr}`;
+  document.getElementById('pcrVoidNote').value = '';
+  document.getElementById('pcrVoidModal').classList.remove('hidden');
+}
+
+function closePcrVoidModal() {
+  document.getElementById('pcrVoidModal').classList.add('hidden');
+}
+
+async function confirmPcrVoid() {
+  const requestId = document.getElementById('pcrVoidId').value;
+  const note      = document.getElementById('pcrVoidNote').value.trim();
+  if (!note) { toast('Please enter a reason for voiding.', 'warning'); return; }
+
+  const btn = document.querySelector('#pcrVoidModal button[onclick="confirmPcrVoid()"]');
+  btnLoad(btn, true);
+  const res = await callServer('voidPettyCashRequest', { requestId, note });
+  btnLoad(btn, false);
+  if (!res.success) { toast(res.message || 'Failed to void.', 'error'); return; }
+  toast('Request voided.');
+  closePcrVoidModal();
   loadRequests();
 }
 

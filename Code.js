@@ -3849,7 +3849,10 @@ function getPettyCashRequests() {
       // cashier needs to release/settle them). Admin/Auditor see all.
       if (!isPrivileged) {
         const submittedByMe = r[6] === email;
-        const needsCashierAction = r[7] !== 'PENDING_APPROVAL' && r[7] !== 'REJECTED';
+        // Terminal/no-action states (rejected, voided) are only shown to the
+        // cashier who submitted them — so she can see the reason and avoid
+        // re-requesting — never surfaced as "needs action" to other cashiers.
+        const needsCashierAction = !['PENDING_APPROVAL', 'REJECTED', 'VOIDED'].includes(r[7]);
         if (!submittedByMe && !needsCashierAction) continue;
       }
       const requestType = r[4] || 'Expense';
@@ -3940,6 +3943,45 @@ function rejectPettyCashRequest(data) {
 
       writeAuditLog('REQUEST_REJECTED',
         `PCR rejected for ${rows[i][5]}. Purpose: ${rows[i][2]} | Note: ${data.note || '—'}`,
+        data.requestId, normalizeDate(rows[i][1]));
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function voidPettyCashRequest(data) {
+  // data: { requestId, note }
+  // Admin-only. Voids a request that was APPROVED but not yet released —
+  // no cash has been disbursed, so this simply nullifies the request. The
+  // reason is stored in the Rejection_Note column and shown to the cashier.
+  try {
+    const role = getUserRole();
+    if (!(role.success && role.role === 'Admin')) {
+      return { success: false, message: 'Only an admin can void an approved request.' };
+    }
+
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.requestId) continue;
+      if (rows[i][7] !== 'APPROVED') {
+        return { success: false, message: 'Only approved requests that have not been released can be voided.' };
+      }
+      const row = i + 1;
+      sheet.getRange(row, 8).setValue('VOIDED');           // Status
+      sheet.getRange(row, 12).setValue(data.note || '');   // Rejection_Note (reused for void reason)
+      sheet.getRange(row, 15).setValue(now);               // Updated_At
+
+      writeAuditLog('REQUEST_VOIDED',
+        `PCR voided for ${rows[i][5]} by ${email}. Type: ${rows[i][4]} | Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)} | Reason: ${data.note || '—'}`,
         data.requestId, normalizeDate(rows[i][1]));
 
       return { success: true };
