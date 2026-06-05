@@ -225,13 +225,20 @@
     </div>
 
     <!-- Footer -->
-    <div class="p-4 bg-gray-50 border-t flex gap-3 shrink-0">
+    <div class="p-4 bg-gray-50 border-t shrink-0">
       <input type="hidden" id="pcrSettleRequestId">
-      <button onclick="closePcrSettleModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[48px]">Cancel</button>
-      <button onclick="confirmPcrSettle()"
-        class="flex-1 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow transition min-h-[48px]">
-        Confirm Settlement
+      <!-- Full return: cash was released but nothing was bought (item unavailable) so the whole amount comes back -->
+      <button onclick="confirmPcrReturnFull()"
+        class="w-full mb-3 py-2.5 text-sm font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl transition min-h-[44px]">
+        🔄 Nothing spent — return full amount
       </button>
+      <div class="flex gap-3">
+        <button onclick="closePcrSettleModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[48px]">Cancel</button>
+        <button onclick="confirmPcrSettle()"
+          class="flex-1 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow transition min-h-[48px]">
+          Confirm Settlement
+        </button>
+      </div>
     </div>
   </div>
 </div>

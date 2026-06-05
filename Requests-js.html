@@ -166,8 +166,16 @@ function renderRequestCard(r) {
   const isAdvanceAwaiting = r.status === 'RELEASED'
     && r.requestType === 'Cash Advance'
     && r.advanceStatus === 'LIQUIDATION_PENDING';
-  const badgeStyle = isAdvanceAwaiting ? 'bg-amber-100 text-amber-700' : (statusStyles[r.status] || 'bg-gray-100 text-gray-500');
-  const badgeLabel = isAdvanceAwaiting ? 'Awaiting Audit' : (statusLabels[r.status] || r.status);
+  // A settled Expense PCR with no expense items means the cash was returned unused.
+  const isFullReturn = r.status === 'SETTLED'
+    && r.requestType !== 'Cash Advance'
+    && (!r.settlementItems || r.settlementItems.length === 0);
+  const badgeStyle = isAdvanceAwaiting ? 'bg-amber-100 text-amber-700'
+    : isFullReturn ? 'bg-teal-100 text-teal-700'
+    : (statusStyles[r.status] || 'bg-gray-100 text-gray-500');
+  const badgeLabel = isAdvanceAwaiting ? 'Awaiting Audit'
+    : isFullReturn ? 'Returned'
+    : (statusLabels[r.status] || r.status);
   const badge = `<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>`;
 
   let actions = '';
@@ -231,6 +239,10 @@ function renderRequestCard(r) {
   let breakdownHtml = '';
   let toggleBtn     = '';
   let summaryLine   = '';
+  if (isFullReturn) {
+    // Released, nothing spent, full amount handed back to the fund.
+    summaryLine = `<div class="text-[10px] text-teal-600 font-medium mt-1">🔄 Returned unused &middot; full <span class="font-mono">${fmt(r.amount)}</span> back to fund</div>`;
+  }
   const isSettled   = r.status === 'SETTLED' && r.settlementItems && r.settlementItems.length;
   if (isSettled) {
     const itemCount  = r.settlementItems.length;
@@ -578,6 +590,34 @@ async function confirmPcrSettle() {
   } else {
     toast('Request settled successfully.');
   }
+  closePcrSettleModal();
+  switchPcrFilter('settled');
+  loadRequests();
+}
+
+// Cash was released but nothing was spent (e.g. item unavailable) → return the
+// full amount to the fund and settle with no expense items.
+async function confirmPcrReturnFull() {
+  const requestId = document.getElementById('pcrSettleRequestId').value;
+  const note      = document.getElementById('pcrSettleNote').value.trim();
+  const amount    = _pcrSettleCtx.amount || 0;
+
+  // Guard against misclicks: if the cashier already typed expense amounts, they
+  // probably meant to settle normally, not return the full amount.
+  const spent = [...document.querySelectorAll('.pcr-amt')].reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+  if (spent > 0) {
+    toast('You have expense amounts entered. Clear them to return the full amount, or use Confirm Settlement.', 'warning');
+    return;
+  }
+
+  const btn = document.querySelector('#pcrSettleModal button[onclick="confirmPcrReturnFull()"]');
+  btnLoad(btn, true);
+  const res = await callServer('settlePettyCashRequest', { requestId, entries: [], note });
+  btnLoad(btn, false);
+
+  if (!res.success) { toast(res.message || 'Failed to record return.', 'error'); return; }
+
+  toast(`Full ${fmt(amount)} returned to the fund — request settled.`);
   closePcrSettleModal();
   switchPcrFilter('settled');
   loadRequests();

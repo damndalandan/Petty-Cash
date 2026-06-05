@@ -4074,6 +4074,9 @@ function settlePettyCashRequest(data) {
 
       const totalSpent = entries.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
       const change     = parseFloat((reqAmount - totalSpent).toFixed(2));
+      // Full return: cash was released but nothing was spent (e.g. the item to be
+      // bought was unavailable) so the entire amount is handed back to the fund.
+      const isFullReturn = totalSpent === 0;
       const receiptSaveFailures = [];
 
       // 1. Create PCR_DETAIL expense entries for each item (on settlement date)
@@ -4119,13 +4122,16 @@ function settlePettyCashRequest(data) {
         }
       }
 
-      // 2. Record change return on settlement date so today's balance reflects cash back
+      // 2. Record cash returned on settlement date so today's balance reflects cash back.
+      //    A full return (nothing spent) records the entire released amount.
       if (change > 0) {
         saveExpenseEntry({
           date       : settleDate,
           type       : 'CASH_RETURN',
           category   : 'Cash Return',
-          description: `Change returned from ${data.requestId}`,
+          description: isFullReturn
+            ? `Full amount returned unused from ${data.requestId}`
+            : `Change returned from ${data.requestId}`,
           amount     : change,
           hasReceipt : false,
           referenceNo: data.requestId
@@ -4142,7 +4148,7 @@ function settlePettyCashRequest(data) {
           const advDate = normalizeDate(entryRows[j][1]);
           entrySheet.getRange(j + 1, 11).setValue('LIQUIDATED');
           entrySheet.getRange(j + 1, 13).setValue(now);
-          entrySheet.getRange(j + 1, 15).setValue('[SETTLED] ' + (data.note || ''));
+          entrySheet.getRange(j + 1, 15).setValue((isFullReturn ? '[RETURNED] ' : '[SETTLED] ') + (data.note || ''));
           if (advDate && advDate !== settleDate) recalculateDailySummary(advDate);
           break;
         }
@@ -4156,8 +4162,10 @@ function settlePettyCashRequest(data) {
 
       recalculateDailySummary(settleDate);
 
-      writeAuditLog('REQUEST_SETTLED',
-        `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)} | Items: ${entries.length}`,
+      writeAuditLog(isFullReturn ? 'REQUEST_RETURNED' : 'REQUEST_SETTLED',
+        isFullReturn
+          ? `PCR returned unused. Full ₱${reqAmount.toFixed(2)} returned to fund — nothing spent. ${data.note ? 'Note: ' + data.note : ''}`.trim()
+          : `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)} | Items: ${entries.length}`,
         data.requestId, settleDate);
 
       if (receiptSaveFailures.length) {
