@@ -171,12 +171,23 @@ function renderRrFusedTable(rows, entries) {
           <td colspan="7" class="px-8 py-0">
             <div class="border-l-2 border-dashed border-gray-200 ml-2 my-2 py-2 pl-4 space-y-2">
               ${dayEntries.map(e => {
-                let typeBadge = '';
-                if (e.type === 'CASH_ADVANCE') typeBadge = '<span class="px-1.5 py-0.5 text-[9px] bg-amber-100 text-amber-700 rounded font-bold uppercase">Advance</span>';
-                else if (e.type === 'LIQ_DETAIL') typeBadge = '<span class="px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-700 rounded font-bold uppercase">Liq</span>';
-                
+                const badgeMap = {
+                  CASH_ADVANCE              : '<span class="px-1.5 py-0.5 text-[9px] bg-amber-100 text-amber-700 rounded font-bold uppercase">Advance</span>',
+                  PCR_ADVANCE               : '<span class="px-1.5 py-0.5 text-[9px] bg-orange-100 text-orange-700 rounded font-bold uppercase">Release</span>',
+                  LIQ_DETAIL                : '<span class="px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-700 rounded font-bold uppercase">Liq</span>',
+                  PCR_DETAIL                : '<span class="px-1.5 py-0.5 text-[9px] bg-indigo-100 text-indigo-700 rounded font-bold uppercase">Request</span>',
+                  CASH_ADVANCE_REIMBURSEMENT: '<span class="px-1.5 py-0.5 text-[9px] bg-rose-100 text-rose-700 rounded font-bold uppercase">Reimburse</span>',
+                  REPLENISHMENT             : '<span class="px-1.5 py-0.5 text-[9px] bg-purple-100 text-purple-700 rounded font-bold uppercase">Top-up</span>',
+                };
+                const typeBadge = badgeMap[e.type] || '';
+
+                // Colour the amount to match the summary column it rolls up into
+                let amtCls = 'text-red-600';
+                if (e.type === 'REPLENISHMENT')                                amtCls = 'text-purple-600';
+                else if (e.type === 'CASH_ADVANCE' || e.type === 'PCR_ADVANCE') amtCls = 'text-orange-500';
+
                 return `
-                  <div class="grid grid-cols-[160px_minmax(0,1fr)_120px_80px] gap-3 items-center group py-1 border-b border-gray-50 last:border-0">
+                  <div class="grid grid-cols-[180px_minmax(0,1fr)_120px_90px] gap-3 items-center group py-1 border-b border-gray-50 last:border-0">
                     <div class="flex items-center gap-1.5 overflow-visible">
                       <span class="text-[8px] font-bold py-0.5 px-1.5 bg-gray-100 text-gray-400 rounded uppercase whitespace-nowrap">${e.category || 'misc'}</span>
                       ${typeBadge}
@@ -187,8 +198,8 @@ function renderRrFusedTable(rows, entries) {
                     <div class="text-[10px] text-gray-400 font-medium truncate text-right pr-2">
                       ${e.requestedBy || '-'}
                     </div>
-                    <div class="text-[11px] font-mono font-bold text-gray-600 text-right">
-                      ${fmt(e.amount)}
+                    <div class="text-[11px] font-mono font-bold ${amtCls} text-right">
+                      ${e.type === 'REPLENISHMENT' ? '+' : ''}${fmt(e.amount)}
                     </div>
                   </div>
                 `;

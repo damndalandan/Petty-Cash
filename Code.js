@@ -2992,27 +2992,33 @@ function getReplenishmentPeriodReport() {
       if (rowDate < fromStr || rowDate > toStr) continue;
       if (status === 'DELETED') continue;
 
-      if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
+      // An entry is surfaced in the day's breakdown when the daily summary
+      // attributes its cash movement to this period (expenses, advances/
+      // releases, reimbursements or the top-up itself). Keep these branches in
+      // sync with recalculateDailySummary() so the details reconcile with the
+      // EXPENSES / CASH ADVANCE / REPLENISHMENT columns.
+      const detail = {
+        id: row[0], date: rowDate, type, category: row[3],
+        description: row[4], amount, requestedBy: row[8], status
+      };
+
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
         totalExpenses += amount;
-        periodEntries.push({
-          id: row[0], date: rowDate, type, category: row[3],
-          description: row[4], amount, requestedBy: row[8], status
-        });
-      } else if (type === 'REPLENISHMENT') {
-        totalReplenishment += amount;
+        periodEntries.push(detail);
       } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
         totalExpenses += amount; // outflow counted against fund usage
-        periodEntries.push({
-          id: row[0], date: rowDate, type, category: row[3],
-          description: row[4], amount, requestedBy: row[8], status
-        });
-      } else if (type === 'CASH_ADVANCE' &&
-                (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING')) {
-        advancesOutstanding += amount;
-        periodEntries.push({
-          id: row[0], date: rowDate, type, category: row[3],
-          description: row[4], amount, requestedBy: row[8], status
-        });
+        periodEntries.push(detail);
+      } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
+        // Cash leaves the drawer on the advance/release date regardless of any
+        // later liquidation, so always show it in the breakdown. Only ACTIVE /
+        // LIQUIDATION_PENDING advances still count as outstanding vs the ceiling.
+        if (status === 'ACTIVE' || status === 'LIQUIDATION_PENDING') {
+          advancesOutstanding += amount;
+        }
+        periodEntries.push(detail);
+      } else if (type === 'REPLENISHMENT') {
+        totalReplenishment += amount;
+        periodEntries.push(detail);
       }
     }
 
