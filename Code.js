@@ -2843,13 +2843,13 @@ function getSummaryReportData(params) {
       if (rowDate < fromStr || rowDate > toStr) continue;
       if (status === 'DELETED') continue;
 
-      if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         totalExpenses += amount;
         if (row[6] === 'YES') totalWithReceipt    += amount;
         else                  totalWithoutReceipt += amount;
-      } else if (type === 'CASH_ADVANCE') {
+      } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
         advancesIssued += amount;
         if (status === 'LIQUIDATED')   advancesLiquidated  += amount;
         else if (status !== 'DELETED') advancesOutstanding += amount;
@@ -3631,7 +3631,7 @@ function getSummaryReportDataByRange(params) {
       if (rowDate < fromStr || rowDate > toStr) continue;
       if (status === 'DELETED') continue;
 
-      if (type === 'EXPENSE' || type === 'LIQ_DETAIL') {
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         totalExpenses += amount;
@@ -3653,7 +3653,7 @@ function getSummaryReportDataByRange(params) {
           totalWithoutReceipt += amount;
           withoutReceiptEntries.push(entry);
         }
-      } else if (type === 'CASH_ADVANCE') {
+      } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
         advancesIssued += amount;
         if (status === 'LIQUIDATED')   advancesLiquidated  += amount;
         else if (status !== 'DELETED') advancesOutstanding += amount;
