@@ -168,38 +168,32 @@ function renderRrFusedTable(rows, entries) {
       const dayEntries = entryMap[r.date];
       html += `
         <tr class="rr-detail-row bg-gray-50/50 hidden print:table-row no-break-inside">
-          <td colspan="7" class="px-8 py-0">
-            <div class="border-l-2 border-dashed border-gray-200 ml-2 my-2 py-2 pl-4 space-y-2">
+          <td colspan="7" class="px-4 sm:px-6 py-0">
+            <div class="border-l-2 border-dashed border-gray-200 ml-2 my-2 py-1 pl-3 sm:pl-4 space-y-0.5">
               ${dayEntries.map(e => {
-                const badgeMap = {
-                  CASH_ADVANCE              : '<span class="px-1.5 py-0.5 text-[9px] bg-amber-100 text-amber-700 rounded font-bold uppercase">Advance</span>',
-                  PCR_ADVANCE               : '<span class="px-1.5 py-0.5 text-[9px] bg-orange-100 text-orange-700 rounded font-bold uppercase">Release</span>',
-                  LIQ_DETAIL                : '<span class="px-1.5 py-0.5 text-[9px] bg-blue-100 text-blue-700 rounded font-bold uppercase">Liq</span>',
-                  PCR_DETAIL                : '<span class="px-1.5 py-0.5 text-[9px] bg-indigo-100 text-indigo-700 rounded font-bold uppercase">Request</span>',
-                  CASH_ADVANCE_REIMBURSEMENT: '<span class="px-1.5 py-0.5 text-[9px] bg-rose-100 text-rose-700 rounded font-bold uppercase">Reimburse</span>',
-                  REPLENISHMENT             : '<span class="px-1.5 py-0.5 text-[9px] bg-purple-100 text-purple-700 rounded font-bold uppercase">Top-up</span>',
-                };
-                const typeBadge = badgeMap[e.type] || '';
+                // Per-type presentation: short label + pill colour + amount colour
+                const typeConf = {
+                  CASH_ADVANCE              : { label: 'Advance',     pill: 'bg-amber-100 text-amber-700',   amt: 'text-orange-500' },
+                  PCR_ADVANCE               : { label: 'Release',     pill: 'bg-orange-100 text-orange-700', amt: 'text-orange-500' },
+                  LIQ_DETAIL                : { label: 'Liquidation', pill: 'bg-blue-100 text-blue-700',     amt: 'text-red-600'    },
+                  PCR_DETAIL                : { label: 'Request',     pill: 'bg-indigo-100 text-indigo-700', amt: 'text-red-600'    },
+                  CASH_ADVANCE_REIMBURSEMENT: { label: 'Reimburse',   pill: 'bg-rose-100 text-rose-700',     amt: 'text-red-600'    },
+                  REPLENISHMENT             : { label: 'Top-up',      pill: 'bg-purple-100 text-purple-700', amt: 'text-purple-600' },
+                }[e.type] || { label: 'Entry', pill: 'bg-gray-100 text-gray-600', amt: 'text-red-600' };
 
-                // Colour the amount to match the summary column it rolls up into
-                let amtCls = 'text-red-600';
-                if (e.type === 'REPLENISHMENT')                                amtCls = 'text-purple-600';
-                else if (e.type === 'CASH_ADVANCE' || e.type === 'PCR_ADVANCE') amtCls = 'text-orange-500';
+                const sign = e.type === 'REPLENISHMENT' ? '+' : '';
 
                 return `
-                  <div class="grid grid-cols-[180px_minmax(0,1fr)_120px_90px] gap-3 items-center group py-1 border-b border-gray-50 last:border-0">
-                    <div class="flex items-center gap-1.5 overflow-visible">
-                      <span class="text-[8px] font-bold py-0.5 px-1.5 bg-gray-100 text-gray-400 rounded uppercase whitespace-nowrap">${e.category || 'misc'}</span>
-                      ${typeBadge}
+                  <div class="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-white/80 transition border-b border-gray-100 last:border-0">
+                    <span class="shrink-0 w-[68px] text-center text-[9px] font-bold py-1 rounded ${typeConf.pill} uppercase tracking-wide">${typeConf.label}</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="text-xs text-gray-700 font-medium truncate" title="${e.description}">${e.description}</div>
+                      <div class="text-[10px] text-gray-400 truncate">
+                        <span class="uppercase tracking-wide font-semibold">${e.category || 'misc'}</span>${e.requestedBy ? ` &middot; ${e.requestedBy}` : ''}
+                      </div>
                     </div>
-                    <div class="text-xs text-gray-600 font-medium truncate pr-4" title="${e.description}">
-                      ${e.description}
-                    </div>
-                    <div class="text-[10px] text-gray-400 font-medium truncate text-right pr-2">
-                      ${e.requestedBy || '-'}
-                    </div>
-                    <div class="text-[11px] font-mono font-bold ${amtCls} text-right">
-                      ${e.type === 'REPLENISHMENT' ? '+' : ''}${fmt(e.amount)}
+                    <div class="shrink-0 w-24 text-right font-mono text-xs font-bold tabular-nums ${typeConf.amt}">
+                      ${sign}${fmt(e.amount)}
                     </div>
                   </div>
                 `;
