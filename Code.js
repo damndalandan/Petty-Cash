@@ -2895,7 +2895,7 @@ function getSummaryReportData(params) {
     }
 
     // ── Compute amount to replenish ──
-    const FUND_CEILING    = 28000;
+    const FUND_CEILING    = 12500;
     const accounted       = cashOnHand + advancesOutstanding;
     const toReplenish     = Math.max(0, FUND_CEILING - accounted);
 
@@ -3045,7 +3045,7 @@ function getReplenishmentPeriodReport() {
     // ── Cash on hand = latest CLOSED day's closing ──
     const lastClosed   = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
     const cashOnHand   = lastClosed ? lastClosed.closing : 0;
-    const FUND_CEILING = 28000;
+    const FUND_CEILING = 12500;
     const accounted    = cashOnHand + advancesOutstanding;
     const toReplenish  = Math.max(0, FUND_CEILING - accounted);
 
@@ -3703,7 +3703,7 @@ function getSummaryReportDataByRange(params) {
 
     const lastClosed  = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
     const cashOnHand  = lastClosed ? lastClosed.closing : 0;
-    const FUND_CEILING = 28000;
+    const FUND_CEILING = 12500;
     const accounted   = cashOnHand + advancesOutstanding;
     const toReplenish = Math.max(0, FUND_CEILING - accounted);
 
