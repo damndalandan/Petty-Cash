@@ -95,11 +95,85 @@ function renderReplenishReport(d) {
   netEl.className   = 'text-xl font-black font-mono ' +
     (net >= 0 ? 'text-green-600' : 'text-red-600');
 
+  // ── Accountability roll-ups ──
+  renderRrCategoryBreakdown(d.categoryBreakdown, d.totalExpenses);
+  renderRrReceiptCoverage(d.expWithReceipt, d.expWithoutReceipt);
+
   // ── Fused Table ──
   renderRrFusedTable(d.dailyRows, d.periodEntries);
 
   // Show content
   document.getElementById('rrContent').classList.remove('hidden');
+}
+
+function renderRrCategoryBreakdown(rows, total) {
+  const el = document.getElementById('rr-categoryBreakdown');
+  if (!el) return;
+
+  if (!rows || rows.length === 0) {
+    el.innerHTML = `<p class="text-sm text-gray-400 italic py-4 text-center">No expenses in this period</p>`;
+    return;
+  }
+
+  const max     = rows[0].amount || 1;   // rows arrive largest-first from the server
+  const palette = ['bg-blue-500','bg-indigo-500','bg-purple-500','bg-pink-500',
+                   'bg-amber-500','bg-teal-500','bg-rose-500','bg-cyan-500'];
+
+  el.innerHTML = rows.map((r, i) => {
+    const pctOfMax = Math.max(2, (r.amount / max) * 100);
+    const pctOfTot = total > 0 ? (r.amount / total) * 100 : 0;
+    const color    = palette[i % palette.length];
+    return `
+      <div class="no-break-inside">
+        <div class="flex items-center justify-between mb-1 gap-2">
+          <span class="text-xs font-medium text-gray-700 truncate" title="${r.category}">${r.category}</span>
+          <span class="text-xs font-mono font-bold text-gray-800 shrink-0">
+            ${fmt(r.amount)}
+            <span class="text-[10px] text-gray-400 font-sans ml-0.5">${pctOfTot.toFixed(0)}%</span>
+          </span>
+        </div>
+        <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+          <div class="h-full ${color} rounded-full" style="width:${pctOfMax}%"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderRrReceiptCoverage(withR, withoutR) {
+  const el = document.getElementById('rr-receiptCoverage');
+  if (!el) return;
+
+  const wR    = withR    || 0;
+  const woR   = withoutR || 0;
+  const total = wR + woR;
+
+  if (total === 0) {
+    el.innerHTML = `<p class="text-sm text-gray-400 italic text-center">No receipted expenses</p>`;
+    return;
+  }
+
+  const pct       = (wR / total) * 100;
+  const pctColor  = pct >= 90 ? 'text-green-600' : pct >= 70 ? 'text-amber-500' : 'text-red-600';
+
+  el.innerHTML = `
+    <div class="text-center mb-4">
+      <div class="text-4xl font-black font-mono ${pctColor}">${pct.toFixed(0)}%</div>
+      <div class="text-[10px] text-gray-400 uppercase tracking-wider mt-1">of spend has receipts</div>
+    </div>
+    <div class="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-gray-100">
+      <div class="h-full bg-green-500" style="width:${pct}%"></div>
+      <div class="h-full bg-red-400" style="width:${100 - pct}%"></div>
+    </div>
+    <div class="space-y-2">
+      <div class="flex items-center justify-between text-xs">
+        <span class="flex items-center gap-1.5 text-gray-600"><span class="w-2 h-2 rounded-full bg-green-500"></span> With receipt</span>
+        <span class="font-mono font-bold text-gray-800">${fmt(wR)}</span>
+      </div>
+      <div class="flex items-center justify-between text-xs">
+        <span class="flex items-center gap-1.5 text-gray-600"><span class="w-2 h-2 rounded-full bg-red-400"></span> Missing receipt</span>
+        <span class="font-mono font-bold ${woR > 0 ? 'text-red-600' : 'text-gray-800'}">${fmt(woR)}</span>
+      </div>
+    </div>`;
 }
 
 function renderRrFusedTable(rows, entries) {

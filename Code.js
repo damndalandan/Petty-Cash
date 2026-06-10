@@ -2981,6 +2981,11 @@ function getReplenishmentPeriodReport() {
     let advancesOutstanding = 0;
     const periodEntries     = [];
 
+    // Accountability roll-ups (reconcile with totalExpenses).
+    const categoryTotals    = {};   // category -> spend
+    let expWithReceipt      = 0;    // expense spend backed by a receipt
+    let expWithoutReceipt   = 0;    // expense spend missing a receipt
+
     for (let i = 1; i < entryData.length; i++) {
       const row     = entryData[i];
       if (row.length < 11) continue;
@@ -3004,9 +3009,15 @@ function getReplenishmentPeriodReport() {
 
       if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
         totalExpenses += amount;
+        const cat = String(row[3] || 'Miscellaneous').trim();
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+        if (row[6] === 'YES') expWithReceipt    += amount;
+        else                  expWithoutReceipt += amount;
         periodEntries.push(detail);
       } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
         totalExpenses += amount; // outflow counted against fund usage
+        const cat = String(row[3] || 'Miscellaneous').trim();
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         periodEntries.push(detail);
       } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
         // Cash leaves the drawer on the advance/release date regardless of any
@@ -3055,6 +3066,11 @@ function getReplenishmentPeriodReport() {
     const accounted    = cashOnHand + advancesOutstanding;
     const toReplenish  = Math.max(0, FUND_CEILING - accounted);
 
+    // Category breakdown, largest spend first (reconciles with totalExpenses).
+    const categoryBreakdown = Object.keys(categoryTotals)
+      .map(cat => ({ category: cat, amount: categoryTotals[cat] }))
+      .sort((a, b) => b.amount - a.amount);
+
     return {
       success: true,
       data: {
@@ -3068,7 +3084,10 @@ function getReplenishmentPeriodReport() {
         accounted,
         toReplenish,
         dailyRows,
-        periodEntries
+        periodEntries,
+        categoryBreakdown,
+        expWithReceipt,
+        expWithoutReceipt
       }
     };
   } catch(e) {
