@@ -91,6 +91,18 @@
       <span class="mr-3 text-lg">🔎</span>
       <span>Audit Log</span>
     </button>
+
+    <!-- Admin-only section (revealed by applyRoleUI for Admins) -->
+    <div id="admin-section" class="hidden">
+      <div class="px-3 py-2 mt-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider font-mono">Admin</div>
+
+      <button onclick="openDatabaseModal(this)" id="nav-database"
+        class="w-full flex items-center px-3 py-3 text-sm font-medium text-slate-600 border border-transparent hover:bg-slate-100/50 hover:text-slate-900 rounded-md group min-h-[44px]">
+        <span class="mr-3 text-lg">🗄️</span>
+        <span>Database</span>
+        <span class="ml-auto text-slate-300 group-hover:text-slate-500 text-xs">↗</span>
+      </button>
+    </div>
   </nav>
 
   <!-- Sidebar Footer -->

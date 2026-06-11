@@ -2228,6 +2228,23 @@ function getUserRole() {
 }
 
 // ─────────────────────────────────────────────
+// DATABASE LINK (Admin only)
+// Returns the live URL of the spreadsheet backing this app.
+// ─────────────────────────────────────────────
+function getDatabaseUrl() {
+  const role = getUserRole();
+  if (!(role.success && role.role === 'Admin')) {
+    return { success: false, message: 'Only an admin can access the database link.' };
+  }
+  try {
+    const url = SpreadsheetApp.openById(SPREADSHEET_ID).getUrl();
+    return { success: true, url: url };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
 // FILING CHECKLIST
 // Columns: Filing_ID | Date | Filed_Receipts | Filed_No_Receipts | Filed_Report | Notes | Submitted_By | Submitted_At
 // ─────────────────────────────────────────────

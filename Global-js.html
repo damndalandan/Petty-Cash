@@ -165,6 +165,7 @@ function applyRoleUI() {
   if (isAdmin()) {
     // Admin sees everything except data-entry tasks
     ['nav-requests', 'nav-denominations', 'nav-replenishment', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
+    show('admin-section');
     show('pcr-form-section');
   } else if (state.userRole === 'Auditor') {
     // Auditor sees review tools
@@ -269,5 +270,44 @@ function onDateChange() {
   updateDateLabel();
   loadDayData();
   if (state.currentPage !== 'dashboard') navigate(state.currentPage);
+}
+
+// =============================================
+// ADMIN: DATABASE LINK
+// =============================================
+function openDatabaseModal(btn) {
+  if (!isAdmin()) return;
+  btnLoad(btn, true);
+  callServer('getDatabaseUrl').then(res => {
+    btnLoad(btn, false);
+    if (!res.success || !res.url) {
+      toast(res.message || 'Unable to load the database link', 'error');
+      return;
+    }
+    document.getElementById('databaseUrlInput').value = res.url;
+    document.getElementById('databaseOpenLink').href  = res.url;
+    document.getElementById('databaseModal').classList.remove('hidden');
+  });
+}
+
+function closeDatabaseModal() {
+  document.getElementById('databaseModal').classList.add('hidden');
+}
+
+function copyDatabaseLink(btn) {
+  const input = document.getElementById('databaseUrlInput');
+  if (!input || !input.value) return;
+  const done = () => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 1500);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(input.value).then(done).catch(() => {
+      input.select(); document.execCommand('copy'); done();
+    });
+  } else {
+    input.select(); document.execCommand('copy'); done();
+  }
 }
 </script>
