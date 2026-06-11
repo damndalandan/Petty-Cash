@@ -164,7 +164,7 @@ function applyRoleUI() {
 
   if (isAdmin()) {
     // Admin sees everything except data-entry tasks
-    ['nav-requests', 'nav-denominations', 'nav-replenishment', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
+    ['nav-requests', 'nav-denominations', 'nav-replenishment', 'nav-filing', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
     show('admin-section');
     show('pcr-form-section');
   } else if (state.userRole === 'Auditor') {
