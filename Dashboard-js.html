@@ -324,6 +324,150 @@ async function loadDayStatusBanner() {
       advBanner.classList.add('hidden');
     }
   }
+
+  // ── Daily Messenger Update card (Cashier / Admin) ──
+  loadMessengerReport(res.status);
+}
+
+// =============================================
+// DAILY MESSENGER UPDATE (SOP JMN-SOP-FIN-002)
+// Read-only, auto-generated end-of-day message the cashier
+// copy-pastes to the owner. All values come from existing data.
+// =============================================
+
+// Format an amount the SOP way: "P11,355.00" (plain "P", not "₱").
+function fmtMsgP(n) {
+  const num = parseFloat(n) || 0;
+  return 'P' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Build the plain-text message. Pure function of the day's summary + advances
+// so the output is deterministic and testable.
+//   summary  — getDailySummary().data (openingCash, totalExpenses, closingCash, variance)
+//   advances — getOutstandingCashAdvances().data (each has amount, date, status, daysOutstanding)
+function buildMessengerMessage(dateStr, summary, advances) {
+  const PAD = 17;                          // width of the longest label ("CA Unliquidated:") + 1
+  const pad = (label) => label.padEnd(PAD);
+
+  const d   = new Date(dateStr + 'T00:00:00');
+  const hdr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+  const opening  = summary.openingCash  || 0;
+  const expenses = summary.totalExpenses || 0;
+  const closing  = summary.closingCash  || 0;
+  const v        = parseFloat(summary.variance) || 0;
+
+  // Variance = closing − expected (Code.js). v<0 = cash missing (SHORT), v>0 = excess (OVER).
+  let varStr;
+  if (Math.abs(v) < 0.01) varStr = fmtMsgP(0) + ' — BALANCED';
+  else if (v < 0)         varStr = fmtMsgP(Math.abs(v)) + ' SHORT';
+  else                    varStr = fmtMsgP(Math.abs(v)) + ' OVER';
+
+  // Outstanding (ACTIVE) advances issued on/before this day — matches the
+  // Outstanding Advances banner, which also excludes pending/liquidated.
+  const active = (advances || []).filter(a => a.status === 'ACTIVE' && a.date <= dateStr);
+
+  let caLine;
+  if (active.length === 0) {
+    caLine = 'none';
+  } else {
+    const total = active.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+    caLine = active.length === 1
+      ? `${fmtMsgP(total)} (1 item, Day ${active[0].daysOutstanding})`
+      : `${fmtMsgP(total)} (${active.length} items)`;
+  }
+
+  // Aging tiers (liquidation deadline = 3 days): Day 4–7 follow-up, Day 8+ escalate.
+  const overdue = active.filter(a => a.daysOutstanding >= 4);
+  let overdueLine;
+  if (overdue.length === 0) {
+    overdueLine = 'none';
+  } else {
+    const maxDay = Math.max(...overdue.map(a => a.daysOutstanding));
+    const word   = overdue.length > 1 ? 'items' : 'item';
+    overdueLine = maxDay >= 8
+      ? `${overdue.length} ${word}, Day ${maxDay} — escalate to admin`
+      : `${overdue.length} ${word}, Day ${maxDay} — follow-up required`;
+  }
+
+  return [
+    `PETTY CASH | ${hdr} | Day Closed`,
+    ``,
+    `${pad('Opening:')}${fmtMsgP(opening)}`,
+    `${pad('Expenses:')}${fmtMsgP(expenses)}`,
+    `${pad('Closing:')}${fmtMsgP(closing)}`,
+    `${pad('Variance:')}${varStr}`,
+    ``,
+    `${pad('CA Unliquidated:')}${caLine}`,
+    `${pad('Overdue CA:')}${overdueLine}`
+  ].join('\n');
+}
+
+async function loadMessengerReport(status) {
+  const card = document.getElementById('messengerCard');
+  if (!card) return;
+
+  // Only the sender roles (Cashier — primary; Admin — backup) need this.
+  if (!isCashier()) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+
+  const preview  = document.getElementById('messengerPreview');
+  const notReady = document.getElementById('messengerNotReady');
+  const copyBtn  = document.getElementById('messengerCopyBtn');
+
+  // "Day Closed" per the SOP = cashier has submitted closing cash.
+  const isClosed = status === 'PENDING_AUDIT' || status === 'CLOSED';
+  if (!isClosed || !state.summary) {
+    preview.classList.add('hidden');
+    copyBtn.classList.add('hidden');
+    notReady.classList.remove('hidden');
+    return;
+  }
+
+  // Advance aging — same source the Outstanding Advances banner relies on.
+  const advRes   = await callServer('getOutstandingCashAdvances');
+  const advances = (advRes.success && advRes.data) ? advRes.data : [];
+
+  preview.textContent = buildMessengerMessage(state.currentDate, state.summary, advances);
+  notReady.classList.add('hidden');
+  preview.classList.remove('hidden');
+  copyBtn.classList.remove('hidden');
+}
+
+function copyMessengerReport(btn) {
+  const preview = document.getElementById('messengerPreview');
+  if (!preview || !preview.textContent) return;
+  const text = preview.textContent;
+
+  const done = () => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '✓ Copied!';
+    btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+    btn.classList.add('bg-green-600');
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.remove('bg-green-600');
+      btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+    }, 1500);
+  };
+
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity  = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    done();
+  };
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else {
+    fallback();
+  }
 }
 
 // =============================================

@@ -269,6 +269,36 @@
         </button>
       </div>
 
+      <!-- ═══════════════════════════════════════════
+           DAILY MESSENGER UPDATE (Cashier / Admin)
+           Copy-paste end-of-day message per SOP JMN-SOP-FIN-002.
+           ═══════════════════════════════════════════ -->
+      <div id="messengerCard" class="hidden bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden">
+        <div class="p-4 border-b border-white/50 flex items-center justify-between gap-3 bg-white/40">
+          <div class="flex items-center gap-2 min-w-0">
+            <span class="text-lg shrink-0">📨</span>
+            <div class="min-w-0">
+              <h3 class="text-xs font-bold text-gray-600 uppercase tracking-wider">Daily Messenger Update</h3>
+              <p class="text-[10px] text-gray-400">Copy &amp; paste to the owner at 5:30 PM · SOP JMN-SOP-FIN-002</p>
+            </div>
+          </div>
+          <button id="messengerCopyBtn" onclick="copyMessengerReport(this)"
+            class="hidden shrink-0 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition whitespace-nowrap min-h-[40px]">
+            📋 Copy
+          </button>
+        </div>
+        <div class="p-4">
+          <!-- Not-closed state -->
+          <div id="messengerNotReady" class="hidden text-center py-8 text-gray-400">
+            <div class="text-3xl mb-2 opacity-50">🔒</div>
+            <p class="text-sm font-medium text-gray-500">Close the day to generate the update</p>
+            <p class="text-[11px] text-gray-400 mt-1">Available once the day's closing cash has been submitted.</p>
+          </div>
+          <!-- Message preview (read-only, auto-generated) -->
+          <pre id="messengerPreview" class="hidden whitespace-pre-wrap break-words bg-slate-900 text-slate-100 rounded-xl p-4 text-xs md:text-sm leading-relaxed overflow-x-auto" style="font-family:'DM Mono',monospace;"></pre>
+        </div>
+      </div>
+
       <!-- Discrepancy Overview -->
       <div class="bg-white/80 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/60 overflow-hidden relative">
         
