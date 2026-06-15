@@ -4164,8 +4164,13 @@ function settlePettyCashRequest(data) {
         }
       }
 
-      // 2. Record cash returned on settlement date so today's balance reflects cash back.
-      //    A full return (nothing spent) records the entire released amount.
+      // 2. Reconcile the cash difference on the settlement date so today's balance
+      //    reflects it. Two directions:
+      //      change > 0 → unspent cash handed back to the fund (CASH_RETURN).
+      //                   A full return (nothing spent) records the entire released amount.
+      //      change < 0 → overspent: the requester fronted the shortfall out of pocket,
+      //                   so the fund reimburses them. Mirrors the Cash Advance overage
+      //                   flow and keeps net cash out = total spent (= the receipts).
       if (change > 0) {
         saveExpenseEntry({
           date       : settleDate,
@@ -4177,6 +4182,18 @@ function settlePettyCashRequest(data) {
           amount     : change,
           hasReceipt : false,
           referenceNo: data.requestId
+        });
+      } else if (change < 0) {
+        saveExpenseEntry({
+          date       : settleDate,
+          type       : 'CASH_ADVANCE_REIMBURSEMENT',
+          category   : 'Cash Advance Reimbursement',
+          description: `Overspend reimbursement for ${data.requestId} — spent ₱${totalSpent.toFixed(2)} vs released ₱${reqAmount.toFixed(2)}`,
+          amount     : Math.abs(change),
+          hasReceipt : false,
+          referenceNo: data.requestId,
+          requestedBy: requestedFor,
+          approvedBy : approvedBy
         });
       }
 
@@ -4207,7 +4224,7 @@ function settlePettyCashRequest(data) {
       writeAuditLog(isFullReturn ? 'REQUEST_RETURNED' : 'REQUEST_SETTLED',
         isFullReturn
           ? `PCR returned unused. Full ₱${reqAmount.toFixed(2)} returned to fund — nothing spent. ${data.note ? 'Note: ' + data.note : ''}`.trim()
-          : `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | Change: ₱${change.toFixed(2)} | Items: ${entries.length}`,
+          : `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | ${change < 0 ? 'Overspent — reimbursed ₱' + Math.abs(change).toFixed(2) + ' from fund' : 'Change: ₱' + change.toFixed(2)} | Items: ${entries.length}`,
         data.requestId, settleDate);
 
       if (receiptSaveFailures.length) {

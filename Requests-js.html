@@ -255,7 +255,7 @@ function renderRequestCard(r) {
         ${isExpanded ? '▼ Hide items (' + itemCount + ')' : '▶ View items (' + itemCount + ')'}
       </button>`;
 
-    summaryLine = `<div class="text-[10px] text-gray-400 mt-1">Released: <span class="font-mono">${fmt(r.amount)}</span>${change > 0.005 ? ' &middot; Returned: <span class="font-mono">' + fmt(change) + '</span>' : ''}</div>`;
+    summaryLine = `<div class="text-[10px] text-gray-400 mt-1">Released: <span class="font-mono">${fmt(r.amount)}</span>${change > 0.005 ? ' &middot; Returned: <span class="font-mono">' + fmt(change) + '</span>' : ''}${change < -0.005 ? ' &middot; <span class="text-rose-600 font-medium">⚠ Overspent &middot; reimbursed <span class="font-mono">' + fmt(Math.abs(change)) + '</span></span>' : ''}</div>`;
 
     if (isExpanded) {
       const itemRows = r.settlementItems.map(item => `
@@ -275,10 +275,17 @@ function renderRequestCard(r) {
              <span class="text-xs font-mono font-bold text-teal-700">${fmt(change)}</span>
            </div>`
         : '';
+      const reimbursedRow = change < -0.005
+        ? `<div class="flex justify-between items-center pl-3 py-1.5 border-l-4 border-rose-200 bg-rose-50/60">
+             <span class="text-xs font-bold text-rose-700">⚠ Overspent &middot; reimbursed from fund</span>
+             <span class="text-xs font-mono font-bold text-rose-700">${fmt(Math.abs(change))}</span>
+           </div>`
+        : '';
       breakdownHtml = `
         <div class="pt-2 border-t border-dashed border-gray-200 space-y-1">
           ${itemRows}
           ${cashReturnedRow}
+          ${reimbursedRow}
           <div class="flex justify-between text-[11px] font-bold text-gray-700 pt-1.5 mt-0.5 border-t border-gray-200">
             <span>Total Spent</span><span class="font-mono">${fmt(totalSpent)}</span>
           </div>
