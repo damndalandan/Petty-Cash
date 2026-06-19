@@ -165,6 +165,36 @@
 </div>
 
 <!-- =============================================
+     CASHIER: DAY-CLOSED MESSENGER UPDATE MODAL
+     Pops the moment the day is closed so the cashier can
+     copy & send the end-of-day update to the owner right away.
+     ============================================= -->
+<div id="messengerModal" class="hidden fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+  <div class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[90vh]">
+    <div class="bg-gradient-to-r from-blue-700 to-indigo-600 px-5 py-4 flex justify-between items-center shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-xl shrink-0">📨</span>
+        <div class="min-w-0">
+          <h3 class="text-white font-bold text-base">Daily Messenger Update</h3>
+          <p class="text-blue-100 text-xs mt-0.5">Day closed ✓ — copy &amp; send to the owner now · SOP JMN-SOP-FIN-002</p>
+        </div>
+      </div>
+      <button onclick="closeMessengerModal()" class="text-white/70 hover:text-white text-2xl font-light leading-none w-10 h-10 flex items-center justify-center shrink-0">&times;</button>
+    </div>
+    <div class="overflow-y-auto flex-1 p-5">
+      <pre id="messengerModalPreview" class="whitespace-pre-wrap break-words bg-slate-900 text-slate-100 rounded-xl p-4 text-xs md:text-sm leading-relaxed overflow-x-auto" style="font-family:'DM Mono',monospace;"></pre>
+    </div>
+    <div class="p-4 bg-gray-50 border-t border-gray-100 flex gap-3 shrink-0">
+      <button onclick="closeMessengerModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[48px]">Done</button>
+      <button onclick="copyMessengerReport(this, 'messengerModalPreview')"
+        class="flex-1 py-3 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition min-h-[48px]">
+        📋 Copy Update
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =============================================
      ADMIN: DATABASE LINK MODAL
      ============================================= -->
 <div id="databaseModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

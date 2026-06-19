@@ -525,7 +525,7 @@
     const dataToSave = { ...pendingClosingData };
     closeClosingModal();
 
-    await executeSave(dataToSave);
+    const closed = await executeSave(dataToSave);
 
     if (createShortageEntry) {
       const amt = Math.abs(varianceVal);
@@ -567,6 +567,10 @@
     }
 
     loadDayData();
+
+    // Day is closed — surface the messenger update right away so the cashier
+    // can copy & send it to the owner without hunting for the dashboard card.
+    if (closed) showMessengerModal(dataToSave.date);
   }
 
   async function executeSave(data) {
@@ -586,9 +590,11 @@
       } else {
         toast(res.message || 'Failed to save', 'error');
       }
+      return res.success === true;
     } catch(e) {
       console.error(e);
       toast('Error saving record', 'error');
+      return false;
     } finally {
       showLoading(false);
     }

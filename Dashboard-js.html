@@ -434,8 +434,8 @@ async function loadMessengerReport(status) {
   copyBtn.classList.remove('hidden');
 }
 
-function copyMessengerReport(btn) {
-  const preview = document.getElementById('messengerPreview');
+function copyMessengerReport(btn, previewId) {
+  const preview = document.getElementById(previewId || 'messengerPreview');
   if (!preview || !preview.textContent) return;
   const text = preview.textContent;
 
@@ -468,6 +468,30 @@ function copyMessengerReport(btn) {
   } else {
     fallback();
   }
+}
+
+// Pop the messenger update in a modal the moment the day is closed, so the cashier
+// can copy & send it right away without navigating to the dashboard card.
+// Pulls fresh figures so any shortage/overage adjustment made during closing is reflected.
+async function showMessengerModal(dateStr) {
+  const modal   = document.getElementById('messengerModal');
+  const preview = document.getElementById('messengerModalPreview');
+  if (!modal || !preview) return;
+
+  const [sumRes, advRes] = await Promise.all([
+    callServer('getDailySummary', dateStr),
+    callServer('getOutstandingCashAdvances')
+  ]);
+  const summary  = (sumRes.success && sumRes.data) ? sumRes.data : (state.summary || {});
+  const advances = (advRes.success && advRes.data) ? advRes.data : [];
+
+  preview.textContent = buildMessengerMessage(dateStr, summary, advances);
+  modal.classList.remove('hidden');
+}
+
+function closeMessengerModal() {
+  const modal = document.getElementById('messengerModal');
+  if (modal) modal.classList.add('hidden');
 }
 
 // =============================================
