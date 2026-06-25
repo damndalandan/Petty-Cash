@@ -2826,6 +2826,25 @@ function getEmployees() {
 // ─────────────────────────────────────────────
 // SUMMARY REPORT DATA
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// Cash on hand = the most recent day's drawer balance.
+//   • CLOSED day → trust the physical END count (closing).
+//   • Still-open day → the drawer isn't counted yet, so use the expected
+//     balance, which folds in that day's returns / replenishments /
+//     expenses / advances. Mirrors recalculateDailySummary()'s `expected`.
+// dailyRows must already be filtered to the period and carry: date, status,
+// opening, closing, replenishment, cashReturn, cashOver, expenses,
+// cashAdvance, reimbursement.
+// ─────────────────────────────────────────────
+function computeCashOnHand(dailyRows) {
+  if (!dailyRows || dailyRows.length === 0) return 0;
+  const sorted = [...dailyRows].sort((a, b) => a.date > b.date ? 1 : -1);
+  const last   = sorted[sorted.length - 1];
+  if (last.status === 'CLOSED') return last.closing || 0;
+  return ((last.opening || 0) + (last.replenishment || 0) + (last.cashReturn || 0) + (last.cashOver || 0))
+       - ((last.expenses || 0) + (last.cashAdvance || 0) + (last.reimbursement || 0));
+}
+
 function getSummaryReportData(params) {
   // params: { month: 0-11, year: YYYY }
   try {
@@ -2898,18 +2917,17 @@ function getSummaryReportData(params) {
         cashAdvance  : parseFloat(sumData[i][3]) || 0,
         expenses     : expenses,
         replenishment: replenish,
+        cashReturn   : parseFloat(sumData[i][9])  || 0,
+        cashOver     : parseFloat(sumData[i][7])  || 0,
+        reimbursement: parseFloat(sumData[i][10]) || 0,
         closing      : closing,
         status       : status
       });
     }
     dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
 
-    // ── Find latest closing cash (cash on hand) ──
-    let cashOnHand = 0;
-    if (dailyRows.length > 0) {
-      const lastClosed = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
-      cashOnHand = lastClosed ? lastClosed.closing : 0;
-    }
+    // ── Cash on hand = latest day's drawer (live for the still-open day) ──
+    const cashOnHand = computeCashOnHand(dailyRows);
 
     // ── Compute amount to replenish ──
     const FUND_CEILING    = 12500;
@@ -3070,15 +3088,17 @@ function getReplenishmentPeriodReport() {
         cashAdvance  : cashAdv,
         expenses,
         replenishment: replenish,
+        cashReturn   : parseFloat(sumData[i][9])  || 0,
+        cashOver     : parseFloat(sumData[i][7])  || 0,
+        reimbursement: parseFloat(sumData[i][10]) || 0,
         closing,
         status
       });
     }
     dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
 
-    // ── Cash on hand = latest CLOSED day's closing ──
-    const lastClosed   = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
-    const cashOnHand   = lastClosed ? lastClosed.closing : 0;
+    // ── Cash on hand = latest day's drawer (live for the still-open day) ──
+    const cashOnHand   = computeCashOnHand(dailyRows);
     const FUND_CEILING = 12500;
     const accounted    = cashOnHand + advancesOutstanding;
     const toReplenish  = Math.max(0, FUND_CEILING - accounted);
@@ -3738,13 +3758,16 @@ function getSummaryReportDataByRange(params) {
       dailyRows.push({
         date: rowDate, opening,
         cashAdvance: parseFloat(sumData[i][3]) || 0,
-        expenses, replenishment: replenish, closing, status
+        expenses, replenishment: replenish,
+        cashReturn   : parseFloat(sumData[i][9])  || 0,
+        cashOver     : parseFloat(sumData[i][7])  || 0,
+        reimbursement: parseFloat(sumData[i][10]) || 0,
+        closing, status
       });
     }
     dailyRows.sort((a, b) => a.date > b.date ? 1 : -1);
 
-    const lastClosed  = [...dailyRows].reverse().find(d => d.status === 'CLOSED');
-    const cashOnHand  = lastClosed ? lastClosed.closing : 0;
+    const cashOnHand  = computeCashOnHand(dailyRows);
     const FUND_CEILING = 12500;
     const accounted   = cashOnHand + advancesOutstanding;
     const toReplenish = Math.max(0, FUND_CEILING - accounted);
