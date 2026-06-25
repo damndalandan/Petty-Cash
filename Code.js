@@ -2487,6 +2487,7 @@ function getAdminMetrics() {
     const unclosedDays   = [];
     const discrepancyDays = [];
     const cashOverDays   = [];
+    let   latestClosed   = null;   // most recent physically-counted (CLOSED) day
 
     for (let i = 1; i < sumRows.length; i++) {
       const row    = sumRows[i];
@@ -2513,6 +2514,12 @@ function getAdminMetrics() {
       // Cash Over = cashOver > 0
       if (cashOver > 0) {
         cashOverDays.push({ date: rDate, status, cashOver, opening, expenses, closing });
+      }
+
+      // Track the most recent CLOSED day — its counted closing + variance feed
+      // the fund reconciliation snapshot.
+      if (status === 'CLOSED' && (!latestClosed || rDate > latestClosed.date)) {
+        latestClosed = { date: rDate, closing, variance };
       }
     }
 
@@ -2587,6 +2594,28 @@ function getAdminMetrics() {
     cashOverDays.sort(byDateDesc);
     unfiledDays.sort(byDateDesc);
 
+    // ── Fund reconciliation snapshot ──
+    //   accounted = counted physical cash + still-outstanding advances.
+    //   to replenish = ceiling − accounted (mirrors the replenishment report).
+    const FUND_CEILING     = 12500;
+    const countedCash      = latestClosed ? latestClosed.closing  : 0;
+    const countedVariance  = latestClosed ? latestClosed.variance : 0;
+    const outstandingTotal = pendingAdvances.reduce((s, a) => s + (a.amount || 0), 0);
+    const oldestDays       = pendingAdvances.length ? pendingAdvances[0].daysOutstanding : 0;
+    const accounted        = countedCash + outstandingTotal;
+    const reconciliation = {
+      fundCeiling      : FUND_CEILING,
+      countedCash,
+      countedDate      : latestClosed ? latestClosed.date : null,
+      outstandingTotal,
+      outstandingCount : pendingAdvances.length,
+      oldestDays,
+      accounted,
+      toReplenish      : Math.max(0, FUND_CEILING - accounted),
+      variance         : countedVariance,
+      balanced         : Math.abs(countedVariance) <= 0.01
+    };
+
     return {
       success: true,
       data: {
@@ -2594,7 +2623,8 @@ function getAdminMetrics() {
         unfiled     : unfiledDays,
         discrepancies: discrepancyDays,
         cashOver    : cashOverDays,
-        pendingAdvances: pendingAdvances
+        pendingAdvances: pendingAdvances,
+        reconciliation : reconciliation
       }
     };
   } catch(e) {

@@ -137,6 +137,46 @@
 
         </div>
 
+        <!-- ── Fund Reconciliation Snapshot ── -->
+        <div id="reconCard" class="bg-white/70 backdrop-blur-xl border border-white/60 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+          <div class="px-4 pt-4 pb-1 flex items-center gap-2">
+            <span class="text-base">⚖️</span>
+            <h3 class="text-xs font-bold text-slate-500 uppercase tracking-wider">Fund Reconciliation</h3>
+            <span class="text-[10px] text-slate-400 ml-auto" id="recon-asof"></span>
+          </div>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-3 p-3 lg:p-4 pt-2">
+
+            <!-- Counted cash on hand -->
+            <div class="bg-slate-50/80 rounded-xl p-3 lg:p-4">
+              <div class="text-xs font-semibold text-slate-500 leading-tight">Counted cash on hand</div>
+              <div class="text-xl lg:text-2xl font-black text-blue-600 font-mono mt-1" id="recon-counted">₱0.00</div>
+              <div class="text-[10px] text-slate-400 mt-1">Physical count, EOD</div>
+            </div>
+
+            <!-- Outstanding advances -->
+            <div class="bg-slate-50/80 rounded-xl p-3 lg:p-4">
+              <div class="text-xs font-semibold text-slate-500 leading-tight">Outstanding advances</div>
+              <div class="text-xl lg:text-2xl font-black text-amber-600 font-mono mt-1" id="recon-advances">₱0.00</div>
+              <div class="text-[10px] text-slate-400 mt-1" id="recon-advances-sub">0 open</div>
+            </div>
+
+            <!-- To replenish -->
+            <div class="bg-slate-50/80 rounded-xl p-3 lg:p-4">
+              <div class="text-xs font-semibold text-slate-500 leading-tight">To replenish</div>
+              <div class="text-xl lg:text-2xl font-black text-orange-600 font-mono mt-1" id="recon-replenish">₱0.00</div>
+              <div class="text-[10px] text-slate-400 mt-1 font-mono" id="recon-replenish-sub"></div>
+            </div>
+
+            <!-- Variance -->
+            <div id="recon-variance-tile" class="bg-white rounded-xl p-3 lg:p-4 border-2 border-emerald-300">
+              <div class="text-xs font-semibold text-slate-500 leading-tight">Variance</div>
+              <div class="text-xl lg:text-2xl font-black font-mono mt-1 flex items-center gap-1 text-emerald-600" id="recon-variance">₱0.00</div>
+              <div class="text-[10px] mt-1 font-semibold text-emerald-600" id="recon-variance-sub">Balanced</div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
       <!-- END ADMIN METRICS SECTION -->
 

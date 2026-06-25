@@ -546,6 +546,49 @@ async function loadAdminMetrics() {
   });
 
   renderAdminMetricCards();
+  renderReconciliation();
+}
+
+// ── Fund reconciliation snapshot (admin) ──
+// Counted physical cash + outstanding advances = accounted; ceiling − accounted
+// = amount to replenish. Variance is the last close's over/short.
+function renderReconciliation() {
+  if (!adminMetricsRaw || !adminMetricsRaw.reconciliation) return;
+  const r     = adminMetricsRaw.reconciliation;
+  const set   = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  const plain = n => Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 });
+
+  set('recon-counted',   fmt(r.countedCash));
+  set('recon-advances',  fmt(r.outstandingTotal));
+  set('recon-replenish', fmt(r.toReplenish));
+  set('recon-asof',      r.countedDate ? ('last close ' + r.countedDate) : 'no close yet');
+
+  let advSub = (r.outstandingCount || 0) + ' open';
+  if (r.outstandingCount > 0) advSub += ' · oldest ' + r.oldestDays + (r.oldestDays === 1 ? ' day' : ' days');
+  set('recon-advances-sub', advSub);
+
+  set('recon-replenish-sub',
+    plain(r.fundCeiling) + ' − ' + plain(r.countedCash) + ' − ' + plain(r.outstandingTotal));
+
+  // Variance tile — balanced / cash over / short
+  const v        = r.variance || 0;
+  const balanced = !!r.balanced;
+  const over     = v > 0.01;
+  const vEl      = document.getElementById('recon-variance');
+  const vSub     = document.getElementById('recon-variance-sub');
+  const tile     = document.getElementById('recon-variance-tile');
+
+  let border, color, label;
+  if (balanced)  { border = 'border-emerald-300'; color = 'text-emerald-600'; label = 'Balanced';  }
+  else if (over) { border = 'border-blue-300';    color = 'text-blue-600';    label = 'Cash over';  }
+  else           { border = 'border-red-300';     color = 'text-red-600';     label = 'Short';      }
+
+  const icon = balanced ? '✓' : (over ? '▲' : '▼');
+  if (vEl)   { vEl.textContent  = icon + ' ' + fmt(Math.abs(v));
+               vEl.className     = 'text-xl lg:text-2xl font-black font-mono mt-1 flex items-center gap-1 ' + color; }
+  if (vSub)  { vSub.textContent = label;
+               vSub.className    = 'text-[10px] mt-1 font-semibold ' + color; }
+  if (tile)    tile.className   = 'bg-white rounded-xl p-3 lg:p-4 border-2 ' + border;
 }
 
 function getAdminFilteredData(key) {
