@@ -2488,6 +2488,23 @@ function getAdminMetrics() {
     const discrepancyDays = [];
     const cashOverDays   = [];
     let   latestClosed   = null;   // most recent physically-counted (CLOSED) day
+    let   latestDay      = null;   // most recent day overall — for the live drawer balance
+
+    // Per-day PCR_DETAIL/LIQ_DETAIL spend — documents how an already-released advance
+    // was used (the cash left the drawer when the advance was released). Subtracted
+    // from a day's expenses so the live drawer balance doesn't double-count it.
+    // Mirrors computeCashOnHand() / recalculateDailySummary().
+    const detailByDate = {};
+    if (entSheet) {
+      const detailRows = entSheet.getDataRange().getValues();
+      for (let i = 1; i < detailRows.length; i++) {
+        const t = detailRows[i][2];
+        if (t !== 'PCR_DETAIL' && t !== 'LIQ_DETAIL') continue;
+        if (detailRows[i][10] === 'DELETED') continue;
+        const d = normalizeDate(detailRows[i][1]);
+        detailByDate[d] = (detailByDate[d] || 0) + (parseFloat(detailRows[i][5]) || 0);
+      }
+    }
 
     for (let i = 1; i < sumRows.length; i++) {
       const row    = sumRows[i];
@@ -2516,10 +2533,27 @@ function getAdminMetrics() {
         cashOverDays.push({ date: rDate, status, cashOver, opening, expenses, closing });
       }
 
-      // Track the most recent CLOSED day — its counted closing + variance feed
-      // the fund reconciliation snapshot.
+      // Track the most recent CLOSED day — its variance feeds the reconciliation
+      // snapshot (variance is only meaningful once the drawer is counted).
       if (status === 'CLOSED' && (!latestClosed || rDate > latestClosed.date)) {
         latestClosed = { date: rDate, closing, variance };
+      }
+
+      // Track the most recent day overall for the live drawer balance. A CLOSED
+      // day uses its physical count; a still-open day uses the expected balance
+      // (folds in today's returns / replenishments / expenses / advances), so
+      // returned cash is reflected immediately. Mirrors computeCashOnHand().
+      if (!latestDay || rDate > latestDay.date) {
+        const isClosed   = status === 'CLOSED';
+        const replenish  = parseFloat(row[8])  || 0;
+        const cashReturn = parseFloat(row[9])  || 0;
+        const cashAdv    = parseFloat(row[3])  || 0;
+        const reimburse  = parseFloat(row[10]) || 0;
+        const cashExp = expenses - (detailByDate[rDate] || 0);
+        const drawer = isClosed
+          ? closing
+          : (opening + replenish + cashReturn + cashOver) - (cashExp + cashAdv + reimburse);
+        latestDay = { date: rDate, drawer, closed: isClosed };
       }
     }
 
@@ -2598,7 +2632,8 @@ function getAdminMetrics() {
     //   accounted = counted physical cash + still-outstanding advances.
     //   to replenish = ceiling − accounted (mirrors the replenishment report).
     const FUND_CEILING     = 12500;
-    const countedCash      = latestClosed ? latestClosed.closing  : 0;
+    const countedCash      = latestDay ? latestDay.drawer : 0;       // live: incl. returned cash
+    const countedLive      = latestDay ? !latestDay.closed : false;  // open day → expected balance
     const countedVariance  = latestClosed ? latestClosed.variance : 0;
     const outstandingTotal = pendingAdvances.reduce((s, a) => s + (a.amount || 0), 0);
     const oldestDays       = pendingAdvances.length ? pendingAdvances[0].daysOutstanding : 0;
@@ -2606,7 +2641,8 @@ function getAdminMetrics() {
     const reconciliation = {
       fundCeiling      : FUND_CEILING,
       countedCash,
-      countedDate      : latestClosed ? latestClosed.date : null,
+      countedLive,
+      countedDate      : latestDay ? latestDay.date : null,
       outstandingTotal,
       outstandingCount : pendingAdvances.length,
       oldestDays,
@@ -2871,8 +2907,15 @@ function computeCashOnHand(dailyRows) {
   const sorted = [...dailyRows].sort((a, b) => a.date > b.date ? 1 : -1);
   const last   = sorted[sorted.length - 1];
   if (last.status === 'CLOSED') return last.closing || 0;
+  // Use cashExpense (direct EXPENSE only), NOT the full expenses total. PCR_DETAIL /
+  // LIQ_DETAIL rows document how an already-released advance was spent — the cash
+  // left the drawer when the advance was released (counted in cashAdvance), so
+  // subtracting the detail on top of the advance double-counts the same outflow.
+  // Mirrors the `expected` formula in recalculateDailySummary(). Falls back to the
+  // full expenses for summary rows written before cashExpense was tracked.
+  const cashExp = (last.cashExpense != null) ? (last.cashExpense || 0) : (last.expenses || 0);
   return ((last.opening || 0) + (last.replenishment || 0) + (last.cashReturn || 0) + (last.cashOver || 0))
-       - ((last.expenses || 0) + (last.cashAdvance || 0) + (last.reimbursement || 0));
+       - (cashExp + (last.cashAdvance || 0) + (last.reimbursement || 0));
 }
 
 function getSummaryReportData(params) {
@@ -2897,6 +2940,10 @@ function getSummaryReportData(params) {
     let advancesOutstanding= 0;
     let totalReplenishment = 0;
     let totalCashReturn    = 0;
+    // Per-day total of PCR_DETAIL / LIQ_DETAIL spend (documentation of how an
+    // already-released advance was used). Subtracted from a day's expenses to get
+    // the cash-movement expense the drawer balance should use (see computeCashOnHand).
+    const detailByDate     = {};
 
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
@@ -2913,6 +2960,7 @@ function getSummaryReportData(params) {
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         totalExpenses += amount;
+        if (type !== 'EXPENSE') detailByDate[rowDate] = (detailByDate[rowDate] || 0) + amount;
         if (row[6] === 'YES') totalWithReceipt    += amount;
         else                  totalWithoutReceipt += amount;
       } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
@@ -2946,6 +2994,7 @@ function getSummaryReportData(params) {
         opening      : opening,
         cashAdvance  : parseFloat(sumData[i][3]) || 0,
         expenses     : expenses,
+        cashExpense  : expenses - (detailByDate[rowDate] || 0),
         replenishment: replenish,
         cashReturn   : parseFloat(sumData[i][9])  || 0,
         cashOver     : parseFloat(sumData[i][7])  || 0,
@@ -3050,6 +3099,7 @@ function getReplenishmentPeriodReport() {
     const categoryTotals    = {};   // category -> spend
     let expWithReceipt      = 0;    // expense spend backed by a receipt
     let expWithoutReceipt   = 0;    // expense spend missing a receipt
+    const detailByDate      = {};   // date -> PCR_DETAIL/LIQ_DETAIL spend (advance documentation)
 
     for (let i = 1; i < entryData.length; i++) {
       const row     = entryData[i];
@@ -3074,6 +3124,7 @@ function getReplenishmentPeriodReport() {
 
       if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
         totalExpenses += amount;
+        if (type !== 'EXPENSE') detailByDate[rowDate] = (detailByDate[rowDate] || 0) + amount;
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         if (row[6] === 'YES') expWithReceipt    += amount;
@@ -3117,6 +3168,7 @@ function getReplenishmentPeriodReport() {
         opening,
         cashAdvance  : cashAdv,
         expenses,
+        cashExpense  : expenses - (detailByDate[rowDate] || 0),
         replenishment: replenish,
         cashReturn   : parseFloat(sumData[i][9])  || 0,
         cashOver     : parseFloat(sumData[i][7])  || 0,
@@ -3701,6 +3753,7 @@ function getSummaryReportDataByRange(params) {
     let advancesOutstanding = 0;
     let totalReplenishment  = 0;
     let totalCashReturn     = 0;
+    const detailByDate      = {};   // date -> PCR_DETAIL/LIQ_DETAIL spend (advance documentation)
 
     // Also collect entry lists for receipt modal
     const withReceiptEntries    = [];
@@ -3721,6 +3774,7 @@ function getSummaryReportDataByRange(params) {
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
         totalExpenses += amount;
+        if (type !== 'EXPENSE') detailByDate[rowDate] = (detailByDate[rowDate] || 0) + amount;
 
         const entry = {
           id         : row[0],
@@ -3788,7 +3842,8 @@ function getSummaryReportDataByRange(params) {
       dailyRows.push({
         date: rowDate, opening,
         cashAdvance: parseFloat(sumData[i][3]) || 0,
-        expenses, replenishment: replenish,
+        expenses, cashExpense: expenses - (detailByDate[rowDate] || 0),
+        replenishment: replenish,
         cashReturn   : parseFloat(sumData[i][9])  || 0,
         cashOver     : parseFloat(sumData[i][7])  || 0,
         reimbursement: parseFloat(sumData[i][10]) || 0,

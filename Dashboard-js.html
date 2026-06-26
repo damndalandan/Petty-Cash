@@ -558,10 +558,13 @@ function renderReconciliation() {
   const set   = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
   const plain = n => Number(n || 0).toLocaleString('en-PH', { maximumFractionDigits: 2 });
 
-  set('recon-counted',   fmt(r.countedCash));
-  set('recon-advances',  fmt(r.outstandingTotal));
-  set('recon-replenish', fmt(r.toReplenish));
-  set('recon-asof',      r.countedDate ? ('last close ' + r.countedDate) : 'no close yet');
+  set('recon-counted',     fmt(r.countedCash));
+  set('recon-counted-sub', r.countedLive ? 'Live drawer · incl. returns' : 'Physical count, EOD');
+  set('recon-advances',    fmt(r.outstandingTotal));
+  set('recon-replenish',   fmt(r.toReplenish));
+  set('recon-asof',        r.countedDate
+        ? ((r.countedLive ? 'as of ' : 'last close ') + r.countedDate)
+        : 'no close yet');
 
   let advSub = (r.outstandingCount || 0) + ' open';
   if (r.outstandingCount > 0) advSub += ' · oldest ' + r.oldestDays + (r.oldestDays === 1 ? ' day' : ' days');
