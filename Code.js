@@ -4349,3 +4349,297 @@ function settlePettyCashRequest(data) {
     return { success: false, message: e.toString() };
   }
 }
+// =============================================
+// DAILY EOD REPORT → CEO CONSOLIDATED SHEET  (SOP JMN-SOP-FIN-002)
+// Enhanced end-of-day petty cash summary, pushed to the "CEO Raw Data JMN"
+// sheet every day at ~5:30 PM (Asia/Manila, the project timezone).
+//
+//   getPettyCashEodReport(date)     — builds the formatted report text (single
+//                                     source of truth: dashboard preview + push)
+//   pushPettyCashEodToCeoSheet(d)   — upserts the report into the EOD tab
+//   pushPettyCashEodDaily()         — trigger entry point (today's date)
+//   installPettyCashEodTrigger()    — one-time: create the 5:30 PM daily trigger
+//   uninstallPettyCashEodTrigger()  — remove the trigger
+//
+// All money values come from the existing fund workflow (daily summary +
+// FUND_CEILING / replenishment math), never invented constants.
+// =============================================
+
+// Destination: "CEO Raw Data JMN" ▸ "EOD" tab. Col A = Date, B = Type, C = report.
+const CEO_EOD_SPREADSHEET_ID = '1sp2wHsiYRP3EOheRZ-u8vwDqIhNVGvSA08JFY95udkk';
+const CEO_EOD_SHEET_NAME     = 'EOD';
+const CEO_EOD_ROW_TYPE       = 'Petty Cash';
+
+// Fund ceiling — the same value the replenishment & reconciliation reports use.
+const PCR_FUND_CEILING = 12500;
+
+// Money the SOP way: "P10,694.00" (plain "P", not "₱").
+function pcEodFmtP_(n) {
+  const num = parseFloat(n) || 0;
+  return 'P' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// "  Label:                  P1,234.00  (extra)"  — amount right-aligned in its column.
+function pcEodAmt_(label, amountStr, extra) {
+  const line = '  ' + String(label).padEnd(24) + String(amountStr).padStart(13);
+  return extra ? line + '  ' + extra : line;
+}
+
+// "  Label:                  free text"  — same label column, value left-aligned.
+function pcEodTxt_(label, text) {
+  return '  ' + String(label).padEnd(24) + text;
+}
+
+// Cash Advance requests still awaiting approval (feeds the "Pending approval" line).
+function pcEodPendingApprovals_(ss) {
+  let rows = [];
+  try { rows = ss.getSheetByName(SHEETS.REQUESTS).getDataRange().getValues(); }
+  catch (e) { return { count: 0, total: 0 }; }
+  let count = 0, total = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0]) continue;
+    if (String(r[7]) !== 'PENDING_APPROVAL') continue;     // col 8 — Status
+    if (String(r[4] || 'Expense') !== 'Cash Advance') continue; // col 5 — Request_Type
+    count++;
+    total += parseFloat(r[3]) || 0;                        // col 4 — Amount
+  }
+  return { count, total };
+}
+
+// "Encoded by" — name + email pulled from the Access (database) sheet.
+// Priority: the cashier using the app → the cashier on file (unattended trigger)
+//           → whoever closed the day → any signed-in user → fallback.
+function pcEodResolveEncoder_(ss, summary) {
+  let rows = [];
+  try { rows = ss.getSheetByName(SHEETS.ACCESS).getDataRange().getValues(); } catch (e) {}
+  const active = [];
+  for (let i = 1; i < rows.length; i++) {
+    const email = String(rows[i][0] || '').trim();
+    if (!email) continue;
+    if (String(rows[i][3] || '').trim().toUpperCase() !== 'ACTIVE') continue; // col 4 — Status
+    active.push({ email, name: String(rows[i][1] || '').trim(), role: String(rows[i][2] || '').trim() });
+  }
+  const byEmail = (e) => active.find(u => u.email.toLowerCase() === String(e || '').trim().toLowerCase());
+
+  const live    = getUserEmail();
+  const liveU   = (live && live !== 'unknown') ? byEmail(live) : null;
+  const cashier = active.find(u => /cashier/i.test(u.role));
+
+  const pick = (liveU && /cashier/i.test(liveU.role) ? liveU : null)
+            || cashier
+            || (summary && summary.closedBy ? byEmail(summary.closedBy) : null)
+            || liveU;
+
+  if (pick) return { name: pick.name || pick.email, email: pick.email };
+  return { name: (live && live !== 'unknown') ? live : 'System', email: (live && live !== 'unknown') ? live : '' };
+}
+
+// Build the enhanced EOD report text for one day. Pure function of stored data,
+// so the dashboard preview and the 5:30 PM push always render identically.
+function getPettyCashEodReport(date) {
+  try {
+    const ss  = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const day = normalizeDate(date) || normalizeDate(new Date());
+
+    const sumRes  = getDailySummary(day);
+    const summary = (sumRes && sumRes.success) ? sumRes.data : null;
+    if (!summary) return { success: false, message: 'No petty cash activity for ' + day, data: null };
+
+    // ── One pass over the day's entries: category totals, txn count, cash-only spend ──
+    // cashMovementExp = direct EXPENSE only. PCR_DETAIL / LIQ_DETAIL document how an
+    // already-released advance was spent (cash already left the drawer when released),
+    // so they count toward Total Expenses but NOT toward the drawer balance.
+    const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    const categoryTotals = {};
+    let txnCount = 0, cashMovementExp = 0;
+    for (let i = 1; i < entryData.length; i++) {
+      const row = entryData[i];
+      if (row.length < 11) continue;
+      if (normalizeDate(row[1]) !== day) continue;
+      if (row[10] === 'DELETED') continue;
+      const type = row[2];
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
+        const amt = parseFloat(row[5]) || 0;
+        const cat = String(row[3] || 'Miscellaneous').trim() || 'Miscellaneous';
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
+        txnCount++;
+        if (type === 'EXPENSE') cashMovementExp += amt;
+      }
+    }
+
+    const opening   = parseFloat(summary.openingCash)        || 0;
+    const totalExp  = parseFloat(summary.totalExpenses)      || 0;
+    const replenish = parseFloat(summary.totalReplenishment) || 0;
+    const cashAdv   = parseFloat(summary.cashAdvance)        || 0;
+    const cashRet   = parseFloat(summary.totalCashReturn)    || 0;
+    const cashOver  = parseFloat(summary.totalCashOver)      || 0;
+    const reimburse = parseFloat(summary.totalReimbursement) || 0;
+    const status    = String(summary.status || 'OPEN');
+
+    // Closed for SOP purposes once the cashier submits closing cash (PENDING_AUDIT)
+    // or the auditor finalizes (CLOSED); FLAGGED = closed then queried by the auditor.
+    const isClosed = status === 'PENDING_AUDIT' || status === 'CLOSED' || status === 'FLAGGED';
+    const dayLabel = !isClosed ? 'Day In Progress' : (status === 'FLAGGED' ? 'Day Flagged' : 'Day Closed');
+
+    // Live expected drawer (mirrors recalculateDailySummary) for a still-open day.
+    const expected = (opening + replenish + cashRet + cashOver) - (cashMovementExp + cashAdv + reimburse);
+    const closing  = isClosed ? (parseFloat(summary.closingCash) || 0) : expected;
+    const variance = parseFloat(summary.variance) || 0;
+
+    // ── Outstanding advances → Cash on Hand accounting + the CASH ADVANCES section ──
+    const advRes   = getOutstandingCashAdvances();
+    const advances = (advRes && advRes.success && advRes.data) ? advRes.data : [];
+    const advancesOutstanding = advances.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+
+    const cashOnHand  = closing;                                  // this day's drawer
+    const accounted   = cashOnHand + advancesOutstanding;
+    const toReplenish = Math.max(0, PCR_FUND_CEILING - accounted);
+
+    // ── Render ──
+    const d       = new Date(day + 'T00:00:00');
+    const hdrDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const L = [];
+
+    L.push('PETTY CASH | ' + hdrDate + ' | ' + dayLabel);
+    L.push('━'.repeat(32));
+
+    L.push('FUND MOVEMENT');
+    L.push(pcEodAmt_('Opening Balance:', pcEodFmtP_(opening)));
+    L.push(pcEodAmt_('Total Expenses:', pcEodFmtP_(totalExp), '(' + txnCount + ' transaction' + (txnCount === 1 ? '' : 's') + ')'));
+    L.push(pcEodAmt_('Replenishments:', pcEodFmtP_(replenish)));
+    L.push(pcEodAmt_(isClosed ? 'Closing Balance:' : 'Expected Balance:', pcEodFmtP_(closing)));
+    if (!isClosed)                         L.push(pcEodAmt_('Variance:', '—', 'pending close'));
+    else if (Math.abs(variance) < 0.01)    L.push(pcEodAmt_('Variance:', pcEodFmtP_(0), '— BALANCED'));
+    else if (variance < 0)                 L.push(pcEodAmt_('Variance:', pcEodFmtP_(Math.abs(variance)), '— SHORT'));
+    else                                   L.push(pcEodAmt_('Variance:', pcEodFmtP_(Math.abs(variance)), '— OVER'));
+
+    L.push('');
+    L.push('EXPENSE BREAKDOWN');
+    const cats = Object.keys(categoryTotals)
+      .map(k => ({ name: k, amount: categoryTotals[k] }))
+      .sort((a, b) => b.amount - a.amount);
+    if (cats.length === 0) L.push('  none');
+    else cats.forEach(c => L.push(pcEodAmt_(c.name + ':', pcEodFmtP_(c.amount))));
+
+    L.push('');
+    L.push('BUDGET STATUS');
+    const pctCeil = PCR_FUND_CEILING > 0 ? Math.round((totalExp / PCR_FUND_CEILING) * 100) : 0;
+    L.push(pcEodAmt_('Fund Ceiling:', pcEodFmtP_(PCR_FUND_CEILING)));
+    L.push(pcEodAmt_('Spent Today:', pcEodFmtP_(totalExp), '(' + pctCeil + '% of ceiling) ' + (totalExp <= PCR_FUND_CEILING ? '✅' : '⚠️')));
+
+    L.push('');
+    L.push('FUND HEALTH');
+    L.push(pcEodAmt_(isClosed ? 'Cash on Hand:' : 'Cash on Hand (live):', pcEodFmtP_(cashOnHand)));
+    L.push(pcEodAmt_('Outstanding Advances:', pcEodFmtP_(advancesOutstanding)));
+    L.push(pcEodAmt_('Fund Ceiling:', pcEodFmtP_(PCR_FUND_CEILING)));
+    L.push(pcEodAmt_('To Replenish:', pcEodFmtP_(toReplenish)));
+    L.push('  Status: ' + (toReplenish <= 0.01 ? 'FULLY FUNDED ✅' : 'REPLENISH NEEDED ⚠️'));
+
+    L.push('');
+    L.push('CASH ADVANCES');
+    const activeAdv = advances.filter(a => a.status === 'ACTIVE' && normalizeDate(a.date) <= day);
+    let unliq = 'none';
+    if (activeAdv.length) {
+      const t = activeAdv.reduce((s, a) => s + (parseFloat(a.amount) || 0), 0);
+      unliq = activeAdv.length === 1
+        ? pcEodFmtP_(t) + ' (1 item, Day ' + activeAdv[0].daysOutstanding + ')'
+        : pcEodFmtP_(t) + ' (' + activeAdv.length + ' items)';
+    }
+    L.push(pcEodTxt_('Unliquidated:', unliq));
+    const overdue = activeAdv.filter(a => a.daysOutstanding >= 4);
+    let overdueLine = 'none';
+    if (overdue.length) {
+      const maxDay = Math.max.apply(null, overdue.map(a => a.daysOutstanding));
+      overdueLine = overdue.length + ' item' + (overdue.length > 1 ? 's' : '') + ', Day ' + maxDay +
+        ' — ' + (maxDay >= 8 ? 'escalate to admin' : 'follow-up required');
+    }
+    L.push(pcEodTxt_('Overdue (>3 days):', overdueLine));
+    const pend = pcEodPendingApprovals_(ss);
+    L.push(pcEodTxt_('Pending approval:', pend.count ? pcEodFmtP_(pend.total) + ' (' + pend.count + ' request' + (pend.count > 1 ? 's' : '') + ')' : 'none'));
+
+    L.push('');
+    const enc = pcEodResolveEncoder_(ss, summary);
+    L.push(pcEodTxt_('Encoded by:', enc.email ? enc.name + ' (' + enc.email + ')' : enc.name));
+
+    return { success: true, data: { date: day, status: status, dayLabel: dayLabel, text: L.join('\n') } };
+  } catch (e) {
+    return { success: false, message: e.toString(), data: null };
+  }
+}
+
+// Upsert the day's EOD report into the CEO sheet's "EOD" tab (one row per date).
+// Re-runs and a later day-close update the same row instead of duplicating.
+function pushPettyCashEodToCeoSheet(date) {
+  const day = normalizeDate(date) || normalizeDate(new Date());
+  const rep = getPettyCashEodReport(day);
+  if (!rep || !rep.success) {
+    return { success: false, skipped: true, message: (rep && rep.message) || 'No report for ' + day };
+  }
+  try {
+    const dest  = SpreadsheetApp.openById(CEO_EOD_SPREADSHEET_ID);
+    let   sheet = dest.getSheetByName(CEO_EOD_SHEET_NAME);
+    if (!sheet) {
+      sheet = dest.insertSheet(CEO_EOD_SHEET_NAME);
+      sheet.appendRow(['Date', 'Type', 'EOD']);
+      sheet.setFrozenRows(1);
+    }
+    const dateObj = new Date(day + 'T12:00:00'); // noon → no cross-timezone day shift on the CEO sheet
+
+    let targetRow = -1;
+    const last = sheet.getLastRow();
+    if (last >= 2) {
+      const vals = sheet.getRange(2, 1, last - 1, 2).getValues();
+      for (let i = 0; i < vals.length; i++) {
+        if (normalizeDate(vals[i][0]) === day && String(vals[i][1]).trim() === CEO_EOD_ROW_TYPE) {
+          targetRow = i + 2;
+          break;
+        }
+      }
+    }
+
+    let action;
+    if (targetRow === -1) {
+      sheet.appendRow([dateObj, CEO_EOD_ROW_TYPE, rep.data.text]);
+      action = 'appended';
+    } else {
+      sheet.getRange(targetRow, 1, 1, 3).setValues([[dateObj, CEO_EOD_ROW_TYPE, rep.data.text]]);
+      action = 'updated';
+    }
+
+    try { writeAuditLog('EOD_PUSHED', 'Petty Cash EOD ' + action + ' on CEO sheet (' + rep.data.dayLabel + ').', '', day); } catch (e) {}
+    return { success: true, action: action, date: day, status: rep.data.status };
+  } catch (e) {
+    try { writeAuditLog('EOD_PUSH_FAILED', 'Petty Cash EOD push failed: ' + e, '', day); } catch (ignore) {}
+    return { success: false, message: e.toString() };
+  }
+}
+
+// Trigger entry point — pushes TODAY's report (Asia/Manila). Keep the name stable;
+// the installed trigger references it.
+function pushPettyCashEodDaily() {
+  return pushPettyCashEodToCeoSheet(normalizeDate(new Date()));
+}
+
+// Run ONCE (from the Apps Script editor) to schedule the daily 5:30 PM push.
+// Safe to re-run: it clears any previous copy of this trigger first.
+function installPettyCashEodTrigger() {
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'pushPettyCashEodDaily') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('pushPettyCashEodDaily')
+    .timeBased()
+    .atHour(17)      // 5 PM in the project timezone (Asia/Manila)
+    .nearMinute(30)  // ~5:30 PM (Apps Script fires within a ~15-minute window)
+    .everyDays(1)
+    .create();
+  return { success: true, message: 'Daily Petty Cash EOD push scheduled for ~5:30 PM (Asia/Manila).' };
+}
+
+function uninstallPettyCashEodTrigger() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(t => {
+    if (t.getHandlerFunction() === 'pushPettyCashEodDaily') { ScriptApp.deleteTrigger(t); removed++; }
+  });
+  return { success: true, removed: removed };
+}
