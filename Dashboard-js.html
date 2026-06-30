@@ -216,13 +216,24 @@ function updateDashStats() {
 
     const totalExpDisplay = withReceipt + noReceipt + liqPendingSpent;
 
+    // ── Total expenses for DISPLAY ── must match summary.totalExpenses and every
+    // server report: include PCR_DETAIL / LIQ_DETAIL (settled request / advance
+    // spend), not just direct EXPENSE rows. The drawer math below deliberately keeps
+    // using totalExpDisplay (details excluded) so released advances aren't double-counted.
+    const detailExp = state.entries
+      .filter(e => (e.type === 'PCR_DETAIL' || e.type === 'LIQ_DETAIL') && !e.carriedForward)
+      .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+    const totalExpAll = (summary.totalExpenses != null && summary.totalExpenses !== '')
+      ? (parseFloat(summary.totalExpenses) || 0)
+      : (withReceipt + noReceipt + detailExp);
+
     // Reimbursements paid out to employees (cash outflow)
     const totalReimbursement = state.entries
       .filter(e => e.type === 'CASH_ADVANCE_REIMBURSEMENT' && e.status !== 'DELETED' && !e.carriedForward)
       .reduce((s, e) => s + parseFloat(e.amount || 0), 0);
 
     const so = document.getElementById('stat-opening');      if(so) so.textContent = fmt(opening);
-    const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExpDisplay);
+    const se = document.getElementById('stat-expenses');     if(se) se.textContent = fmt(totalExpAll);
     const sc = document.getElementById('stat-closing');      if(sc) sc.textContent = fmt(closing);
     const srp = document.getElementById('stat-replenishment'); if(srp) srp.textContent = fmt(totalReplenish);
     const srpsub = document.getElementById('stat-replenishment-sub');

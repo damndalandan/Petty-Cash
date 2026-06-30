@@ -4584,14 +4584,26 @@ function pushPettyCashEodToCeoSheet(date) {
       sheet.appendRow(['Date', 'Type', 'EOD']);
       sheet.setFrozenRows(1);
     }
-    const dateObj = new Date(day + 'T12:00:00'); // noon → no cross-timezone day shift on the CEO sheet
+    // Write col A as NOON in the CEO sheet's OWN timezone, then format the cell
+    // date-only. A Date stores an instant, so the displayed day depends on the
+    // viewing sheet's timezone; anchoring to the CEO sheet's tz at noon makes
+    // col A always show the correct business day with no time component.
+    const destTz  = dest.getSpreadsheetTimeZone();
+    const dateVal = Utilities.parseDate(day + ' 12:00', destTz, 'yyyy-MM-dd HH:mm');
+    const cellIso = (v) => {
+      if (v instanceof Date) return Utilities.formatDate(v, destTz, 'yyyy-MM-dd');
+      const s = String(v || '').trim();
+      const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);        // M/D/YYYY
+      if (m) return m[3] + '-' + ('0' + m[1]).slice(-2) + '-' + ('0' + m[2]).slice(-2);
+      return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+    };
 
     let targetRow = -1;
     const last = sheet.getLastRow();
     if (last >= 2) {
       const vals = sheet.getRange(2, 1, last - 1, 2).getValues();
       for (let i = 0; i < vals.length; i++) {
-        if (normalizeDate(vals[i][0]) === day && String(vals[i][1]).trim() === CEO_EOD_ROW_TYPE) {
+        if (cellIso(vals[i][0]) === day && String(vals[i][1]).trim() === CEO_EOD_ROW_TYPE) {
           targetRow = i + 2;
           break;
         }
@@ -4600,12 +4612,14 @@ function pushPettyCashEodToCeoSheet(date) {
 
     let action;
     if (targetRow === -1) {
-      sheet.appendRow([dateObj, CEO_EOD_ROW_TYPE, rep.data.text]);
+      sheet.appendRow([dateVal, CEO_EOD_ROW_TYPE, rep.data.text]);
+      targetRow = sheet.getLastRow();
       action = 'appended';
     } else {
-      sheet.getRange(targetRow, 1, 1, 3).setValues([[dateObj, CEO_EOD_ROW_TYPE, rep.data.text]]);
+      sheet.getRange(targetRow, 1, 1, 3).setValues([[dateVal, CEO_EOD_ROW_TYPE, rep.data.text]]);
       action = 'updated';
     }
+    sheet.getRange(targetRow, 1).setNumberFormat('M/d/yyyy'); // date-only display, no time
 
     try { writeAuditLog('EOD_PUSHED', 'Petty Cash EOD ' + action + ' on CEO sheet (' + rep.data.dayLabel + ').', '', day); } catch (e) {}
     return { success: true, action: action, date: day, status: rep.data.status };
