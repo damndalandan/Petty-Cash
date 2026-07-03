@@ -59,6 +59,7 @@ async function loadDayData() {
 
   updateDashStats();
   loadDiscrepancyWidget();
+  loadLowFundBanner();
   // Always check from TODAY regardless of which date is selected
   const todayStr = new Date().toISOString().split('T')[0];
   checkPreviousDayStatus(todayStr);
@@ -261,6 +262,49 @@ function updateDashStats() {
 
   // Load day status banner and outstanding advances
   loadDayStatusBanner();
+}
+
+// ── Low Fund Replenishment Banner ──
+// Shown to the custodian (Cashier) and Admin when live cash on hand drops
+// below the server-side replenishment threshold (₱1,500). The CTA deep-links
+// to the Replenish Requests page; when a request is already in flight the
+// banner reports its status instead of asking for a new one.
+async function loadLowFundBanner() {
+  const banner = document.getElementById('lowFundBanner');
+  if (!banner) return;
+
+  const res = await callServer('getReplenishmentAlertStatus');
+  if (!res.success || !res.data) { banner.classList.add('hidden'); return; }
+  const d = res.data;
+
+  // Cache for the Replenish Requests page (instant form prefill) + nav badge
+  window.replenishAlertStatus = d;
+  if (typeof updateReplenishNavBadge === 'function') updateReplenishNavBadge(d);
+
+  if (!d.belowThreshold || !(isCashier() || isAdmin())) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  document.getElementById('lowFundBalance').textContent   = fmt(d.cashOnHand);
+  document.getElementById('lowFundThreshold').textContent = fmt(d.threshold);
+
+  const sub = document.getElementById('lowFundSub');
+  const cta = document.getElementById('lowFundCta');
+  if (d.openRequest) {
+    const labels = {
+      PENDING_APPROVAL: 'awaiting approval',
+      APPROVED        : 'approved — record the funds when they arrive',
+      RETURNED        : 'returned — revise and resubmit'
+    };
+    if (sub) sub.textContent = 'Request ' + d.openRequest.id + ' (' + fmt(d.openRequest.amountRequested) + ') is '
+      + (labels[d.openRequest.status] || d.openRequest.status.toLowerCase()) + '.';
+    if (cta) cta.textContent = 'View Request';
+  } else {
+    if (sub) sub.textContent = 'Submit a replenishment request to bring the fund back to ' + fmt(d.fundCeiling) + '.';
+    if (cta) cta.textContent = 'Submit Replenishment Request';
+  }
+  banner.classList.remove('hidden');
 }
 
 async function loadDayStatusBanner() {

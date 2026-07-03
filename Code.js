@@ -15,7 +15,8 @@ const SHEETS = {
   AUDIT_LOG    : 'PettyCash_AuditLog',
   FILING       : 'PettyCash_FilingChecklist',
   CATEGORIES   : 'PettyCash_Categories',
-  REQUESTS     : 'PettyCash_Requests'
+  REQUESTS     : 'PettyCash_Requests',
+  REPLENISH_REQS: 'PettyCash_ReplenishRequests'
 };
 
 // ─────────────────────────────────────────────
@@ -456,6 +457,24 @@ function initializeSheets() {
     s.setColumnWidth(14, 180);
   }
 
+  if (!ss.getSheetByName(SHEETS.REPLENISH_REQS)) {
+    const s = ss.insertSheet(SHEETS.REPLENISH_REQS);
+    s.appendRow([
+      'Request_ID','Date','Current_Balance','Amount_Requested','Target_Fund_Level',
+      'Period_From','Period_To','Total_Disbursed','Category_Breakdown',
+      'Docs_Log','Docs_Receipts','Prev_Replenish_Date','Declaration','Notes',
+      'Requested_By','Status','Decided_By','Decided_At','Decision_Note',
+      'Fulfilled_Entry_ID','Fulfilled_At','Created_At','Updated_At'
+    ]);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.getRange('C2:E').setNumberFormat('₱#,##0.00');
+    s.getRange('H2:H').setNumberFormat('₱#,##0.00');
+    s.setColumnWidths(1, 23, 130);
+    s.setColumnWidth(9, 260);
+    s.setColumnWidth(14, 220);
+  }
+
   return { success: true };
 }
 
@@ -503,6 +522,13 @@ const SHEET_SCHEMA = {
     'Requested_By','Submitted_By','Status',
     'Approved_By','Approved_At','Released_At',
     'Rejection_Note','Entry_ID','Created_At','Updated_At'
+  ],
+  [SHEETS.REPLENISH_REQS]: [
+    'Request_ID','Date','Current_Balance','Amount_Requested','Target_Fund_Level',
+    'Period_From','Period_To','Total_Disbursed','Category_Breakdown',
+    'Docs_Log','Docs_Receipts','Prev_Replenish_Date','Declaration','Notes',
+    'Requested_By','Status','Decided_By','Decided_At','Decision_Note',
+    'Fulfilled_Entry_ID','Fulfilled_At','Created_At','Updated_At'
   ]
 };
 
@@ -688,6 +714,14 @@ function saveExpenseEntry(data) {
 
     recalculateDailySummary(data.date);
 
+    // Low-fund watch: entry saves are the only path that moves drawer cash, so
+    // re-check the replenishment threshold after every save. PCR_DETAIL /
+    // LIQ_DETAIL document an already-released advance (no drawer movement) and
+    // are skipped so multi-item settlements don't re-scan the sheets per item.
+    if (!['PCR_DETAIL', 'LIQ_DETAIL'].includes(data.type || 'EXPENSE')) {
+      checkReplenishmentThreshold_();
+    }
+
     // Audit log for cash advance
     if (data.type === 'CASH_ADVANCE') {
       writeAuditLog(
@@ -766,6 +800,7 @@ function updateExpenseEntry(payload) {
 
       recalculateDailySummary(payload.date);
       if (oldDate && oldDate !== payload.date) recalculateDailySummary(oldDate);
+      checkReplenishmentThreshold_();
 
       if (wasFlagged) {
         writeAuditLog(
@@ -863,6 +898,7 @@ function deleteExpenseEntry(entryId) {
 
       markNoReceiptDeleted(entryId);
       recalculateDailySummary(date);
+      checkReplenishmentThreshold_();
 
       writeAuditLog(
         'ENTRY_DELETED',
@@ -1609,6 +1645,11 @@ function auditApproveDay(data) {
       console.error('syncReceiptsToFinalSheet error:', e);
       // Non-fatal — don't block approval if sync fails
     }
+
+    // Low-fund watch: closing the day switches cash on hand from the expected
+    // balance to the physical count — a shortage found here can newly breach
+    // the replenishment threshold without any entry save firing the check.
+    checkReplenishmentThreshold_();
 
     return { success: true };
   } catch(e) {
@@ -4656,4 +4697,602 @@ function uninstallPettyCashEodTrigger() {
     if (t.getHandlerFunction() === 'pushPettyCashEodDaily') { ScriptApp.deleteTrigger(t); removed++; }
   });
   return { success: true, removed: removed };
+}
+
+// =============================================
+// REPLENISHMENT ALERT & REQUEST WORKFLOW
+// Alert: when live cash on hand drops below the ₱1,500 threshold, the
+// custodian (Cashier) is alerted once per breach (in-app banner + email);
+// the flag clears automatically when the balance recovers.
+// Request: custodian submits a formal replenishment request auto-filled from
+// getReplenishmentPeriodReport() (single source of truth for the fund math);
+// the approver (Admin) approves / returns / rejects; on approval the cashier
+// records the funds received, which writes the REPLENISHMENT entry and
+// resets the replenishment period tracker.
+//
+//   getReplenishmentAlertStatus()      — banner/form snapshot (balance, breakdown, open request)
+//   checkReplenishmentThreshold_()     — fires after every drawer-moving entry save
+//   submitReplenishmentRequest(data)   — custodian: create request (PENDING_APPROVAL)
+//   getReplenishmentRequests()         — list all requests, newest first
+//   approve/return/rejectReplenishmentRequest(data) — approver actions (Admin)
+//   resubmitReplenishmentRequest(data) — custodian: revise a RETURNED request
+//   fulfillReplenishmentRequest(data)  — custodian: record funds received (links Entry_ID)
+//
+// PettyCash_ReplenishRequests columns:
+//   1: Request_ID     2: Date            3: Current_Balance   4: Amount_Requested
+//   5: Target_Fund_Level  6: Period_From 7: Period_To         8: Total_Disbursed
+//   9: Category_Breakdown (JSON) 10: Docs_Log  11: Docs_Receipts  12: Prev_Replenish_Date
+//  13: Declaration   14: Notes          15: Requested_By     16: Status
+//  17: Decided_By    18: Decided_At     19: Decision_Note    20: Fulfilled_Entry_ID
+//  21: Fulfilled_At  22: Created_At     23: Updated_At
+//
+// Status flow: PENDING_APPROVAL → APPROVED → FULFILLED
+//                              ↘ RETURNED (revise & resubmit → PENDING_APPROVAL)
+//                              ↘ REJECTED (terminal)
+// =============================================
+
+// Alert threshold — the fund is considered low when cash on hand drops below
+// this. Distinct from PCR_FUND_CEILING (₱12,500): the ceiling is what the fund
+// is topped back up TO; the threshold is when the top-up must be requested.
+const REPLENISH_ALERT_THRESHOLD = 1500;
+
+// Script-property flag so the breach alert fires once per episode, not on
+// every entry saved while the fund stays low.
+const REPLENISH_ALERT_FLAG_KEY = 'LOW_FUND_ALERT_ACTIVE';
+
+// A request in one of these states is "in flight" — only one at a time.
+const REPLENISH_OPEN_STATUSES = ['PENDING_APPROVAL', 'RETURNED', 'APPROVED'];
+
+function fmtPeso_(n) {
+  const num = parseFloat(n) || 0;
+  return '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function getWebAppUrl_() {
+  try { return ScriptApp.getService().getUrl() || ''; } catch (e) { return ''; }
+}
+
+// Active users from the Access sheet whose role matches (e.g. /cashier/i).
+function getActiveUsersByRole_(roleRegex) {
+  const users = [];
+  try {
+    const rows = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.ACCESS).getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      const email = String(rows[i][0] || '').trim();
+      if (!email) continue;
+      if (String(rows[i][3] || '').trim().toUpperCase() !== 'ACTIVE') continue;
+      if (!roleRegex.test(String(rows[i][2] || ''))) continue;
+      users.push({ email, name: String(rows[i][1] || '').trim() });
+    }
+  } catch (e) {
+    console.error('getActiveUsersByRole_:', e);
+  }
+  return users;
+}
+
+// Quota-safe mail: an email failure must never break the fund action it rides on.
+function sendReplenishmentEmail_(recipients, subject, htmlBody) {
+  try {
+    const to = (recipients || []).filter(Boolean).join(',');
+    if (!to) return;
+    MailApp.sendEmail({
+      to      : to,
+      subject : subject,
+      htmlBody: htmlBody,
+      body    : htmlBody.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, ''),
+      name    : 'Petty Cash System'
+    });
+  } catch (e) {
+    console.error('sendReplenishmentEmail_:', e);
+  }
+}
+
+// Small HTML summary card used in every replenishment email: intro line,
+// label/value rows, optional per-category breakdown, link to the app.
+function replenishEmailHtml_(intro, fields, breakdown, footer) {
+  const rows = (fields || []).map(f =>
+    '<tr><td style="padding:4px 14px 4px 0;color:#6b7280;">' + f[0] + '</td>' +
+    '<td style="padding:4px 0;font-weight:bold;color:#111827;">' + f[1] + '</td></tr>'
+  ).join('');
+
+  let bd = '';
+  if (breakdown && breakdown.length) {
+    bd = '<p style="margin:16px 0 4px;font-weight:bold;">Disbursements by account title</p>' +
+      '<table style="border-collapse:collapse;">' +
+      breakdown.map(b =>
+        '<tr><td style="padding:2px 14px 2px 0;color:#6b7280;">' + b.category + '</td>' +
+        '<td style="padding:2px 0;text-align:right;font-family:monospace;">' + fmtPeso_(b.amount) + '</td></tr>'
+      ).join('') +
+      '</table>';
+  }
+
+  const url  = getWebAppUrl_();
+  const link = url ? '<p style="margin-top:18px;"><a href="' + url + '" style="color:#4f46e5;">Open the Petty Cash System</a></p>' : '';
+
+  return '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111827;line-height:1.5;">' +
+    '<p>' + intro + '</p>' +
+    '<table style="border-collapse:collapse;">' + rows + '</table>' +
+    bd +
+    (footer ? '<p style="margin-top:14px;color:#6b7280;">' + footer + '</p>' : '') +
+    link +
+    '</div>';
+}
+
+// ─────────────────────────────────────────────
+// ALERT STATUS — feeds the dashboard banner and pre-fills the request form.
+// Wraps getReplenishmentPeriodReport() so the banner, the request snapshot and
+// the Replenishment Report page always agree on the same numbers.
+// ─────────────────────────────────────────────
+function getReplenishmentAlertStatus() {
+  try {
+    const rep = getReplenishmentPeriodReport();
+    if (!rep.success) return { success: false, message: rep.message };
+    const d = rep.data;
+
+    // Date of the last recorded replenishment (the period starts ON that day,
+    // so it is inside periodEntries). Null when the fund has never been topped up.
+    const lastReplenishDate = (d.periodEntries || [])
+      .filter(e => e.type === 'REPLENISHMENT')
+      .map(e => e.date)
+      .sort()
+      .pop() || null;
+
+    // Most recent request still in flight (pending / returned / approved).
+    let openRequest = null;
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.REPLENISH_REQS);
+    if (sheet) {
+      const rows = sheet.getDataRange().getValues();
+      for (let i = rows.length - 1; i >= 1; i--) {
+        const st = String(rows[i][15] || '');
+        if (REPLENISH_OPEN_STATUSES.includes(st)) {
+          openRequest = {
+            id             : rows[i][0],
+            status         : st,
+            amountRequested: parseFloat(rows[i][3]) || 0,
+            requestedBy    : rows[i][14] || ''
+          };
+          break;
+        }
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        threshold          : REPLENISH_ALERT_THRESHOLD,
+        belowThreshold     : d.cashOnHand < REPLENISH_ALERT_THRESHOLD,
+        cashOnHand         : d.cashOnHand,
+        fundCeiling        : d.fundCeiling,
+        advancesOutstanding: d.advancesOutstanding,
+        accounted          : d.accounted,
+        toReplenish        : d.toReplenish,
+        periodFrom         : d.periodFrom,
+        periodTo           : d.periodTo,
+        totalDisbursed     : d.totalExpenses,
+        categoryBreakdown  : d.categoryBreakdown,
+        lastReplenishDate  : lastReplenishDate,
+        openRequest        : openRequest
+      }
+    };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// THRESHOLD WATCH — runs after every drawer-moving entry save/update/delete.
+// Fires the custodian alert once per breach; clears itself on recovery.
+// Fully self-contained: must never throw into the save path.
+// ─────────────────────────────────────────────
+function checkReplenishmentThreshold_() {
+  try {
+    const rep = getReplenishmentPeriodReport();
+    if (!rep.success) return;
+    const cashOnHand = parseFloat(rep.data.cashOnHand) || 0;
+
+    const props       = PropertiesService.getScriptProperties();
+    const alertActive = props.getProperty(REPLENISH_ALERT_FLAG_KEY) === 'YES';
+    const today       = normalizeDate(new Date());
+
+    if (cashOnHand < REPLENISH_ALERT_THRESHOLD && !alertActive) {
+      props.setProperty(REPLENISH_ALERT_FLAG_KEY, 'YES');
+
+      writeAuditLog('LOW_FUND_ALERT',
+        `Cash on hand ${fmtPeso_(cashOnHand)} dropped below the ${fmtPeso_(REPLENISH_ALERT_THRESHOLD)} replenishment threshold. To replenish: ${fmtPeso_(rep.data.toReplenish)}.`,
+        '', today);
+
+      // Email the custodian(s). Fall back to Admins if no Cashier is on file.
+      let custodians = getActiveUsersByRole_(/cashier/i);
+      if (!custodians.length) custodians = getActiveUsersByRole_(/admin/i);
+      sendReplenishmentEmail_(
+        custodians.map(u => u.email),
+        '[Petty Cash] Fund low — replenishment needed',
+        replenishEmailHtml_(
+          'The petty cash fund has dropped below its replenishment threshold. Please submit a replenishment request.',
+          [
+            ['Cash on hand',          fmtPeso_(cashOnHand)],
+            ['Alert threshold',       fmtPeso_(REPLENISH_ALERT_THRESHOLD)],
+            ['Outstanding advances',  fmtPeso_(rep.data.advancesOutstanding)],
+            ['Fund ceiling',          fmtPeso_(rep.data.fundCeiling)],
+            ['Amount to replenish',   fmtPeso_(rep.data.toReplenish)]
+          ],
+          rep.data.categoryBreakdown,
+          'Open the dashboard and use the replenishment banner to submit the request.'
+        )
+      );
+    } else if (cashOnHand >= REPLENISH_ALERT_THRESHOLD && alertActive) {
+      props.deleteProperty(REPLENISH_ALERT_FLAG_KEY);
+      writeAuditLog('LOW_FUND_CLEARED',
+        `Cash on hand ${fmtPeso_(cashOnHand)} is back above the ${fmtPeso_(REPLENISH_ALERT_THRESHOLD)} replenishment threshold.`,
+        '', today);
+    }
+  } catch (e) {
+    console.error('checkReplenishmentThreshold_:', e);
+  }
+}
+
+// ─────────────────────────────────────────────
+// CUSTODIAN — submit a replenishment request.
+// data: { amountRequested, notes, docsLog, docsReceipts, declaration }
+// Fund figures are re-computed server-side (never trusted from the client).
+// ─────────────────────────────────────────────
+function submitReplenishmentRequest(data) {
+  try {
+    const role = getUserRole();
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Only the fund custodian (Cashier) or an Admin can submit a replenishment request.' };
+    }
+    if (data.declaration !== true) {
+      return { success: false, message: 'You must certify the custodian declaration before submitting.' };
+    }
+    const amount = parseFloat(data.amountRequested) || 0;
+    if (amount <= 0) return { success: false, message: 'Replenishment amount must be greater than zero.' };
+
+    const statusRes = getReplenishmentAlertStatus();
+    if (!statusRes.success) return { success: false, message: statusRes.message };
+    const snap = statusRes.data;
+
+    if (snap.openRequest) {
+      return { success: false, message: `Request ${snap.openRequest.id} is still ${snap.openRequest.status.replace(/_/g, ' ').toLowerCase()} — only one replenishment request can be in flight at a time.` };
+    }
+    if (amount > snap.toReplenish + 0.01) {
+      return { success: false, message: `Amount exceeds the ${fmtPeso_(snap.toReplenish)} needed to bring the fund back to its ${fmtPeso_(snap.fundCeiling)} ceiling.` };
+    }
+
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.REPLENISH_REQS);
+    if (!sheet) return { success: false, message: 'Replenishment requests sheet not found. Please reload the app.' };
+
+    const now   = new Date().toISOString();
+    const today = normalizeDate(new Date());
+    const email = getUserEmail();
+    const id    = generateId('RPL', today, sheet);
+
+    sheet.appendRow([
+      id,                                          // 1  Request_ID
+      today,                                       // 2  Date
+      snap.cashOnHand,                             // 3  Current_Balance (snapshot)
+      amount,                                      // 4  Amount_Requested
+      snap.fundCeiling,                            // 5  Target_Fund_Level
+      snap.periodFrom,                             // 6  Period_From
+      snap.periodTo,                               // 7  Period_To
+      snap.totalDisbursed,                         // 8  Total_Disbursed
+      JSON.stringify(snap.categoryBreakdown || []),// 9  Category_Breakdown
+      data.docsLog      ? 'YES' : 'NO',            // 10 Docs_Log
+      data.docsReceipts ? 'YES' : 'NO',            // 11 Docs_Receipts
+      snap.lastReplenishDate || '',                // 12 Prev_Replenish_Date
+      'YES',                                       // 13 Declaration (certified — required to reach here)
+      data.notes || '',                            // 14 Notes
+      email,                                       // 15 Requested_By
+      'PENDING_APPROVAL',                          // 16 Status — no Admin auto-approve: replenishment
+                                                   //    always needs an explicit approver decision
+      '', '', '', '', '',                          // 17-21 Decided_By/At, Decision_Note, Fulfilled_Entry_ID/At
+      now, now                                     // 22-23 Created_At, Updated_At
+    ]);
+
+    writeAuditLog('REPLENISH_REQUEST_SUBMITTED',
+      `Replenishment request for ${fmtPeso_(amount)} submitted by ${email}. Balance: ${fmtPeso_(snap.cashOnHand)} | Disbursed since last replenishment: ${fmtPeso_(snap.totalDisbursed)} | Docs: log ${data.docsLog ? 'YES' : 'NO'}, receipts ${data.docsReceipts ? 'YES' : 'NO'}.`,
+      id, today);
+
+    // Approver notification — the email IS the summary card the spec asks for.
+    sendReplenishmentEmail_(
+      getActiveUsersByRole_(/admin/i).map(u => u.email),
+      `[Petty Cash] Replenishment request ${id} — ${fmtPeso_(amount)}`,
+      replenishEmailHtml_(
+        `${email} submitted a petty cash replenishment request that needs your decision.`,
+        [
+          ['Request',                id],
+          ['Current balance',        fmtPeso_(snap.cashOnHand)],
+          ['Amount requested',       fmtPeso_(amount)],
+          ['Target fund level',      fmtPeso_(snap.fundCeiling)],
+          ['Total disbursed',        fmtPeso_(snap.totalDisbursed)],
+          ['Period',                 `${snap.periodFrom} → ${snap.periodTo}`],
+          ['Documents',              `Petty cash log: ${data.docsLog ? '✔' : '✖'} · Receipts/vouchers: ${data.docsReceipts ? '✔' : '✖'}`]
+        ],
+        snap.categoryBreakdown,
+        'Approve, return, or reject this request from the Replenish Requests page.'
+      )
+    );
+
+    return { success: true, id };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// LIST — all replenishment requests, newest first. The fund concerns everyone
+// with app access (it isn't per-person like PCRs), so no per-row filtering.
+// ─────────────────────────────────────────────
+function getReplenishmentRequests() {
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.REPLENISH_REQS);
+    if (!sheet) return { success: true, data: [] };
+
+    const rows = sheet.getDataRange().getValues();
+    const data = [];
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r[0]) continue;
+      let breakdown = [];
+      try { breakdown = JSON.parse(r[8] || '[]'); } catch (ignore) {}
+      data.push({
+        id               : r[0],
+        date             : normalizeDate(r[1]),
+        currentBalance   : parseFloat(r[2]) || 0,
+        amountRequested  : parseFloat(r[3]) || 0,
+        targetFundLevel  : parseFloat(r[4]) || 0,
+        periodFrom       : normalizeDate(r[5]),
+        periodTo         : normalizeDate(r[6]),
+        totalDisbursed   : parseFloat(r[7]) || 0,
+        categoryBreakdown: breakdown,
+        docsLog          : r[9]  === 'YES',
+        docsReceipts     : r[10] === 'YES',
+        prevReplenishDate: r[11] ? normalizeDate(r[11]) : '',
+        declaration      : r[12] === 'YES',
+        notes            : r[13] || '',
+        requestedBy      : r[14] || '',
+        status           : r[15] || '',
+        decidedBy        : r[16] || '',
+        decidedAt        : r[17] || '',
+        decisionNote     : r[18] || '',
+        fulfilledEntryId : r[19] || '',
+        fulfilledAt      : r[20] || '',
+        createdAt        : r[21] || '',
+        updatedAt        : r[22] || ''
+      });
+    }
+    data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+    return { success: true, data };
+  } catch (e) {
+    return { success: false, message: e.toString(), data: [] };
+  }
+}
+
+// ─────────────────────────────────────────────
+// APPROVER (Admin) — approve / return / reject a pending request.
+// RETURNED is distinct from REJECTED: returned requests can be revised and
+// resubmitted by the custodian; rejected is terminal.
+// ─────────────────────────────────────────────
+function decideReplenishmentRequest_(requestId, decision, note) {
+  try {
+    const role = getUserRole();
+    if (!(role.success && role.role === 'Admin')) {
+      return { success: false, message: 'Only an Admin can act on replenishment requests.' };
+    }
+    if ((decision === 'RETURNED' || decision === 'REJECTED') && !note) {
+      return { success: false, message: 'A reason is required to ' + (decision === 'RETURNED' ? 'return' : 'reject') + ' a request.' };
+    }
+
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.REPLENISH_REQS);
+    if (!sheet) return { success: false, message: 'Replenishment requests sheet not found.' };
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== requestId) continue;
+      if (rows[i][15] !== 'PENDING_APPROVAL') {
+        return { success: false, message: 'Request is no longer pending approval.' };
+      }
+      const row    = i + 1;
+      const amount = parseFloat(rows[i][3]) || 0;
+
+      sheet.getRange(row, 16).setValue(decision);
+      sheet.getRange(row, 17).setValue(email);
+      sheet.getRange(row, 18).setValue(now);
+      sheet.getRange(row, 19).setValue(note || '');
+      sheet.getRange(row, 23).setValue(now);
+
+      const actions = {
+        APPROVED: 'REPLENISH_REQUEST_APPROVED',
+        RETURNED: 'REPLENISH_REQUEST_RETURNED',
+        REJECTED: 'REPLENISH_REQUEST_REJECTED'
+      };
+      writeAuditLog(actions[decision],
+        `Replenishment request for ${fmtPeso_(amount)} ${decision.toLowerCase()} by ${email}. Note: ${note || '—'}`,
+        requestId, normalizeDate(rows[i][1]));
+
+      const outcomes = {
+        APPROVED: `was <b>approved</b>. Record the funds on the Replenish Requests page once the cash arrives.`,
+        RETURNED: `was <b>returned for revision</b>. Please review the reason below, revise, and resubmit.`,
+        REJECTED: `was <b>rejected</b>.`
+      };
+      sendReplenishmentEmail_(
+        [rows[i][14]],
+        `[Petty Cash] Replenishment request ${requestId} ${decision.toLowerCase()}`,
+        replenishEmailHtml_(
+          `Your replenishment request ${requestId} (${fmtPeso_(amount)}) ${outcomes[decision]}`,
+          [
+            ['Decided by', email],
+            ['Decision',   decision],
+            ['Note',       note || '—']
+          ],
+          null, null
+        )
+      );
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function approveReplenishmentRequest(data) {
+  return decideReplenishmentRequest_(data.requestId, 'APPROVED', String(data.note || '').trim());
+}
+
+function returnReplenishmentRequest(data) {
+  return decideReplenishmentRequest_(data.requestId, 'RETURNED', String(data.note || '').trim());
+}
+
+function rejectReplenishmentRequest(data) {
+  return decideReplenishmentRequest_(data.requestId, 'REJECTED', String(data.note || '').trim());
+}
+
+// ─────────────────────────────────────────────
+// CUSTODIAN — revise a RETURNED request and send it back for approval.
+// Keeps the same Request_ID (the audit log carries the revision history);
+// the fund snapshot is refreshed so the approver always sees current numbers.
+// data: { requestId, amountRequested, notes, docsLog, docsReceipts, declaration }
+// ─────────────────────────────────────────────
+function resubmitReplenishmentRequest(data) {
+  try {
+    const role = getUserRole();
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Only the fund custodian (Cashier) or an Admin can resubmit a replenishment request.' };
+    }
+    if (data.declaration !== true) {
+      return { success: false, message: 'You must certify the custodian declaration before resubmitting.' };
+    }
+    const amount = parseFloat(data.amountRequested) || 0;
+    if (amount <= 0) return { success: false, message: 'Replenishment amount must be greater than zero.' };
+
+    const statusRes = getReplenishmentAlertStatus();
+    if (!statusRes.success) return { success: false, message: statusRes.message };
+    const snap = statusRes.data;
+    if (amount > snap.toReplenish + 0.01) {
+      return { success: false, message: `Amount exceeds the ${fmtPeso_(snap.toReplenish)} needed to bring the fund back to its ${fmtPeso_(snap.fundCeiling)} ceiling.` };
+    }
+
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.REPLENISH_REQS);
+    if (!sheet) return { success: false, message: 'Replenishment requests sheet not found.' };
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.requestId) continue;
+      if (rows[i][15] !== 'RETURNED') {
+        return { success: false, message: 'Only a returned request can be revised and resubmitted.' };
+      }
+      const row = i + 1;
+
+      // Refresh the snapshot (cols 3-14), reset status, clear the old decision.
+      sheet.getRange(row, 3, 1, 12).setValues([[
+        snap.cashOnHand,                              // 3  Current_Balance
+        amount,                                       // 4  Amount_Requested
+        snap.fundCeiling,                             // 5  Target_Fund_Level
+        snap.periodFrom,                              // 6  Period_From
+        snap.periodTo,                                // 7  Period_To
+        snap.totalDisbursed,                          // 8  Total_Disbursed
+        JSON.stringify(snap.categoryBreakdown || []), // 9  Category_Breakdown
+        data.docsLog      ? 'YES' : 'NO',             // 10 Docs_Log
+        data.docsReceipts ? 'YES' : 'NO',             // 11 Docs_Receipts
+        snap.lastReplenishDate || '',                 // 12 Prev_Replenish_Date
+        'YES',                                        // 13 Declaration
+        data.notes || ''                              // 14 Notes
+      ]]);
+      sheet.getRange(row, 16).setValue('PENDING_APPROVAL');
+      sheet.getRange(row, 17, 1, 3).setValues([['', '', '']]); // Decided_By/At, Decision_Note
+      sheet.getRange(row, 23).setValue(now);
+
+      writeAuditLog('REPLENISH_REQUEST_RESUBMITTED',
+        `Replenishment request revised and resubmitted for ${fmtPeso_(amount)} by ${email}. Balance: ${fmtPeso_(snap.cashOnHand)}.`,
+        data.requestId, normalizeDate(new Date()));
+
+      sendReplenishmentEmail_(
+        getActiveUsersByRole_(/admin/i).map(u => u.email),
+        `[Petty Cash] Replenishment request ${data.requestId} resubmitted — ${fmtPeso_(amount)}`,
+        replenishEmailHtml_(
+          `${email} revised and resubmitted replenishment request ${data.requestId}. It needs your decision.`,
+          [
+            ['Current balance',   fmtPeso_(snap.cashOnHand)],
+            ['Amount requested',  fmtPeso_(amount)],
+            ['Target fund level', fmtPeso_(snap.fundCeiling)],
+            ['Total disbursed',   fmtPeso_(snap.totalDisbursed)]
+          ],
+          snap.categoryBreakdown,
+          'Approve, return, or reject this request from the Replenish Requests page.'
+        )
+      );
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// CUSTODIAN — record the approved funds actually arriving. Approval alone
+// moves no cash: this writes the REPLENISHMENT entry (which resets the
+// replenishment period tracker and clears the low-fund flag via the
+// threshold watch in saveExpenseEntry) and links it to the request.
+// data: { requestId, amount, source, description, releasedBy }
+// ─────────────────────────────────────────────
+function fulfillReplenishmentRequest(data) {
+  try {
+    const role = getUserRole();
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Only the fund custodian (Cashier) or an Admin can record replenishment funds.' };
+    }
+    const amount = parseFloat(data.amount) || 0;
+    if (amount <= 0) return { success: false, message: 'Amount received must be greater than zero.' };
+
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEETS.REPLENISH_REQS);
+    if (!sheet) return { success: false, message: 'Replenishment requests sheet not found.' };
+    const rows  = sheet.getDataRange().getValues();
+    const now   = new Date().toISOString();
+    const today = normalizeDate(new Date());
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.requestId) continue;
+      if (rows[i][15] !== 'APPROVED') {
+        return { success: false, message: 'Funds can only be recorded for an approved request.' };
+      }
+      const approvedAmount = parseFloat(rows[i][3]) || 0;
+      const approvedBy     = rows[i][16] || '';
+
+      const entryRes = saveReplenishmentEntry({
+        date       : today,
+        category   : data.source || 'Head Office Release',
+        description: data.description || ('Replenishment per request ' + data.requestId),
+        amount     : amount,
+        referenceNo: data.requestId,
+        requestedBy: data.releasedBy || '',
+        approvedBy : approvedBy
+      });
+      if (!entryRes.success) return entryRes;
+
+      const row = i + 1;
+      sheet.getRange(row, 16).setValue('FULFILLED');
+      sheet.getRange(row, 20).setValue(entryRes.id);
+      sheet.getRange(row, 21).setValue(now);
+      sheet.getRange(row, 23).setValue(now);
+
+      const variance = Math.abs(amount - approvedAmount) > 0.01
+        ? ` (approved ${fmtPeso_(approvedAmount)})` : '';
+      writeAuditLog('REPLENISH_REQUEST_FULFILLED',
+        `Replenishment funds of ${fmtPeso_(amount)}${variance} received and recorded as ${entryRes.id} for request ${data.requestId}.`,
+        data.requestId, today);
+
+      return { success: true, entryId: entryRes.id };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
 }

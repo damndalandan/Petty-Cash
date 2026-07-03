@@ -1,0 +1,455 @@
+<script>
+// =============================================
+// REPLENISH REQUESTS PAGE LOGIC
+// Custodian (Cashier): submit / resubmit the auto-filled request, record
+// funds received. Approver (Admin): approve / return / reject from the card
+// (the card is the spec's "summary card"). Auditor: read-only.
+// =============================================
+
+let allRplRequests = [];
+let rplSnapshot    = null;   // latest getReplenishmentAlertStatus().data
+let rplExpanded    = new Set();
+
+function toggleRplExpand(id) {
+  if (rplExpanded.has(id)) rplExpanded.delete(id);
+  else rplExpanded.add(id);
+  renderRplRequests();
+}
+
+// ── Load ─────────────────────────────────────
+
+async function loadReplenishRequests() {
+  const listEl = document.getElementById('rpl-list');
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="text-center py-10 text-gray-400 text-sm animate-pulse">Loading requests...</div>';
+
+  const [statusRes, listRes] = await Promise.all([
+    callServer('getReplenishmentAlertStatus'),
+    callServer('getReplenishmentRequests')
+  ]);
+
+  if (statusRes.success && statusRes.data) {
+    rplSnapshot = statusRes.data;
+    window.replenishAlertStatus = rplSnapshot;
+    renderRplSnapshot();
+    updateReplenishNavBadge(rplSnapshot);
+  }
+
+  if (!listRes.success) {
+    listEl.innerHTML = '<div class="text-center py-10 text-red-400 text-sm">Failed to load requests.</div>';
+    return;
+  }
+  allRplRequests = listRes.data || [];
+  renderRplRequests();
+  applyRplRoleUI();
+}
+
+// Sidebar badge: one actionable request at most (single in-flight rule).
+// Admin acts on PENDING_APPROVAL; the custodian acts on RETURNED / APPROVED.
+function updateReplenishNavBadge(d) {
+  const badge = document.getElementById('replenishreq-badge');
+  if (!badge) return;
+  let actionable = 0;
+  const open = d && d.openRequest;
+  if (open) {
+    if (open.status === 'PENDING_APPROVAL' && isAdmin()) actionable = 1;
+    if ((open.status === 'RETURNED' || open.status === 'APPROVED') && isCashier()) actionable = 1;
+  }
+  badge.textContent = actionable;
+  badge.classList.toggle('hidden', actionable === 0);
+}
+
+// ── Fund snapshot strip ───────────────────────
+
+function renderRplSnapshot() {
+  if (!rplSnapshot) return;
+  const d   = rplSnapshot;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+  set('rpl-cashOnHand',  fmt(d.cashOnHand));
+  set('rpl-advances',    fmt(d.advancesOutstanding));
+  set('rpl-toReplenish', fmt(d.toReplenish));
+  set('rpl-ceiling',     fmt(d.fundCeiling));
+
+  const tile = document.getElementById('rpl-tile-balance');
+  const note = document.getElementById('rpl-threshold-note');
+  const coh  = document.getElementById('rpl-cashOnHand');
+  if (d.belowThreshold) {
+    if (tile) tile.className = 'bg-red-50 rounded-2xl border-2 border-red-300 shadow-sm p-4';
+    if (coh)  coh.className  = 'text-2xl font-black font-mono text-red-600';
+    if (note) { note.textContent = '🚨 below ' + fmt(d.threshold) + ' threshold'; note.className = 'text-[10px] text-red-600 font-bold mt-1'; }
+  } else {
+    if (tile) tile.className = 'bg-white rounded-2xl border-2 border-transparent shadow-sm p-4';
+    if (coh)  coh.className  = 'text-2xl font-black font-mono text-gray-800';
+    if (note) { note.textContent = 'threshold ' + fmt(d.threshold); note.className = 'text-[10px] text-gray-400 mt-1'; }
+  }
+}
+
+// ── Role / in-flight UI ───────────────────────
+
+function applyRplRoleUI() {
+  const newBtn       = document.getElementById('rplNewBtn');
+  const openNotice   = document.getElementById('rpl-open-notice');
+  const openText     = document.getElementById('rpl-open-notice-text');
+  const canSubmit    = isCashier() || isAdmin();
+  const open         = rplSnapshot && rplSnapshot.openRequest;
+
+  if (newBtn) {
+    newBtn.classList.toggle('hidden', !canSubmit || !!open);
+    if (!newBtn.classList.contains('hidden')) newBtn.classList.add('flex');
+  }
+  if (openNotice) {
+    openNotice.classList.toggle('hidden', !canSubmit || !open);
+    if (open && openText) {
+      const labels = {
+        PENDING_APPROVAL: 'is awaiting the approver’s decision',
+        APPROVED        : 'is approved — record the funds below once the cash arrives',
+        RETURNED        : 'was returned — revise and resubmit it from its card below'
+      };
+      openText.textContent = 'Request ' + open.id + ' (' + fmt(open.amountRequested) + ') '
+        + (labels[open.status] || open.status) + '. Only one request can be in flight at a time.';
+    }
+  }
+}
+
+// ── Request form (new / resubmit) ─────────────
+
+function startRplNewRequest() {
+  const rid = document.getElementById('rplResubmitId');
+  if (rid) rid.value = '';
+  prefillRplForm(null);
+  openRplForm();
+}
+
+function startRplResubmit(id) {
+  const r = allRplRequests.find(x => x.id === id);
+  if (!r) return;
+  const rid = document.getElementById('rplResubmitId');
+  if (rid) rid.value = id;
+  prefillRplForm(r);
+  openRplForm();
+}
+
+function openRplForm() {
+  const section = document.getElementById('rpl-form-section');
+  if (!section) return;
+  section.classList.remove('hidden');
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeRplForm() {
+  const section = document.getElementById('rpl-form-section');
+  if (section) section.classList.add('hidden');
+}
+
+// Fund figures always come from the fresh server snapshot; when resubmitting,
+// only the custodian's own inputs (amount, docs, notes) carry over.
+function prefillRplForm(existing) {
+  const d   = rplSnapshot;
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+
+  const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+  set('rplFormDate', today);
+  set('rplFormCustodian', state.userName || state.userEmail || '—');
+  set('rplFormTitle', existing ? 'Revise Request ' + existing.id : 'Replenishment Request');
+
+  if (d) {
+    set('rplFormBalance',  fmt(d.cashOnHand));
+    set('rplFormTarget',   fmt(d.fundCeiling));
+    set('rplFormPrevDate', d.lastReplenishDate || 'None on record');
+    set('rplFormDisbursed', fmt(d.totalDisbursed));
+    set('rplFormPeriod', 'Period: ' + d.periodFrom + ' → ' + d.periodTo);
+
+    const bd = document.getElementById('rplFormBreakdown');
+    if (bd) {
+      const rows = (d.categoryBreakdown || []);
+      bd.innerHTML = rows.length
+        ? rows.map(b => '<div class="flex justify-between text-xs"><span class="text-gray-600">' + escHtml(b.category) + '</span><span class="font-mono text-gray-800">' + fmt(b.amount) + '</span></div>').join('')
+        : '<div class="text-xs text-gray-400 italic">No disbursements this period</div>';
+    }
+
+    const amt = document.getElementById('rplAmount');
+    if (amt) amt.value = existing ? existing.amountRequested : (d.toReplenish > 0 ? d.toReplenish.toFixed(2) : '');
+    const hint = document.getElementById('rplAmountHint');
+    if (hint) hint.textContent = 'Needed to reach the ceiling: ' + fmt(d.toReplenish);
+  }
+
+  const docsLog      = document.getElementById('rplDocsLog');
+  const docsReceipts = document.getElementById('rplDocsReceipts');
+  const notes        = document.getElementById('rplNotes');
+  const decl         = document.getElementById('rplDeclaration');
+  if (docsLog)      docsLog.checked      = existing ? existing.docsLog : false;
+  if (docsReceipts) docsReceipts.checked = existing ? existing.docsReceipts : false;
+  if (notes)        notes.value          = existing ? (existing.notes || '') : '';
+  if (decl)         decl.checked         = false;   // must be re-certified every submission
+
+  const btn = document.getElementById('rplSubmitBtn');
+  if (btn) btn.textContent = existing ? 'Resubmit Request' : 'Submit Request';
+}
+
+async function submitReplenishRequest() {
+  const resubmitId  = document.getElementById('rplResubmitId')?.value || '';
+  const amount      = parseFloat(document.getElementById('rplAmount')?.value);
+  const docsLog     = !!document.getElementById('rplDocsLog')?.checked;
+  const docsReceipts= !!document.getElementById('rplDocsReceipts')?.checked;
+  const notes       = document.getElementById('rplNotes')?.value.trim() || '';
+  const declaration = !!document.getElementById('rplDeclaration')?.checked;
+
+  if (!amount || amount <= 0) { toast('Enter a replenishment amount greater than zero.', 'warning'); return; }
+  if (!declaration) { toast('Please certify the custodian declaration before submitting.', 'warning'); return; }
+
+  const btn     = document.getElementById('rplSubmitBtn');
+  const payload = { amountRequested: amount, notes, docsLog, docsReceipts, declaration };
+
+  btnLoad(btn, true);
+  const res = resubmitId
+    ? await callServer('resubmitReplenishmentRequest', { ...payload, requestId: resubmitId })
+    : await callServer('submitReplenishmentRequest', payload);
+  btnLoad(btn, false);
+
+  if (!res.success) { toast(res.message || 'Failed to submit request.', 'error'); return; }
+
+  toast(resubmitId ? 'Request revised and resubmitted for approval.' : 'Replenishment request submitted for approval.');
+  closeRplForm();
+  loadReplenishRequests();
+}
+
+// ── Render request cards ──────────────────────
+
+function renderRplRequests() {
+  const listEl = document.getElementById('rpl-list');
+  if (!listEl) return;
+
+  if (!allRplRequests.length) {
+    listEl.innerHTML = '<div class="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 text-sm">No replenishment requests yet. The form auto-fills from the fund when you create one.</div>';
+    return;
+  }
+  listEl.innerHTML = allRplRequests.map(r => renderRplCard(r)).join('');
+}
+
+function renderRplCard(r) {
+  const statusStyles = {
+    PENDING_APPROVAL: 'bg-amber-100 text-amber-700',
+    APPROVED        : 'bg-green-100 text-green-700',
+    RETURNED        : 'bg-orange-100 text-orange-700',
+    REJECTED        : 'bg-red-100 text-red-600',
+    FULFILLED       : 'bg-purple-100 text-purple-700'
+  };
+  const statusLabels = {
+    PENDING_APPROVAL: 'Pending Approval',
+    APPROVED        : 'Approved — Awaiting Funds',
+    RETURNED        : 'Returned for Revision',
+    REJECTED        : 'Rejected',
+    FULFILLED       : 'Fulfilled'
+  };
+  const badge = '<span class="text-[11px] font-bold px-2.5 py-0.5 rounded-full ' + (statusStyles[r.status] || 'bg-gray-100 text-gray-500') + '">'
+    + (statusLabels[r.status] || r.status) + '</span>';
+
+  // Docs checklist icons
+  const doc = (ok, label) => '<span class="' + (ok ? 'text-green-600' : 'text-gray-400') + '">' + (ok ? '✔' : '✖') + ' ' + label + '</span>';
+  const docsLine = '<div class="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] mt-1">'
+    + doc(r.docsLog, 'Petty cash log') + doc(r.docsReceipts, 'Receipts / vouchers')
+    + (r.declaration ? '<span class="text-green-600">✔ Custodian certified</span>' : '')
+    + '</div>';
+
+  // Expandable category breakdown
+  const bdCount   = (r.categoryBreakdown || []).length;
+  const isExpanded = rplExpanded.has(r.id);
+  const toggleBtn = bdCount
+    ? '<button onclick="toggleRplExpand(\'' + r.id + '\')" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 transition">'
+      + (isExpanded ? '▼ Hide breakdown (' + bdCount + ')' : '▶ Breakdown (' + bdCount + ')') + '</button>'
+    : '';
+  let breakdownHtml = '';
+  if (isExpanded && bdCount) {
+    breakdownHtml = '<div class="pt-2 border-t border-dashed border-gray-200 space-y-1">'
+      + r.categoryBreakdown.map(b =>
+          '<div class="flex justify-between items-center pl-3 py-1 border-l-4 border-red-200 bg-red-50/60">'
+        + '<span class="text-xs text-gray-700">' + escHtml(b.category) + '</span>'
+        + '<span class="text-xs font-mono font-semibold text-gray-700">' + fmt(b.amount) + '</span></div>').join('')
+      + '<div class="flex justify-between text-[11px] font-bold text-gray-700 pt-1.5 mt-0.5 border-t border-gray-200">'
+      + '<span>Total Disbursed</span><span class="font-mono">' + fmt(r.totalDisbursed) + '</span></div>'
+      + '</div>';
+  }
+
+  // Decision / fulfillment info lines
+  const decidedLine = r.decidedBy
+    ? '<span class="text-gray-400">• ' + ({ APPROVED: 'Approved', RETURNED: 'Returned', REJECTED: 'Rejected', FULFILLED: 'Approved' }[r.status] || 'Decided')
+      + ' by ' + escHtml(String(r.decidedBy).split('@')[0]) + '</span>'
+    : '';
+  const decisionNoteLine = r.decisionNote
+    ? '<div class="mt-2 text-xs ' + (r.status === 'REJECTED' ? 'text-red-600 bg-red-50' : 'text-orange-700 bg-orange-50') + ' rounded-lg px-3 py-2">'
+      + (r.status === 'RETURNED' ? 'Returned: ' : r.status === 'REJECTED' ? 'Rejected: ' : 'Note: ') + escHtml(r.decisionNote) + '</div>'
+    : '';
+  const fulfilledLine = r.status === 'FULFILLED' && r.fulfilledEntryId
+    ? '<div class="text-[10px] text-purple-600 font-medium mt-1">💰 Funds recorded as <span class="font-mono">' + escHtml(r.fulfilledEntryId) + '</span>'
+      + (r.fulfilledAt ? ' on ' + String(r.fulfilledAt).slice(0, 10) : '') + '</div>'
+    : '';
+  const notesLine = r.notes
+    ? '<div class="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">Custodian note: ' + escHtml(r.notes) + '</div>'
+    : '';
+
+  // Actions
+  let actions = '';
+  if (r.status === 'PENDING_APPROVAL' && isAdmin()) {
+    actions =
+      '<button onclick="openRplDecisionModal(\'' + r.id + '\',\'APPROVED\')" class="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">Approve</button>'
+      + '<button onclick="openRplDecisionModal(\'' + r.id + '\',\'RETURNED\')" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">Return</button>'
+      + '<button onclick="openRplDecisionModal(\'' + r.id + '\',\'REJECTED\')" class="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">Reject</button>';
+  }
+  if (r.status === 'RETURNED' && isCashier()) {
+    actions = '<button onclick="startRplResubmit(\'' + r.id + '\')" class="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">✏️ Revise &amp; Resubmit</button>';
+  }
+  if (r.status === 'APPROVED' && isCashier()) {
+    actions = '<button onclick="openRplFulfillModal(\'' + r.id + '\')" class="flex-1 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">💰 Record Funds Received</button>';
+  }
+
+  return '<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">'
+    + '<div class="flex items-start justify-between gap-3">'
+    +   '<div class="flex flex-wrap items-center gap-1.5">' + badge + toggleBtn + '</div>'
+    +   '<div class="text-right shrink-0">'
+    +     '<p class="text-xl font-bold font-mono text-gray-800">' + fmt(r.amountRequested) + '</p>'
+    +     '<p class="text-[10px] text-gray-400">requested</p>'
+    +   '</div>'
+    + '</div>'
+    + '<div>'
+    +   '<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center bg-gray-50 rounded-xl border border-gray-100 p-2">'
+    +     '<div><div class="text-[9px] font-bold text-gray-400 uppercase">Balance Then</div><div class="text-xs font-mono font-bold text-red-600">' + fmt(r.currentBalance) + '</div></div>'
+    +     '<div><div class="text-[9px] font-bold text-gray-400 uppercase">Disbursed</div><div class="text-xs font-mono font-bold text-gray-700">' + fmt(r.totalDisbursed) + '</div></div>'
+    +     '<div><div class="text-[9px] font-bold text-gray-400 uppercase">Target Level</div><div class="text-xs font-mono font-bold text-gray-700">' + fmt(r.targetFundLevel) + '</div></div>'
+    +     '<div><div class="text-[9px] font-bold text-gray-400 uppercase">Prev. Replenish</div><div class="text-xs font-mono text-gray-600">' + (r.prevReplenishDate || '—') + '</div></div>'
+    +   '</div>'
+    +   docsLine
+    +   '<div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5 text-[11px] text-gray-400">'
+    +     '<span class="font-mono">' + r.id + '</span><span>•</span><span>' + r.date + '</span>'
+    +     '<span>•</span><span>Period ' + r.periodFrom + ' → ' + r.periodTo + '</span>'
+    +     '<span>•</span><span>by ' + escHtml(String(r.requestedBy).split('@')[0]) + '</span>'
+    +     decidedLine
+    +   '</div>'
+    +   fulfilledLine
+    + '</div>'
+    + notesLine
+    + decisionNoteLine
+    + breakdownHtml
+    + (actions ? '<div class="flex gap-2 pt-2 border-t border-gray-100">' + actions + '</div>' : '')
+    + '</div>';
+}
+
+// ── Decision modal (approve / return / reject) ─
+
+const RPL_DECISION_CONFIG = {
+  APPROVED: {
+    title: 'Approve Request', verb: 'Approve',
+    header: 'bg-gradient-to-r from-green-600 to-emerald-500 p-5 flex justify-between items-center',
+    btn: 'flex-1 py-3 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition min-h-[44px]',
+    hint: 'Approving authorizes the replenishment. The custodian records the cash when it actually arrives.',
+    noteRequired: false, noteLabel: 'Note (optional)'
+  },
+  RETURNED: {
+    title: 'Return for Revision', verb: 'Return',
+    header: 'bg-gradient-to-r from-amber-500 to-orange-500 p-5 flex justify-between items-center',
+    btn: 'flex-1 py-3 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow transition min-h-[44px]',
+    hint: 'The custodian will see your reason, revise the request, and resubmit it for approval.',
+    noteRequired: true, noteLabel: 'Reason for Returning *'
+  },
+  REJECTED: {
+    title: 'Reject Request', verb: 'Reject',
+    header: 'bg-gradient-to-r from-red-600 to-rose-500 p-5 flex justify-between items-center',
+    btn: 'flex-1 py-3 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-xl shadow transition min-h-[44px]',
+    hint: 'Rejection is final — a new request must be submitted if the fund still needs replenishing.',
+    noteRequired: true, noteLabel: 'Reason for Rejection *'
+  }
+};
+
+function openRplDecisionModal(id, action) {
+  const r   = allRplRequests.find(x => x.id === id);
+  const cfg = RPL_DECISION_CONFIG[action];
+  if (!r || !cfg) return;
+
+  document.getElementById('rplDecisionId').value     = id;
+  document.getElementById('rplDecisionAction').value = action;
+  document.getElementById('rplDecisionTitle').textContent = cfg.title;
+  document.getElementById('rplDecisionHeader').className  = cfg.header;
+  document.getElementById('rplDecisionHint').textContent  = cfg.hint;
+  document.getElementById('rplDecisionNoteLabel').textContent = cfg.noteLabel;
+  document.getElementById('rplDecisionNote').value = '';
+  const btn = document.getElementById('rplDecisionConfirmBtn');
+  btn.textContent = cfg.verb;
+  btn.className   = cfg.btn;
+  document.getElementById('rplDecisionInfo').innerHTML =
+    '<span class="font-mono font-bold">' + fmt(r.amountRequested) + '</span> — request ' + r.id
+    + '<br><span class="text-gray-500 text-xs">Balance ' + fmt(r.currentBalance) + ' · Disbursed ' + fmt(r.totalDisbursed) + ' · by ' + escHtml(r.requestedBy) + '</span>';
+  document.getElementById('rplDecisionModal').classList.remove('hidden');
+}
+
+function closeRplDecisionModal() {
+  document.getElementById('rplDecisionModal').classList.add('hidden');
+}
+
+async function confirmRplDecision() {
+  const requestId = document.getElementById('rplDecisionId').value;
+  const action    = document.getElementById('rplDecisionAction').value;
+  const note      = document.getElementById('rplDecisionNote').value.trim();
+  const cfg       = RPL_DECISION_CONFIG[action];
+  if (!cfg) return;
+  if (cfg.noteRequired && !note) { toast('Please enter a reason.', 'warning'); return; }
+
+  const fnMap = {
+    APPROVED: 'approveReplenishmentRequest',
+    RETURNED: 'returnReplenishmentRequest',
+    REJECTED: 'rejectReplenishmentRequest'
+  };
+  const btn = document.getElementById('rplDecisionConfirmBtn');
+  btnLoad(btn, true);
+  const res = await callServer(fnMap[action], { requestId, note });
+  btnLoad(btn, false);
+
+  if (!res.success) { toast(res.message || 'Action failed.', 'error'); return; }
+  toast('Request ' + cfg.verb.toLowerCase() + (action === 'APPROVED' ? 'd.' : 'ed.'));
+  closeRplDecisionModal();
+  loadReplenishRequests();
+}
+
+// ── Fulfill modal (record funds received) ─────
+
+function openRplFulfillModal(id) {
+  const r = allRplRequests.find(x => x.id === id);
+  if (!r) return;
+  document.getElementById('rplFulfillId').value = id;
+  document.getElementById('rplFulfillInfo').innerHTML =
+    'Request <span class="font-mono font-bold">' + r.id + '</span> — approved for <span class="font-mono font-bold">' + fmt(r.amountRequested) + '</span>'
+    + (r.decidedBy ? '<br><span class="text-gray-500 text-xs">Approved by ' + escHtml(String(r.decidedBy).split('@')[0]) + '</span>' : '');
+  document.getElementById('rplFulfillAmount').value = r.amountRequested ? r.amountRequested.toFixed(2) : '';
+  document.getElementById('rplFulfillDesc').value   = 'Replenishment per request ' + r.id;
+  document.getElementById('rplFulfillBy').value     = '';
+  const src = document.getElementById('rplFulfillSource');
+  if (src) src.selectedIndex = 0;
+  document.getElementById('rplFulfillModal').classList.remove('hidden');
+}
+
+function closeRplFulfillModal() {
+  document.getElementById('rplFulfillModal').classList.add('hidden');
+}
+
+async function confirmRplFulfill() {
+  const requestId = document.getElementById('rplFulfillId').value;
+  const amount    = parseFloat(document.getElementById('rplFulfillAmount').value);
+  const source    = document.getElementById('rplFulfillSource').value;
+  const desc      = document.getElementById('rplFulfillDesc').value.trim();
+  const by        = document.getElementById('rplFulfillBy').value.trim();
+
+  if (!amount || amount <= 0) { toast('Enter the amount received.', 'warning'); return; }
+
+  const btn = document.querySelector('#rplFulfillModal button[onclick="confirmRplFulfill()"]');
+  btnLoad(btn, true);
+  const res = await callServer('fulfillReplenishmentRequest', {
+    requestId, amount, source, description: desc, releasedBy: by
+  });
+  btnLoad(btn, false);
+
+  if (!res.success) { toast(res.message || 'Failed to record funds.', 'error'); return; }
+  toast('Funds recorded — fund replenished ✓');
+  closeRplFulfillModal();
+  loadReplenishRequests();
+  if (typeof loadDayData === 'function') loadDayData();   // refresh dashboard stats + banner
+}
+</script>

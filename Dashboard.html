@@ -19,6 +19,22 @@
          </div>
       </div>
 
+      <!-- Low Fund Replenishment Banner — shown when cash on hand breaches the threshold -->
+      <div id="lowFundBanner" class="hidden bg-red-50 border-l-4 border-red-500 p-3 rounded shadow-sm flex flex-col md:flex-row md:items-center gap-3">
+        <div class="flex items-start gap-3 flex-1">
+          <span class="text-xl shrink-0">🚨</span>
+          <div>
+            <h3 class="font-bold text-red-800 text-sm">Petty Cash Fund Low</h3>
+            <p class="text-xs text-red-700 mt-1">Cash on hand is <span id="lowFundBalance" class="font-mono font-bold"></span> — below the <span id="lowFundThreshold" class="font-mono font-bold"></span> replenishment threshold.</p>
+            <p id="lowFundSub" class="text-xs text-red-600 mt-0.5"></p>
+          </div>
+        </div>
+        <button id="lowFundCta" onclick="navigate('replenishrequests')"
+          class="whitespace-nowrap px-4 py-2.5 bg-red-600 text-white text-sm font-bold rounded-lg shadow hover:bg-red-700 transition min-h-[44px] self-stretch md:self-auto">
+          Submit Replenishment Request
+        </button>
+      </div>
+
       <!-- Header + Day Status inline -->
       <div class="pb-3 border-b border-gray-200">
         <div class="flex items-center gap-3 flex-wrap">

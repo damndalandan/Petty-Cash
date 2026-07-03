@@ -1,0 +1,232 @@
+<!-- REPLENISHMENT REQUESTS PAGE -->
+<div id="page-replenishrequests" class="page-view hidden space-y-4">
+
+  <!-- Page Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 border-b border-gray-200 gap-2">
+    <div>
+      <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Replenish Requests</h1>
+      <p class="text-xs text-gray-500 mt-0.5">Formal replenishment requests — submitted by the custodian, decided by the approver</p>
+    </div>
+    <div class="flex items-center gap-2 self-start md:self-auto">
+      <button id="rplNewBtn" onclick="startRplNewRequest()"
+        class="hidden items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow min-h-[44px] flex-1 justify-center">
+        ➕ New Request
+      </button>
+      <button onclick="loadReplenishRequests()" class="text-sm text-blue-600 hover:text-blue-800 font-medium transition px-3 py-2 border border-blue-200 rounded-lg min-h-[44px]">↺ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Fund Snapshot Strip -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div id="rpl-tile-balance" class="bg-white rounded-2xl border-2 border-transparent shadow-sm p-4">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Cash on Hand</div>
+      <div id="rpl-cashOnHand" class="text-2xl font-black font-mono text-gray-800">—</div>
+      <div id="rpl-threshold-note" class="text-[10px] text-gray-400 mt-1">threshold —</div>
+    </div>
+    <div class="bg-white rounded-2xl border-2 border-transparent shadow-sm p-4">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Outstanding Advances</div>
+      <div id="rpl-advances" class="text-2xl font-black font-mono text-amber-600">—</div>
+      <div class="text-[10px] text-gray-400 mt-1">still to liquidate</div>
+    </div>
+    <div class="bg-white rounded-2xl border-2 border-transparent shadow-sm p-4">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">To Replenish</div>
+      <div id="rpl-toReplenish" class="text-2xl font-black font-mono text-red-600">—</div>
+      <div class="text-[10px] text-gray-400 mt-1">to reach the ceiling</div>
+    </div>
+    <div class="bg-white rounded-2xl border-2 border-transparent shadow-sm p-4">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Fund Ceiling</div>
+      <div id="rpl-ceiling" class="text-2xl font-black font-mono text-gray-600">—</div>
+      <div class="text-[10px] text-gray-400 mt-1">target fund level</div>
+    </div>
+  </div>
+
+  <!-- Two-column desktop layout -->
+  <div class="flex flex-col lg:grid lg:grid-cols-3 gap-4">
+
+    <!-- ── LEFT COLUMN: Request Form ── -->
+    <div class="lg:col-span-1 order-2 lg:order-1 space-y-3">
+
+      <div id="rpl-form-section" class="hidden bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+
+        <!-- Form header -->
+        <div class="px-5 py-4 bg-gradient-to-r from-red-600 to-rose-500">
+          <div class="flex items-center justify-between">
+            <div>
+              <p id="rplFormTitle" class="text-sm font-bold text-white">Replenishment Request</p>
+              <p class="text-rose-100 text-xs mt-0.5">Fund figures are filled automatically</p>
+            </div>
+            <button onclick="closeRplForm()" class="text-white/70 hover:text-white text-2xl font-light leading-none">&times;</button>
+          </div>
+        </div>
+
+        <!-- Form body -->
+        <div class="p-5 space-y-4">
+          <input type="hidden" id="rplResubmitId" value="">
+
+          <!-- Auto-filled snapshot -->
+          <div class="bg-gray-50 rounded-xl border border-gray-200 p-3 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Date of Request</span><span id="rplFormDate" class="font-mono font-semibold text-gray-700 text-xs">—</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Custodian</span><span id="rplFormCustodian" class="font-semibold text-gray-700 text-xs">—</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Fund</span><span class="font-semibold text-gray-700 text-xs">Petty Cash Fund</span></div>
+            <div class="flex justify-between border-t border-gray-200 pt-2"><span class="text-xs text-gray-500">Current Balance</span><span id="rplFormBalance" class="font-mono font-bold text-red-600">—</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Target Fund Level</span><span id="rplFormTarget" class="font-mono font-bold text-gray-800">—</span></div>
+            <div class="flex justify-between"><span class="text-xs text-gray-500">Previous Replenishment</span><span id="rplFormPrevDate" class="font-mono text-gray-600 text-xs">—</span></div>
+          </div>
+
+          <!-- Expense summary since last replenishment -->
+          <div>
+            <div class="flex justify-between items-center mb-1">
+              <label class="block text-xs font-bold text-gray-500 uppercase">Disbursed Since Last Replenishment</label>
+              <span id="rplFormDisbursed" class="font-mono font-bold text-sm text-gray-800">—</span>
+            </div>
+            <p id="rplFormPeriod" class="text-[10px] text-gray-400 mb-2">—</p>
+            <div id="rplFormBreakdown" class="space-y-1 max-h-40 overflow-y-auto bg-gray-50 rounded-xl border border-gray-200 p-3"></div>
+          </div>
+
+          <!-- Amount -->
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Replenishment Amount Requested <span class="text-red-400">*</span></label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₱</span>
+              <input type="number" id="rplAmount" placeholder="0.00" min="0" step="0.01"
+                class="w-full pl-7 pr-3 py-3 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-red-500 outline-none bg-gray-50">
+            </div>
+            <p id="rplAmountHint" class="text-[10px] text-gray-400 mt-1"></p>
+          </div>
+
+          <!-- Supporting documents -->
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Supporting Documents</label>
+            <label class="flex items-start gap-2 text-xs text-gray-600 mb-2 cursor-pointer">
+              <input type="checkbox" id="rplDocsLog" class="mt-0.5 accent-red-600">
+              <span>Petty cash log / disbursement record attached</span>
+            </label>
+            <label class="flex items-start gap-2 text-xs text-gray-600 cursor-pointer">
+              <input type="checkbox" id="rplDocsReceipts" class="mt-0.5 accent-red-600">
+              <span>Official receipts / vouchers attached</span>
+            </label>
+          </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Notes <span class="text-gray-400 font-normal normal-case">(optional)</span></label>
+            <textarea id="rplNotes" rows="2" placeholder="Anything the approver should know..."
+              class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none resize-none bg-gray-50"></textarea>
+          </div>
+
+          <!-- Custodian declaration -->
+          <div class="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <label class="flex items-start gap-2 text-xs text-amber-800 cursor-pointer">
+              <input type="checkbox" id="rplDeclaration" class="mt-0.5 accent-amber-600">
+              <span><b>Custodian Declaration:</b> I certify that the above information is accurate and complete. All disbursements have been properly documented and receipts are attached.</span>
+            </label>
+          </div>
+
+          <button id="rplSubmitBtn" onclick="submitReplenishRequest()"
+            class="w-full py-3 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[48px]">
+            Submit Request
+          </button>
+        </div>
+      </div>
+
+      <!-- Open-request notice (custodian, when a request is already in flight) -->
+      <div id="rpl-open-notice" class="hidden bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-700">
+        <p class="font-bold mb-1">📨 Request In Flight</p>
+        <p id="rpl-open-notice-text" class="text-xs">A replenishment request is already awaiting action. Only one request can be in flight at a time.</p>
+      </div>
+
+      <!-- Auditor read-only notice -->
+      <div id="rpl-auditor-notice" class="hidden bg-blue-50 border border-blue-200 rounded-2xl p-5 text-sm text-blue-700">
+        <p class="font-bold mb-1">🔍 Audit View</p>
+        <p class="text-xs">You can view all replenishment requests and their audit trail. Only the custodian can submit and only an Admin can decide.</p>
+      </div>
+    </div>
+
+    <!-- ── RIGHT COLUMN: Request List ── -->
+    <div class="lg:col-span-2 order-1 lg:order-2 space-y-3">
+      <div id="rpl-list" class="space-y-3">
+        <div class="text-center py-10 text-gray-400 text-sm">Loading...</div>
+      </div>
+    </div>
+
+  </div><!-- end two-column -->
+
+</div><!-- end page-replenishrequests -->
+
+<!-- ══════════════════════════════════════════
+     REPLENISH REQUEST DECISION MODAL (approve / return / reject)
+     ══════════════════════════════════════════ -->
+<div id="rplDecisionModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+    <div id="rplDecisionHeader" class="bg-gradient-to-r from-green-600 to-emerald-500 p-5 flex justify-between items-center">
+      <h3 id="rplDecisionTitle" class="text-white font-bold text-lg">Approve Request</h3>
+      <button onclick="closeRplDecisionModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="bg-gray-50 rounded-xl p-3 border border-gray-200 text-sm">
+        <div id="rplDecisionInfo" class="text-gray-800 font-medium"></div>
+      </div>
+      <p id="rplDecisionHint" class="text-xs text-gray-500"></p>
+      <div>
+        <label id="rplDecisionNoteLabel" class="block text-xs font-bold text-gray-500 uppercase mb-1">Note</label>
+        <textarea id="rplDecisionNote" rows="3" placeholder="Enter note..."
+          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-gray-500 outline-none resize-none bg-gray-50"></textarea>
+      </div>
+    </div>
+    <div class="p-4 bg-gray-50 border-t flex gap-3">
+      <input type="hidden" id="rplDecisionId">
+      <input type="hidden" id="rplDecisionAction">
+      <button onclick="closeRplDecisionModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[44px]">Cancel</button>
+      <button id="rplDecisionConfirmBtn" onclick="confirmRplDecision()" class="flex-1 py-3 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition min-h-[44px]">Approve</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     REPLENISH FULFILL MODAL (record funds received)
+     ══════════════════════════════════════════ -->
+<div id="rplFulfillModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
+    <div class="bg-gradient-to-r from-purple-600 to-purple-500 p-5 flex justify-between items-center">
+      <div>
+        <h3 class="text-white font-bold text-lg">Record Funds Received</h3>
+        <p class="text-purple-200 text-xs mt-0.5" id="rplFulfillSubtitle">Adds the replenishment to today's fund</p>
+      </div>
+      <button onclick="closeRplFulfillModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+    <div class="p-5 space-y-4">
+      <div class="bg-purple-50 rounded-xl p-3 border border-purple-200 text-sm">
+        <div id="rplFulfillInfo" class="text-gray-800 font-medium"></div>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Received (₱) <span class="text-red-400">*</span></label>
+        <input type="number" id="rplFulfillAmount" placeholder="0.00" min="0" step="0.01"
+          class="w-full p-3 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
+        <p class="text-[10px] text-gray-400 mt-1">Defaults to the approved amount — adjust if the actual release differs.</p>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Source / Reason</label>
+        <select id="rplFulfillSource" class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
+          <option value="Head Office Release">Head Office Release</option>
+          <option value="Custodian Top-Up">Custodian Top-Up</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+        <input type="text" id="rplFulfillDesc" placeholder="e.g. Replenishment release from HO"
+          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
+      </div>
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Released By</label>
+        <input type="text" id="rplFulfillBy" placeholder="Name or Department"
+          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
+      </div>
+    </div>
+    <div class="p-4 bg-gray-50 border-t flex gap-3">
+      <input type="hidden" id="rplFulfillId">
+      <button onclick="closeRplFulfillModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[44px]">Cancel</button>
+      <button onclick="confirmRplFulfill()" class="flex-1 py-3 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow transition min-h-[44px]">💾 Record Funds</button>
+    </div>
+  </div>
+</div>
