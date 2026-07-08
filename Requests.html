@@ -173,7 +173,7 @@
     <!-- Header -->
     <div class="bg-gradient-to-r from-indigo-700 to-indigo-600 p-5 flex justify-between items-center shrink-0">
       <div>
-        <h3 class="text-white font-bold text-lg">Settle Request</h3>
+        <h3 class="text-white font-bold text-lg" id="pcrSettleTitle">Settle Request</h3>
         <p class="text-indigo-200 text-xs mt-0.5" id="pcrSettleSubtitle">Record how the cash was spent</p>
       </div>
       <button onclick="closePcrSettleModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
@@ -228,13 +228,13 @@
     <div class="p-4 bg-gray-50 border-t shrink-0">
       <input type="hidden" id="pcrSettleRequestId">
       <!-- Full return: cash was released but nothing was bought (item unavailable) so the whole amount comes back -->
-      <button onclick="confirmPcrReturnFull()"
+      <button onclick="confirmPcrReturnFull()" id="pcrSettleFullReturnBtn"
         class="w-full mb-3 py-2.5 text-sm font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-xl transition min-h-[44px]">
         🔄 Nothing spent — return full amount
       </button>
       <div class="flex gap-3">
         <button onclick="closePcrSettleModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[48px]">Cancel</button>
-        <button onclick="confirmPcrSettle()"
+        <button onclick="confirmPcrSettle()" id="pcrSettleConfirmBtn"
           class="flex-1 py-3 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow transition min-h-[48px]">
           Confirm Settlement
         </button>

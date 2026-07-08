@@ -4012,6 +4012,7 @@ function getPettyCashRequests() {
         if (type === 'PCR_DETAIL' && ref) {
           if (!settlementMap[ref]) settlementMap[ref] = [];
           settlementMap[ref].push({
+            id         : e[0],   // Entry_ID — lets the client edit a settled item
             category   : e[3],
             description: e[4],
             amount     : parseFloat(e[5]) || 0,
@@ -4380,6 +4381,255 @@ function settlePettyCashRequest(data) {
         return {
           success: true,
           warning: 'Settlement saved, but ' + receiptSaveFailures.length + ' receipt(s) failed to record. Check the audit log (RECEIPT_SAVE_FAILED) and reattach those receipts from the entry.',
+          receiptSaveFailures: receiptSaveFailures
+        };
+      }
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function updateSettledPcrSettlement(data) {
+  // data: { requestId, items: [{ id?, category, description, amount, receipt? }], note }
+  // Corrects a settlement AFTER the PCR was marked SETTLED — a mistyped amount,
+  // wrong category/description, a missed or extra item. Items carrying an `id`
+  // update that PCR_DETAIL entry; items without one are added on the original
+  // settlement date; existing entries omitted from `items` are soft-deleted.
+  // The CASH_RETURN / CASH_ADVANCE_REIMBURSEMENT entry is re-derived so
+  // released = spent + returned stays true. Refused once the settlement day is
+  // CLOSED by the auditor — those numbers are final.
+  try {
+    const role = getUserRole();
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Only a cashier or admin can edit a settlement.' };
+    }
+
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const now   = new Date().toISOString();
+    const items = data.items || [];
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== data.requestId) continue;
+      if (rows[i][7] !== 'SETTLED') return { success: false, message: 'Only settled requests can be edited.' };
+      if ((rows[i][4] || 'Expense') === 'Cash Advance') {
+        return { success: false, message: 'Cash Advance liquidations are corrected from the Cash Advances page, not here.' };
+      }
+
+      const reqAmount    = parseFloat(rows[i][3]) || 0;
+      const requestedFor = rows[i][5] || '';
+      const approvedBy   = rows[i][8] || '';
+
+      // ── Locate this settlement's live entries ──
+      const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+      const entryRows  = entrySheet.getDataRange().getValues();
+      const existing   = {};   // entryId -> { row (1-based), date, amount, hasReceipt }
+      let   reconRow   = null; // ACTIVE CASH_RETURN or CASH_ADVANCE_REIMBURSEMENT
+      let   settleDate = '';
+
+      for (let j = 1; j < entryRows.length; j++) {
+        const e = entryRows[j];
+        if (e[7] !== data.requestId) continue;
+        if (e[10] === 'DELETED' || e[10] === 'VOID') continue;
+        if (e[2] === 'PCR_DETAIL') {
+          existing[e[0]] = { row: j + 1, date: normalizeDate(e[1]), amount: parseFloat(e[5]) || 0, hasReceipt: e[6] === 'YES' };
+          if (!settleDate) settleDate = normalizeDate(e[1]);
+        } else if (e[2] === 'CASH_RETURN' || e[2] === 'CASH_ADVANCE_REIMBURSEMENT') {
+          reconRow = { row: j + 1, type: e[2], date: normalizeDate(e[1]) };
+          if (!settleDate) settleDate = normalizeDate(e[1]);
+        }
+      }
+      // Full-return settlements may have had their CASH_RETURN entry removed by a
+      // prior edit; fall back to the PCR's settled timestamp, then today.
+      if (!settleDate) settleDate = normalizeDate(rows[i][14])
+        || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+      // ── Day lock: once the auditor closes the settlement day, its numbers are final ──
+      const sumRows = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
+      for (let s = 1; s < sumRows.length; s++) {
+        if (normalizeDate(sumRows[s][1]) !== settleDate) continue;
+        if ((sumRows[s][13] || '') === 'CLOSED') {
+          return { success: false, message: `The ${settleDate} audit is already closed — this settlement can no longer be edited. Ask the auditor to flag the day first.` };
+        }
+        break;
+      }
+
+      const oldSpent = Object.keys(existing).reduce((s, id) => s + existing[id].amount, 0);
+
+      // Index receipts / no-receipt logs once so per-item syncs don't re-read sheets
+      const rcptSheet = ss.getSheetByName(SHEETS.RECEIPTS);
+      const nrcSheet  = ss.getSheetByName(SHEETS.NO_RECEIPTS);
+      const rcptRowByEntry = {};
+      if (rcptSheet) {
+        const rr = rcptSheet.getDataRange().getValues();
+        for (let j = 1; j < rr.length; j++) if (rr[j][1]) rcptRowByEntry[rr[j][1]] = j + 1;
+      }
+      const nrcRowByEntry = {};
+      if (nrcSheet) {
+        const nr = nrcSheet.getDataRange().getValues();
+        for (let j = 1; j < nr.length; j++) {
+          if (nr[j][1] && !String(nr[j][3] || '').startsWith('[DELETED]')) nrcRowByEntry[nr[j][1]] = j + 1;
+        }
+      }
+
+      // ── Apply item edits ──
+      const keptIds = {};
+      const receiptSaveFailures = [];
+      let newSpent  = 0;
+      let itemCount = 0;
+
+      for (const item of items) {
+        const amt = parseFloat(item.amount) || 0;
+        if (amt <= 0) continue;
+        newSpent += amt;
+        itemCount++;
+
+        const ex = item.id ? existing[item.id] : null;
+        if (ex) {
+          keptIds[item.id] = true;
+          entrySheet.getRange(ex.row, 4, 1, 3).setValues([[
+            item.category    || 'Miscellaneous',
+            item.description || '',
+            amt
+          ]]);
+          entrySheet.getRange(ex.row, 13).setValue(now);
+
+          if (ex.hasReceipt) {
+            // Keep the BIR purchases journal in step with the corrected amount
+            if (Math.abs(amt - ex.amount) > 0.005 && rcptSheet && rcptRowByEntry[item.id]) {
+              const vat = computeVAT(amt);
+              rcptSheet.getRange(rcptRowByEntry[item.id], 8, 1, 3)
+                .setValues([[vat.grossAmount, vat.vatableSales, vat.vatAmount]]);
+            }
+          } else if (item.receipt) {
+            // Receipt attached during the edit — flips Has_Receipt and clears the NRC row
+            const rcptResult = saveReceiptRecord({
+              entryId     : item.id,
+              date        : ex.date,
+              supplierName: item.receipt.supplierName || '',
+              address     : item.receipt.address      || '',
+              tin         : item.receipt.tin          || '',
+              receiptNo   : item.receipt.receiptNo    || '',
+              grossAmount : amt
+            });
+            if (!rcptResult || !rcptResult.success) {
+              receiptSaveFailures.push({ entryId: item.id, supplier: item.receipt.supplierName || '', reason: (rcptResult && rcptResult.message) || 'unknown' });
+              writeAuditLog('RECEIPT_SAVE_FAILED',
+                'Receipt save failed for PCR_DETAIL ' + item.id + ' on ' + data.requestId + ' (settlement edit). Supplier: ' + (item.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+                item.id, settleDate);
+            }
+          } else if (nrcSheet && nrcRowByEntry[item.id]) {
+            // Still no receipt — keep the no-receipt log's description/amount current
+            nrcSheet.getRange(nrcRowByEntry[item.id], 4, 1, 2).setValues([[item.description || '', amt]]);
+          }
+        } else {
+          // New item added during the edit — recorded on the original settlement date
+          const expResult = saveExpenseEntry({
+            date       : settleDate,
+            type       : 'PCR_DETAIL',
+            category   : item.category   || 'Miscellaneous',
+            description: item.description|| '',
+            amount     : amt,
+            hasReceipt : !!item.receipt,
+            referenceNo: data.requestId,
+            requestedBy: requestedFor,
+            approvedBy : approvedBy
+          });
+          if (expResult.success && item.receipt) {
+            const rcptResult = saveReceiptRecord({
+              entryId     : expResult.id,
+              date        : settleDate,
+              supplierName: item.receipt.supplierName || '',
+              address     : item.receipt.address      || '',
+              tin         : item.receipt.tin          || '',
+              receiptNo   : item.receipt.receiptNo    || '',
+              grossAmount : amt
+            });
+            if (!rcptResult || !rcptResult.success) {
+              receiptSaveFailures.push({ entryId: expResult.id, supplier: item.receipt.supplierName || '', reason: (rcptResult && rcptResult.message) || 'unknown' });
+              writeAuditLog('RECEIPT_SAVE_FAILED',
+                'Receipt save failed for PCR_DETAIL ' + expResult.id + ' on ' + data.requestId + ' (settlement edit). Supplier: ' + (item.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+                expResult.id, settleDate);
+            }
+          }
+        }
+      }
+
+      // ── Soft-delete items removed in the edit ──
+      for (const id in existing) {
+        if (keptIds[id]) continue;
+        const ex = existing[id];
+        entrySheet.getRange(ex.row, 11).setValue('DELETED');
+        entrySheet.getRange(ex.row, 13).setValue(now);
+        entrySheet.getRange(ex.row, 15).setValue(`[REMOVED VIA SETTLEMENT EDIT BY ${getUserEmail()} @ ${now}]`);
+        markNoReceiptDeleted(id);
+      }
+
+      // ── Re-derive the cash reconciliation entry ──
+      const change   = parseFloat((reqAmount - newSpent).toFixed(2));
+      const wantType = change > 0 ? 'CASH_RETURN' : change < 0 ? 'CASH_ADVANCE_REIMBURSEMENT' : null;
+      const wantDesc = change > 0
+        ? (newSpent === 0
+            ? `Full amount returned unused from ${data.requestId}`
+            : `Change returned from ${data.requestId}`)
+        : `Overspend reimbursement for ${data.requestId} — spent ₱${newSpent.toFixed(2)} vs released ₱${reqAmount.toFixed(2)}`;
+
+      if (reconRow && reconRow.type === wantType) {
+        entrySheet.getRange(reconRow.row, 5, 1, 2).setValues([[wantDesc, Math.abs(change)]]);
+        entrySheet.getRange(reconRow.row, 13).setValue(now);
+      } else {
+        if (reconRow) {
+          entrySheet.getRange(reconRow.row, 11).setValue('DELETED');
+          entrySheet.getRange(reconRow.row, 13).setValue(now);
+          entrySheet.getRange(reconRow.row, 15).setValue(`[SUPERSEDED BY SETTLEMENT EDIT @ ${now}]`);
+        }
+        if (wantType === 'CASH_RETURN') {
+          saveExpenseEntry({
+            date       : settleDate,
+            type       : 'CASH_RETURN',
+            category   : 'Cash Return',
+            description: wantDesc,
+            amount     : change,
+            hasReceipt : false,
+            referenceNo: data.requestId
+          });
+        } else if (wantType === 'CASH_ADVANCE_REIMBURSEMENT') {
+          saveExpenseEntry({
+            date       : settleDate,
+            type       : 'CASH_ADVANCE_REIMBURSEMENT',
+            category   : 'Cash Advance Reimbursement',
+            description: wantDesc,
+            amount     : Math.abs(change),
+            hasReceipt : false,
+            referenceNo: data.requestId,
+            requestedBy: requestedFor,
+            approvedBy : approvedBy
+          });
+        }
+      }
+
+      // ── Update the PCR's note; settled status and settledAt stay untouched ──
+      sheet.getRange(i + 1, 12).setValue(data.note || '');
+
+      recalculateDailySummary(settleDate);
+      checkReplenishmentThreshold_();
+
+      writeAuditLog('REQUEST_SETTLEMENT_EDITED',
+        `PCR settlement edited by ${getUserEmail()}. Spent: ₱${oldSpent.toFixed(2)} → ₱${newSpent.toFixed(2)} | ` +
+        (change < 0
+          ? `Overspent — reimbursed ₱${Math.abs(change).toFixed(2)} from fund`
+          : `Change: ₱${change.toFixed(2)}`) +
+        ` | Items: ${itemCount}${data.note ? ' | Note: ' + data.note : ''}`,
+        data.requestId, settleDate);
+
+      if (receiptSaveFailures.length) {
+        return {
+          success: true,
+          warning: 'Settlement updated, but ' + receiptSaveFailures.length + ' receipt(s) failed to record. Check the audit log (RECEIPT_SAVE_FAILED) and reattach those receipts from the entry.',
           receiptSaveFailures: receiptSaveFailures
         };
       }

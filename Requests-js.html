@@ -231,6 +231,16 @@ function renderRequestCard(r) {
     }
   }
 
+  // Cashier/Admin: correct a mistyped settlement (amounts, categories, items).
+  // The server refuses once the settlement day is CLOSED by the auditor.
+  if (r.status === 'SETTLED' && r.requestType !== 'Cash Advance' && isCashier()) {
+    actions = `
+      <button onclick="openPcrEditSettleModal('${r.id}')"
+        class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
+        ✏️ Edit Settlement
+      </button>`;
+  }
+
   const approvalLine = r.approvedBy
     ? `<span class="text-gray-400">• ${r.status === 'REJECTED' ? 'Rejected' : 'Approved'} by ${r.approvedBy.split('@')[0]}</span>` : '';
   const rejectionLine = r.rejectionNote
@@ -465,8 +475,38 @@ function openPcrSettleModal(requestId, purpose, amount, date, requestedByName) {
   document.getElementById('pcrSettleNote').value = '';
   document.getElementById('pcrItemsList').innerHTML = '';
   addPcrItem();         // start with one empty row
+  setPcrSettleMode(false);
   updatePcrSummary();
   document.getElementById('pcrSettleModal').classList.remove('hidden');
+}
+
+// Reuses the settlement modal to correct an already-settled request: items are
+// prefilled from the recorded PCR_DETAIL entries (tagged with their entry IDs)
+// and saving goes through updateSettledPcrSettlement instead of settling again.
+function openPcrEditSettleModal(requestId) {
+  const r = allRequests.find(x => x.id === requestId);
+  if (!r) return;
+  _pcrSettleCtx = { requestId, amount: r.amount, date: r.date, purpose: r.purpose, editMode: true };
+  document.getElementById('pcrSettleRequestId').value = requestId;
+  document.getElementById('pcrSettleSubtitle').textContent = 'Correct the recorded settlement';
+  document.getElementById('pcrSettleInfo').innerHTML =
+    `<span class="font-mono font-bold">${fmt(r.amount)}</span> for <strong>${escHtml(r.requestedByName || '—')}</strong>`
+    + ` — <em>${escHtml(r.purpose)}</em> on ${r.date}`;
+  document.getElementById('pcrSettleRequestAmt').textContent = fmt(r.amount);
+  document.getElementById('pcrSettleNote').value = r.rejectionNote || '';
+  const list = document.getElementById('pcrItemsList');
+  list.innerHTML = '';
+  (r.settlementItems || []).forEach(item => addPcrItem(item));
+  if (!list.children.length) addPcrItem();   // full return being converted to a spend
+  setPcrSettleMode(true);
+  updatePcrSummary();
+  document.getElementById('pcrSettleModal').classList.remove('hidden');
+}
+
+function setPcrSettleMode(editMode) {
+  document.getElementById('pcrSettleTitle').textContent = editMode ? 'Edit Settlement' : 'Settle Request';
+  document.getElementById('pcrSettleFullReturnBtn').classList.toggle('hidden', editMode);
+  document.getElementById('pcrSettleConfirmBtn').textContent = editMode ? '💾 Save Changes' : 'Confirm Settlement';
 }
 
 function closePcrSettleModal() {
@@ -474,7 +514,7 @@ function closePcrSettleModal() {
   _pcrSettleCtx = {};
 }
 
-function addPcrItem() {
+function addPcrItem(prefill) {
   const list = document.getElementById('pcrItemsList');
   const idx  = list.children.length;
   const cats = (window.appCategories || ['Office Supplies','Transportation','Meals & Entertainment','Miscellaneous'])
@@ -509,6 +549,30 @@ function addPcrItem() {
       </div>
     </div>`;
   list.appendChild(div);
+
+  // Edit mode: prefill from an existing PCR_DETAIL entry. The entry ID rides on
+  // the row so the server updates that entry instead of creating a new one.
+  if (prefill && prefill.id) {
+    div.dataset.entryId = prefill.id;
+    div.querySelector('.pcr-desc').value = prefill.description || '';
+    div.querySelector('.pcr-amt').value  = prefill.amount;
+    const sel = div.querySelector('.pcr-cat');
+    if (prefill.category && ![...sel.options].some(o => o.value === prefill.category)) {
+      const opt = document.createElement('option');
+      opt.value = opt.textContent = prefill.category;
+      sel.appendChild(opt);
+    }
+    if (prefill.category) sel.value = prefill.category;
+    if (prefill.hasReceipt) {
+      // Receipt already on file — amount corrections update its BIR record
+      // server-side; detaching a filed receipt is not supported here.
+      div.querySelector('.pcr-receipt-btn').classList.add('hidden');
+      const preview = div.querySelector('.pcr-receipt-preview');
+      preview.querySelector('.pcr-receipt-label').textContent = '🧾 Official receipt on file';
+      preview.querySelector('button').classList.add('hidden');
+      preview.classList.remove('hidden');
+    }
+  }
 }
 
 function openPcrItemReceipt(btn) {
@@ -565,6 +629,7 @@ function updatePcrSummary() {
 async function confirmPcrSettle() {
   const requestId = document.getElementById('pcrSettleRequestId').value;
   const note      = document.getElementById('pcrSettleNote').value.trim();
+  const isEdit    = !!_pcrSettleCtx.editMode;
 
   const items = [...document.querySelectorAll('.pcr-item')];
   const entries = [];
@@ -579,7 +644,9 @@ async function confirmPcrSettle() {
     if (!desc) { toast('All items must have a description.', 'warning'); valid = false; break; }
     if (amt <= 0) { toast('All items must have an amount greater than zero.', 'warning'); valid = false; break; }
 
-    entries.push({ category: cat, description: desc, amount: amt, hasReceipt: !!receipt, receipt });
+    const entry = { category: cat, description: desc, amount: amt, hasReceipt: !!receipt, receipt };
+    if (isEdit && item.dataset.entryId) entry.id = item.dataset.entryId;
+    entries.push(entry);
   }
 
   if (!valid) return;
@@ -587,15 +654,17 @@ async function confirmPcrSettle() {
 
   const btn = document.querySelector('#pcrSettleModal button[onclick="confirmPcrSettle()"]');
   btnLoad(btn, true);
-  const res = await callServer('settlePettyCashRequest', { requestId, entries, note });
+  const res = isEdit
+    ? await callServer('updateSettledPcrSettlement', { requestId, items: entries, note })
+    : await callServer('settlePettyCashRequest', { requestId, entries, note });
   btnLoad(btn, false);
 
-  if (!res.success) { toast(res.message || 'Failed to settle request.', 'error'); return; }
+  if (!res.success) { toast(res.message || (isEdit ? 'Failed to update settlement.' : 'Failed to settle request.'), 'error'); return; }
 
   if (res.warning) {
     toast(res.warning, 'warning');
   } else {
-    toast('Request settled successfully.');
+    toast(isEdit ? 'Settlement updated.' : 'Request settled successfully.');
   }
   closePcrSettleModal();
   switchPcrFilter('settled');
