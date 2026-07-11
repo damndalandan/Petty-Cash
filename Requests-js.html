@@ -189,7 +189,7 @@ function renderRequestCard(r) {
         class="flex-1 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
         Approve
       </button>
-      <button onclick="openPcrRejectModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
+      <button onclick="openPcrRejectModal('${r.id}')"
         class="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
         Reject
       </button>`;
@@ -199,7 +199,7 @@ function renderRequestCard(r) {
   // Nothing has been approved or disbursed yet, so the submitter can pull it back.
   if (r.status === 'PENDING_APPROVAL' && r.submittedBy === state.userEmail) {
     actions += `
-      <button onclick="openPcrCancelModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
+      <button onclick="openPcrCancelModal('${r.id}')"
         class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold rounded-xl border border-gray-200 transition min-h-[44px]">
         Cancel Request
       </button>`;
@@ -218,7 +218,7 @@ function renderRequestCard(r) {
   // Appended so an Admin (who is also a cashier) keeps the Release button too.
   if (r.status === 'APPROVED' && isAdmin()) {
     actions += `
-      <button onclick="openPcrVoidModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
+      <button onclick="openPcrVoidModal('${r.id}')"
         class="flex-1 py-2.5 bg-gray-600 hover:bg-gray-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
         Void
       </button>`;
@@ -236,7 +236,7 @@ function renderRequestCard(r) {
       }
     } else {
       actions = `
-        <button onclick="openPcrSettleModal('${r.id}','${escHtml(r.purpose)}',${r.amount},'${r.date}','${escHtml(r.requestedByName || '')}')"
+        <button onclick="openPcrSettleModal('${r.id}')"
           class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
           ✅ Settle
         </button>`;
@@ -391,9 +391,11 @@ async function approveRequest(btn, requestId) {
   loadRequests();
 }
 
-function openPcrRejectModal(requestId, purpose, amountStr) {
+function openPcrRejectModal(requestId) {
+  const r = allRequests.find(x => x.id === requestId);
+  if (!r) return;
   document.getElementById('pcrRejectId').value   = requestId;
-  document.getElementById('pcrRejectInfo').textContent = `${purpose} — ${amountStr}`;
+  document.getElementById('pcrRejectInfo').textContent = `${r.purpose} — ${fmt(r.amount)}`;
   document.getElementById('pcrRejectNote').value  = '';
   document.getElementById('pcrRejectModal').classList.remove('hidden');
 }
@@ -419,9 +421,11 @@ async function confirmPcrReject() {
 
 // ── Void (admin, approved-but-not-released) ───
 
-function openPcrVoidModal(requestId, purpose, amountStr) {
+function openPcrVoidModal(requestId) {
+  const r = allRequests.find(x => x.id === requestId);
+  if (!r) return;
   document.getElementById('pcrVoidId').value = requestId;
-  document.getElementById('pcrVoidInfo').textContent = `${purpose} — ${amountStr}`;
+  document.getElementById('pcrVoidInfo').textContent = `${r.purpose} — ${fmt(r.amount)}`;
   document.getElementById('pcrVoidNote').value = '';
   document.getElementById('pcrVoidModal').classList.remove('hidden');
 }
@@ -447,9 +451,11 @@ async function confirmPcrVoid() {
 
 // ── Cancel (cashier — own request, still pending approval) ─
 
-function openPcrCancelModal(requestId, purpose, amountStr) {
+function openPcrCancelModal(requestId) {
+  const r = allRequests.find(x => x.id === requestId);
+  if (!r) return;
   document.getElementById('pcrCancelId').value = requestId;
-  document.getElementById('pcrCancelInfo').textContent = `${purpose} — ${amountStr}`;
+  document.getElementById('pcrCancelInfo').textContent = `${r.purpose} — ${fmt(r.amount)}`;
   document.getElementById('pcrCancelModal').classList.remove('hidden');
 }
 
@@ -500,14 +506,17 @@ async function confirmPcrRelease() {
 
 // ── Settlement Modal ──────────────────────────
 
-function openPcrSettleModal(requestId, purpose, amount, date, requestedByName) {
-  _pcrSettleCtx = { requestId, amount: parseFloat(amount) || 0, date, purpose };
+function openPcrSettleModal(requestId) {
+  const r = allRequests.find(x => x.id === requestId);
+  if (!r) return;
+  const purpose = r.purpose;
+  _pcrSettleCtx = { requestId, amount: parseFloat(r.amount) || 0, date: r.date, purpose };
   document.getElementById('pcrSettleRequestId').value = requestId;
   document.getElementById('pcrSettleSubtitle').textContent = purpose;
   document.getElementById('pcrSettleInfo').innerHTML =
-    `<span class="font-mono font-bold">${fmt(amount)}</span> for <strong>${escHtml(requestedByName || '—')}</strong>`
-    + ` — <em>${escHtml(purpose)}</em> on ${date}`;
-  document.getElementById('pcrSettleRequestAmt').textContent = fmt(amount);
+    `<span class="font-mono font-bold">${fmt(r.amount)}</span> for <strong>${escHtml(r.requestedByName || '—')}</strong>`
+    + ` — <em>${escHtml(purpose)}</em> on ${r.date}`;
+  document.getElementById('pcrSettleRequestAmt').textContent = fmt(r.amount);
   document.getElementById('pcrSettleNote').value = '';
   document.getElementById('pcrItemsList').innerHTML = '';
   addPcrItem();         // start with one empty row
