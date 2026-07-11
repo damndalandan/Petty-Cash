@@ -37,7 +37,7 @@ function updatePcrCards() {
   const approved = allRequests.filter(r => r.status === 'APPROVED').length;
   const released = allRequests.filter(r => r.status === 'RELEASED').length;
   const settled  = allRequests.filter(r => r.status === 'SETTLED' && (r.settledAt || '').slice(0, 10) === today).length;
-  const rejected = allRequests.filter(r => ['REJECTED', 'VOIDED'].includes(r.status)).length;
+  const rejected = allRequests.filter(r => ['REJECTED', 'VOIDED', 'CANCELLED'].includes(r.status)).length;
 
   const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
   set('pcr-count-pending',  pending);
@@ -117,7 +117,7 @@ function renderRequests() {
     approved: r => r.status === 'APPROVED',
     released: r => r.status === 'RELEASED',
     settled : r => r.status === 'SETTLED'  && (r.settledAt || '').slice(0, 10) === today,
-    rejected: r => ['REJECTED', 'VOIDED'].includes(r.status),
+    rejected: r => ['REJECTED', 'VOIDED', 'CANCELLED'].includes(r.status),
   };
   const filtered = allRequests.filter(filterMap[currentPcrFilter] || filterMap.active);
 
@@ -145,7 +145,8 @@ function renderRequestCard(r) {
     RELEASED        : 'bg-blue-100 text-blue-700',
     SETTLED         : 'bg-slate-100 text-slate-600',
     REJECTED        : 'bg-red-100 text-red-600',
-    VOIDED          : 'bg-gray-200 text-gray-600'
+    VOIDED          : 'bg-gray-200 text-gray-600',
+    CANCELLED       : 'bg-gray-200 text-gray-600'
   };
   const statusLabels = {
     PENDING_APPROVAL: 'Pending Approval',
@@ -153,7 +154,8 @@ function renderRequestCard(r) {
     RELEASED        : 'Released',
     SETTLED         : 'Settled',
     REJECTED        : 'Rejected',
-    VOIDED          : 'Voided'
+    VOIDED          : 'Voided',
+    CANCELLED       : 'Cancelled'
   };
 
   const typeBadge = r.requestType === 'Cash Advance'
@@ -190,6 +192,16 @@ function renderRequestCard(r) {
       <button onclick="openPcrRejectModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
         class="flex-1 py-2.5 bg-red-500 hover:bg-red-600 text-white text-sm font-bold rounded-xl shadow transition min-h-[44px]">
         Reject
+      </button>`;
+  }
+
+  // Cashier: cancel your own request while it is still awaiting approval.
+  // Nothing has been approved or disbursed yet, so the submitter can pull it back.
+  if (r.status === 'PENDING_APPROVAL' && r.submittedBy === state.userEmail) {
+    actions += `
+      <button onclick="openPcrCancelModal('${r.id}','${escHtml(r.purpose)}','${fmt(r.amount)}')"
+        class="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 text-sm font-bold rounded-xl border border-gray-200 transition min-h-[44px]">
+        Cancel Request
       </button>`;
   }
 
@@ -430,6 +442,30 @@ async function confirmPcrVoid() {
   if (!res.success) { toast(res.message || 'Failed to void.', 'error'); return; }
   toast('Request voided.');
   closePcrVoidModal();
+  loadRequests();
+}
+
+// ── Cancel (cashier — own request, still pending approval) ─
+
+function openPcrCancelModal(requestId, purpose, amountStr) {
+  document.getElementById('pcrCancelId').value = requestId;
+  document.getElementById('pcrCancelInfo').textContent = `${purpose} — ${amountStr}`;
+  document.getElementById('pcrCancelModal').classList.remove('hidden');
+}
+
+function closePcrCancelModal() {
+  document.getElementById('pcrCancelModal').classList.add('hidden');
+}
+
+async function confirmPcrCancel() {
+  const requestId = document.getElementById('pcrCancelId').value;
+  const btn = document.querySelector('#pcrCancelModal button[onclick="confirmPcrCancel()"]');
+  btnLoad(btn, true);
+  const res = await callServer('cancelPettyCashRequest', requestId);
+  btnLoad(btn, false);
+  if (!res.success) { toast(res.message || 'Failed to cancel request.', 'error'); return; }
+  toast('Request cancelled.');
+  closePcrCancelModal();
   loadRequests();
 }
 

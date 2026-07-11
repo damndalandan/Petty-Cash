@@ -4041,10 +4041,10 @@ function getPettyCashRequests() {
       // cashier needs to release/settle them). Admin/Auditor see all.
       if (!isPrivileged) {
         const submittedByMe = r[6] === email;
-        // Terminal/no-action states (rejected, voided) are only shown to the
-        // cashier who submitted them — so she can see the reason and avoid
+        // Terminal/no-action states (rejected, voided, cancelled) are only shown
+        // to the cashier who submitted them — so she can see the reason and avoid
         // re-requesting — never surfaced as "needs action" to other cashiers.
-        const needsCashierAction = !['PENDING_APPROVAL', 'REJECTED', 'VOIDED'].includes(r[7]);
+        const needsCashierAction = !['PENDING_APPROVAL', 'REJECTED', 'VOIDED', 'CANCELLED'].includes(r[7]);
         if (!submittedByMe && !needsCashierAction) continue;
       }
       const requestType = r[4] || 'Expense';
@@ -4175,6 +4175,42 @@ function voidPettyCashRequest(data) {
       writeAuditLog('REQUEST_VOIDED',
         `PCR voided for ${rows[i][5]} by ${email}. Type: ${rows[i][4]} | Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)} | Reason: ${data.note || '—'}`,
         data.requestId, normalizeDate(rows[i][1]));
+
+      return { success: true };
+    }
+    return { success: false, message: 'Request not found.' };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function cancelPettyCashRequest(requestId) {
+  // Cashier cancels their own request while it is still awaiting approval.
+  // No approval has happened and no cash has been disbursed, so this simply
+  // marks the request CANCELLED. Only the submitter may cancel, and only while
+  // the request is still PENDING_APPROVAL — once approved, an Admin must void it.
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    const rows  = sheet.getDataRange().getValues();
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== requestId) continue;
+      if (rows[i][6] !== email) {
+        return { success: false, message: 'You can only cancel your own requests.' };
+      }
+      if (rows[i][7] !== 'PENDING_APPROVAL') {
+        return { success: false, message: 'Only requests still awaiting approval can be cancelled.' };
+      }
+      const row = i + 1;
+      sheet.getRange(row, 8).setValue('CANCELLED');   // Status
+      sheet.getRange(row, 15).setValue(now);          // Updated_At
+
+      writeAuditLog('REQUEST_CANCELLED',
+        `PCR cancelled by submitter ${email}. Type: ${rows[i][4]} | Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
+        requestId, normalizeDate(rows[i][1]));
 
       return { success: true };
     }
