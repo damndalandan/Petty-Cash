@@ -35,9 +35,10 @@
                     <span id="reportAuditStatusBadge" class="hidden text-[10px] font-bold px-2.5 py-1 rounded-full"></span>
                   </div>
                   <div class="flex flex-wrap gap-3 mt-1.5 text-sm">
-                     <div><span class="text-gray-500 block text-[10px] uppercase">Opening</span><span class="font-mono font-bold text-sm" id="d-opening">₱0.00</span></div>
-                     <div><span class="text-gray-500 block text-[10px] uppercase">Expenses</span><span class="font-mono font-bold text-red-600 text-sm" id="d-expenses">₱0.00</span></div>
-                     <div><span class="text-gray-500 block text-[10px] uppercase">Closing</span><span class="font-mono font-bold text-green-600 text-sm" id="d-closing">₱0.00</span></div>
+                     <div title="Cash counted at the start of the day"><span class="text-gray-500 block text-[10px] uppercase">Opening</span><span class="font-mono font-bold text-sm" id="d-opening">₱0.00</span></div>
+                     <div title="Cash that physically moved today (released − returned). Opening − Net Cash Out = Closing, before variance"><span class="text-gray-500 block text-[10px] uppercase" id="d-net-label">Net Cash Out</span><span class="font-mono font-bold text-orange-600 text-sm" id="d-net">₱0.00</span></div>
+                     <div title="Cash counted at the end of the day"><span class="text-gray-500 block text-[10px] uppercase">Closing</span><span class="font-mono font-bold text-green-600 text-sm" id="d-closing">₱0.00</span></div>
+                     <div title="Spending recognized on the day a request is settled — can include cash released on an earlier day, so it is NOT Opening minus Closing"><span class="text-gray-500 block text-[10px] uppercase">Settled Expenses</span><span class="font-mono font-bold text-red-600 text-sm" id="d-expenses">₱0.00</span></div>
                   </div>
                </div>
                <div class="text-right shrink-0">
@@ -73,10 +74,13 @@
             <!-- Footer Totals -->
             <div class="px-3 py-3 border-t border-gray-200 bg-gray-50 flex justify-between items-center gap-2">
                <div>
-                  <span class="text-xs font-bold text-gray-500 uppercase">Expenses Total</span>
-                  <div class="text-[10px] text-gray-400 italic hidden sm:block">Excludes advances, overages &amp; replenishments</div>
+                  <span class="text-xs font-bold text-gray-500 uppercase" id="detailTotalLabel">Expenses Total</span>
+                  <div class="text-[10px] text-gray-400 italic hidden sm:block" id="detailTotalCaption">Actual spending only — excludes open releases, overages &amp; replenishments</div>
                </div>
-               <span class="font-bold font-mono text-base text-gray-800" id="detailDisplayedTotal">₱0.00</span>
+               <div class="text-right">
+                  <span class="font-bold font-mono text-base text-gray-800" id="detailDisplayedTotal">₱0.00</span>
+                  <div class="text-[10px] text-amber-600 font-mono hidden" id="detailPendingNote"></div>
+               </div>
             </div>
          </div>
       </div>

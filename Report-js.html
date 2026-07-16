@@ -176,13 +176,32 @@ function showReportDetail(dateStr) {
     document.getElementById('d-expenses').textContent = fmt(summary.expenses);
     document.getElementById('d-closing').textContent  = fmt(summary.closing);
 
+    // Net cash movement: on closed days derive it from the audited figures
+    // (closing − variance = expected, so opening − expected = net out);
+    // on open days compute it live from the day's entries.
+    const isClosedDay = summary.status && summary.status !== 'OPEN';
+    const net = isClosedDay
+      ? (parseFloat(summary.opening) || 0) - ((parseFloat(summary.closing) || 0) - (parseFloat(summary.variance) || 0))
+      : computeNetCashMovement(dateStr);
+    const netEl    = document.getElementById('d-net');
+    const netLabel = document.getElementById('d-net-label');
+    if (net >= -0.005) {
+      netLabel.textContent = 'Net Cash Out' + (isClosedDay ? '' : ' (so far)');
+      netEl.textContent = fmt(net);
+      netEl.className = 'font-mono font-bold text-orange-600 text-sm';
+    } else {
+      netLabel.textContent = 'Net Cash In' + (isClosedDay ? '' : ' (so far)');
+      netEl.textContent = fmt(-net);
+      netEl.className = 'font-mono font-bold text-teal-600 text-sm';
+    }
+
     const v   = summary.variance || 0;
     const elV = document.getElementById('d-variance');
     elV.textContent = fmt(v);
     elV.className   = 'text-xl font-mono font-bold ' +
       (v < -0.01 ? 'text-red-600' : v > 0.01 ? 'text-blue-600' : 'text-gray-400');
   } else {
-    ['d-opening','d-expenses','d-closing','d-variance'].forEach(id => {
+    ['d-opening','d-expenses','d-closing','d-variance','d-net'].forEach(id => {
       document.getElementById(id).textContent = '---';
     });
   }
@@ -211,11 +230,11 @@ function resetReportDetailView() {
   document.getElementById('reportDetailEmpty').classList.remove('hidden');
 
   // Clear all summary fields so stale data never shows on re-open
-  ['d-opening','d-expenses','d-closing','d-variance'].forEach(id => {
+  ['d-opening','d-expenses','d-closing','d-variance','d-net'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.textContent = '---';
-      el.className = el.className.replace(/text-(red|blue|green|gray)-\d+/g, 'text-gray-400');
+      el.className = el.className.replace(/text-(red|blue|green|gray|orange|teal)-\d+/g, 'text-gray-400');
     }
   });
 
@@ -223,9 +242,13 @@ function resetReportDetailView() {
   const tbody = document.getElementById('detailListBody');
   if (tbody) tbody.innerHTML = '';
 
-  // Reset displayed total
+  // Reset displayed total + footer label/note
   const totalEl = document.getElementById('detailDisplayedTotal');
   if (totalEl) totalEl.textContent = '₱0.00';
+  const noteEl = document.getElementById('detailPendingNote');
+  if (noteEl) noteEl.classList.add('hidden');
+  const labelEl = document.getElementById('detailTotalLabel');
+  if (labelEl) labelEl.textContent = 'Expenses Total';
 
   // Reset detail date label
   const dateEl = document.getElementById('detailDate');
@@ -239,6 +262,46 @@ function resetReportDetailView() {
       ? 'px-4 py-2 text-sm font-medium border-b-2 border-blue-600 text-blue-600 transition whitespace-nowrap'
       : 'px-4 py-2 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition whitespace-nowrap';
   });
+}
+
+// Net cash that physically moved on a date, from the month's entries.
+// Mirrors the server's expected-closing formula (recalculateDailySummary):
+// out = plain expenses + advances/releases + overspend reimbursements;
+// in  = returns + overages + replenishments. Detail rows (PCR_DETAIL /
+// LIQ_DETAIL) document an already-released advance and move no cash.
+function computeNetCashMovement(dateStr) {
+  const OUT = ['EXPENSE', 'CASH_ADVANCE', 'PCR_ADVANCE', 'CASH_ADVANCE_REIMBURSEMENT'];
+  const IN  = ['CASH_RETURN', 'CASH_OVER', 'REPLENISHMENT'];
+  let net = 0;
+  (currentReportMonthData.entries || []).forEach(e => {
+    if (e.date !== dateStr) return;
+    const amt = parseFloat(e.amount) || 0;
+    if (OUT.includes(e.type))     net += amt;
+    else if (IN.includes(e.type)) net -= amt;
+  });
+  return net;
+}
+
+// Footer label/total scope per tab, so the caption always matches the math
+function updateDetailFooter(total, pendingReleased) {
+  const byFilter = {
+    advance  : ['Advances Total',      'Cash released as advances'],
+    over     : ['Overage Total',       'Excess cash found and added to the drawer'],
+    replenish: ['Replenishment Total', 'Funds received into the drawer'],
+  };
+  const [label, caption] = byFilter[currentDetailFilter] ||
+    ['Expenses Total', 'Actual spending only — excludes open releases, overages & replenishments'];
+  document.getElementById('detailTotalLabel').textContent   = label;
+  document.getElementById('detailTotalCaption').textContent = caption;
+  document.getElementById('detailDisplayedTotal').textContent = fmt(total);
+
+  const noteEl = document.getElementById('detailPendingNote');
+  if (pendingReleased > 0.005) {
+    noteEl.textContent = '+ ' + fmt(pendingReleased) + ' released · awaiting settlement';
+    noteEl.classList.remove('hidden');
+  } else {
+    noteEl.classList.add('hidden');
+  }
 }
 
 // Track expanded advances in report view
@@ -272,7 +335,7 @@ function renderDetailList() {
   const tbody = document.getElementById('detailListBody');
   if (entries.length === 0) {
     tbody.innerHTML = '<tr><td colspan="3" class="px-6 py-8 text-center text-gray-400 italic">No entries found</td></tr>';
-    document.getElementById('detailDisplayedTotal').textContent = fmt(0);
+    updateDetailFooter(0, 0);
     return;
   }
 
@@ -292,12 +355,21 @@ function renderDetailList() {
     if (subs.length) pcrSubMap[adv.id] = subs;
   });
 
+  // Footer scope: on the single-type tabs the total is simply that type's sum.
+  // On all/receipt/noreceipt it is actual spending only (label must stay true):
+  // plain expenses + what settled releases/advances really cost. Cash released
+  // but not yet settled is reported separately, not counted as an expense.
+  const singleTypeTab = { advance: 'CASH_ADVANCE', over: 'CASH_OVER', replenish: 'REPLENISHMENT' }[currentDetailFilter];
   let total = 0;
+  let pendingReleased = 0;
   const rows = [];
 
   entries.forEach(e => {
-    if (['EXPENSE','CASH_OVER','REPLENISHMENT','CASH_ADVANCE'].includes(e.type)) {
-      total += (parseFloat(e.amount) || 0);
+    const amt = parseFloat(e.amount) || 0;
+    if (singleTypeTab) {
+      if (e.type === singleTypeTab) total += amt;
+    } else if (e.type === 'EXPENSE') {
+      total += amt;
     }
 
     const isAdvance = e.type === 'CASH_ADVANCE';
@@ -315,7 +387,15 @@ function renderDetailList() {
       ? detailTotal
       : (parseFloat(e.amount) || 0) - (pcrCashRet ? parseFloat(pcrCashRet.amount) : 0);
 
-    if (isPcrRelease) total += isPcrSettled ? pcrSpent : (parseFloat(e.amount) || 0);
+    if (!singleTypeTab) {
+      if (isPcrRelease) {
+        if (isPcrSettled) total += pcrSpent;
+        else              pendingReleased += amt;
+      } else if (isAdvance) {
+        if (isLiquidated) total += (e.liqBreakdown && parseFloat(e.liqBreakdown.totalSpent)) || amt;
+        else              pendingReleased += amt;
+      }
+    }
 
     // Finalized sub-entries (LIQ_DETAIL rows)
     const liqSubs = liqDetailMap[e.id] || [];
@@ -487,6 +567,6 @@ function renderDetailList() {
   });
 
   tbody.innerHTML = rows.join('');
-  document.getElementById('detailDisplayedTotal').textContent = fmt(total);
+  updateDetailFooter(total, pendingReleased);
 }
 </script>
