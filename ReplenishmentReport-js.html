@@ -6,6 +6,11 @@
 let rrData = null;
 let rrDetailedActive = false; // State for fused table view
 
+// Opening top-up date of the period on screen. '' means "whatever the server
+// considers live" — so the very first load, and any load after a fresh top-up,
+// lands on the current cycle.
+let rrSelectedPeriod = '';
+
 // Category drill-down modal state
 let rrModalEntries  = [];   // entries for the clicked category
 let rrModalFiltered = [];   // after search filter
@@ -20,12 +25,16 @@ const RR_COLORS = [
   '#ec4899','#6b7280'
 ];
 
-async function loadReplenishReport() {
+// periodFrom: opening top-up date to report on. Omit to reload whatever is
+// already on screen (Refresh, page navigation).
+async function loadReplenishReport(periodFrom) {
+  if (periodFrom !== undefined) rrSelectedPeriod = periodFrom || '';
+
   document.getElementById('rrEmpty').classList.add('hidden');
   document.getElementById('rrContent').classList.add('hidden');
   document.getElementById('rrLoading').classList.remove('hidden');
 
-  const res = await callServer('getReplenishmentPeriodReport');
+  const res = await callServer('getReplenishmentPeriodReport', { periodFrom: rrSelectedPeriod });
 
   document.getElementById('rrLoading').classList.add('hidden');
 
@@ -36,12 +45,61 @@ async function loadReplenishReport() {
   }
 
   if (!res.data || !res.data.dailyRows || res.data.dailyRows.length === 0) {
+    // Still fill the picker — an empty period must not strand you with no way
+    // back to a period that does have data.
+    if (res.data) {
+      rrData = res.data;
+      rrSelectedPeriod = res.data.periodFrom || '';
+      rrRenderPeriodPicker(res.data);
+    }
     document.getElementById('rrEmpty').classList.remove('hidden');
     return;
   }
 
   rrData = res.data;
+  rrSelectedPeriod = res.data.periodFrom || '';
   renderReplenishReport(rrData);
+}
+
+// ── Period picker ──
+function rrRenderPeriodPicker(d) {
+  const sel = document.getElementById('rrPeriodSelect');
+  if (!sel) return;
+
+  const periods = d.periods || [];
+  if (periods.length <= 1) {
+    // Nothing to navigate to — hide the control rather than show a dead dropdown.
+    document.getElementById('rrPeriodPicker').classList.add('hidden');
+    return;
+  }
+  document.getElementById('rrPeriodPicker').classList.remove('hidden');
+
+  const shortDate = (s) => new Date(s + 'T00:00:00')
+    .toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  sel.innerHTML = periods.map(p => {
+    const tag   = p.isCurrent ? ' • Current' : '';
+    const topUp = p.openingTopUp > 0 ? ` — ${fmt(p.openingTopUp)} top-up` : '';
+    return `<option value="${p.from}">${shortDate(p.from)} → ${shortDate(p.to)}${topUp}${tag}</option>`;
+  }).join('');
+
+  sel.value = d.periodFrom;
+  const i = sel.selectedIndex;
+  // periods arrive newest-first, so "older" walks down the list.
+  document.getElementById('rrNewerBtn').disabled = i <= 0;
+  document.getElementById('rrOlderBtn').disabled = i >= periods.length - 1;
+
+  const badge = document.getElementById('rrHistoricalBadge');
+  badge.classList.toggle('hidden', !!d.isCurrentPeriod);
+  badge.classList.toggle('flex',   !d.isCurrentPeriod);
+}
+
+function rrShiftPeriod(delta) {
+  const sel = document.getElementById('rrPeriodSelect');
+  const i   = sel.selectedIndex + delta;   // +1 = older, -1 = newer
+  if (i < 0 || i >= sel.options.length) return;
+  sel.selectedIndex = i;
+  loadReplenishReport(sel.value);
 }
 
 function toggleRrDetails() {
@@ -73,6 +131,8 @@ function renderReplenishReport(d) {
   const btn = document.getElementById('btn-rrDetails');
   if (btn) btn.className = "px-3 py-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 text-[10px] font-bold rounded-lg shadow-sm transition flex items-center gap-1.5";
   document.getElementById('rrDetailsLabel').textContent = 'Show Details';
+
+  rrRenderPeriodPicker(d);
 
   // ── Period Banner ──
   const fromDate = new Date(d.periodFrom + 'T00:00:00');

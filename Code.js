@@ -152,6 +152,17 @@ function normalizeDate(val) {
 }
 
 /**
+ * Shifts a YYYY-MM-DD string by whole days and returns the same format.
+ * Used to close a replenishment period on the day before the next top-up.
+ */
+function shiftDate_(dateStr, days) {
+  const d = new Date(String(dateStr) + 'T00:00:00');
+  if (isNaN(d.getTime())) return dateStr;
+  d.setDate(d.getDate() + days);
+  return normalizeDate(d);
+}
+
+/**
  * Generates a human-readable, date-based ID with daily incrementing counter.
  *
  * Format: PREFIX-MMMDDYY-NN
@@ -3130,7 +3141,11 @@ function getSummaryReportData(params) {
 // ─────────────────────────────────────────────
 // REPLENISHMENT PERIOD REPORT
 // ─────────────────────────────────────────────
-function getReplenishmentPeriodReport() {
+// params (optional): { periodFrom: 'YYYY-MM-DD' } — the opening top-up date of
+// the period to report on. Omitted (or unknown) means the live period, so every
+// existing no-argument caller — dashboard banner, threshold watch, request
+// snapshot — keeps its exact previous behaviour.
+function getReplenishmentPeriodReport(params) {
   try {
     const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
@@ -3143,6 +3158,7 @@ function getReplenishmentPeriodReport() {
     // period and understate Total_Disbursed on the next company request. Its
     // amount still counts toward totalReplenishment and cash on hand below.
     const replenishDates = [];
+    const topUpByDate    = {};   // date -> company top-up total, for the period picker
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
       const type   = row[2];
@@ -3151,29 +3167,62 @@ function getReplenishmentPeriodReport() {
       if (type !== 'REPLENISHMENT' || status === 'DELETED') continue;
       if (String(row[3] || '').trim() === PERSONAL_REPAY_CATEGORY) continue;
       if (!replenishDates.includes(date)) replenishDates.push(date);
+      topUpByDate[date] = (topUpByDate[date] || 0) + (parseFloat(row[5]) || 0);
     }
     replenishDates.sort();
 
-    // ── Determine period start ──
-    // If 2+ replenishments: period starts day AFTER the second-to-last one
-    // If only 1: period starts from the earliest summary date
-    // If none: show everything
     const sumData = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
-    let fromStr = null;
 
-    if (replenishDates.length >= 1) {
-      fromStr = replenishDates[replenishDates.length - 1]; // Start ON the day of the last replenishment
-    } else {
-      const dates = [];
-      for (let i = 1; i < sumData.length; i++) {
-        const d = normalizeDate(sumData[i][1]);
-        if (d) dates.push(d);
-      }
-      dates.sort();
-      fromStr = dates[0] || today;
+    // Earliest day the fund has any record of — the floor for the oldest period.
+    let earliestDay = '';
+    for (let i = 1; i < sumData.length; i++) {
+      const d = normalizeDate(sumData[i][1]);
+      if (d && (!earliestDay || d < earliestDay)) earliestDay = d;
     }
 
-    const toStr = today;
+    // ── Build every selectable period ──
+    // A period opens ON a top-up date and runs to the day BEFORE the next
+    // top-up; only the newest stays open through today. The boundary day
+    // belongs to the period its own top-up opens, so periods never overlap
+    // and a day's spend can never be reported twice.
+    const periods = [];
+    if (replenishDates.length >= 1) {
+      // Spend recorded before the fund was ever topped up is still a real cycle
+      // — without this it would be unreachable from the picker.
+      if (earliestDay && earliestDay < replenishDates[0]) {
+        periods.push({
+          from        : earliestDay,
+          to          : shiftDate_(replenishDates[0], -1),
+          isCurrent   : false,
+          openingTopUp: 0
+        });
+      }
+      for (let i = 0; i < replenishDates.length; i++) {
+        const isLast = i === replenishDates.length - 1;
+        periods.push({
+          from        : replenishDates[i],
+          to          : isLast ? today : shiftDate_(replenishDates[i + 1], -1),
+          isCurrent   : isLast,
+          openingTopUp: topUpByDate[replenishDates[i]] || 0
+        });
+      }
+    } else {
+      // Nothing has ever been replenished — everything on file is one open period.
+      periods.push({ from: earliestDay || today, to: today, isCurrent: true, openingTopUp: 0 });
+    }
+
+    // Default to the live period; an unrecognised periodFrom falls back to it
+    // rather than erroring, so a stale bookmark still renders something useful.
+    let selected = periods.length - 1;
+    const wanted = (params && params.periodFrom) ? String(params.periodFrom) : '';
+    if (wanted) {
+      const idx = periods.findIndex(p => p.from === wanted);
+      if (idx !== -1) selected = idx;
+    }
+
+    const fromStr         = periods[selected].from;
+    const toStr           = periods[selected].to;
+    const isCurrentPeriod = periods[selected].isCurrent;
 
     // ── Collect all entries in period ──
     let totalExpenses       = 0;
@@ -3319,6 +3368,9 @@ function getReplenishmentPeriodReport() {
       data: {
         periodFrom         : fromStr,
         periodTo           : toStr,
+        isCurrentPeriod,
+        // Newest first — the order the period picker lists them in.
+        periods            : periods.slice().reverse(),
         fundCeiling        : FUND_CEILING,
         totalExpenses,
         totalReplenishment,

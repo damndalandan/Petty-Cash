@@ -14,16 +14,38 @@
       </button>
     </div>
 
-    <!-- Reporting Period Badge -->
-    <div id="rrHeaderPeriod" class="flex items-center gap-3 px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl self-start">
-      <div class="flex flex-col">
-        <span class="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Reporting Period</span>
-        <span class="text-sm font-bold text-blue-700 font-mono" id="rr-periodLabel">—</span>
+    <!-- Period picker + Reporting Period Badge -->
+    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+
+      <!-- Period picker — ← steps back to older replenishment cycles -->
+      <div id="rrPeriodPicker" class="flex items-center gap-1.5 self-start">
+        <button onclick="rrShiftPeriod(1)" id="rrOlderBtn" title="Older period"
+          class="px-2.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 text-xs font-bold rounded-lg shadow-sm transition disabled:opacity-30 disabled:cursor-not-allowed min-h-[40px]">←</button>
+        <select id="rrPeriodSelect" onchange="loadReplenishReport(this.value)"
+          class="px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold text-gray-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-400 min-h-[40px] max-w-[280px] sm:max-w-none"></select>
+        <button onclick="rrShiftPeriod(-1)" id="rrNewerBtn" title="Newer period"
+          class="px-2.5 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 text-xs font-bold rounded-lg shadow-sm transition disabled:opacity-30 disabled:cursor-not-allowed min-h-[40px]">→</button>
       </div>
-      <div class="w-px h-6 bg-blue-100 mx-1"></div>
-      <div class="flex flex-col items-end">
-        <span class="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Days</span>
-        <span class="text-sm font-black font-mono text-blue-600" id="rr-dayCount">—</span>
+
+      <div id="rrHeaderPeriod" class="flex items-center gap-3 px-4 py-2.5 bg-blue-50/50 border border-blue-100 rounded-xl self-start">
+        <div class="flex flex-col">
+          <span class="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Reporting Period</span>
+          <span class="text-sm font-bold text-blue-700 font-mono" id="rr-periodLabel">—</span>
+        </div>
+        <div class="w-px h-6 bg-blue-100 mx-1"></div>
+        <div class="flex flex-col items-end">
+          <span class="text-[9px] font-bold text-blue-400 uppercase tracking-wider mb-0.5">Days</span>
+          <span class="text-sm font-black font-mono text-blue-600" id="rr-dayCount">—</span>
+        </div>
+      </div>
+
+      <!-- Only shown on closed periods, where the fund figures are a reconstruction -->
+      <div id="rrHistoricalBadge" class="hidden items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl self-start">
+        <span class="text-sm">🗄️</span>
+        <div class="flex flex-col">
+          <span class="text-[10px] font-bold text-amber-800 uppercase tracking-wider">Closed period</span>
+          <span class="text-[9px] text-amber-600">Fund figures rebuilt from today's records</span>
+        </div>
       </div>
     </div>
   </div>
@@ -194,7 +216,7 @@
     .rr-detail-row { display: table-row !important; visibility: visible !important; }
     
     /* Hide interactive elements */
-    button, [onclick], #btn-rrDetails, #rrHeaderPeriod, .pb-4.border-b { display: none !important; }
+    button, [onclick], #btn-rrDetails, #rrHeaderPeriod, #rrPeriodPicker, .pb-4.border-b { display: none !important; }
 
     /* …but the category rows are content, not controls — they only carry an
        onclick to open the drill-down, so keep them on paper. */
