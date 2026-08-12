@@ -1,0 +1,168 @@
+<!-- PERSONAL EXPENSES PAGE (Admin only) -->
+<div id="page-personalexpenses" class="page-view hidden space-y-4">
+
+  <!-- Page Header -->
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center pb-3 border-b border-gray-200 gap-2">
+    <div>
+      <h1 class="text-xl md:text-3xl font-bold text-gray-800 font-display">Personal Expenses</h1>
+      <p class="text-xs text-gray-500 mt-0.5">Petty cash drawn for personal use, and what is still owed back to the fund</p>
+    </div>
+    <div class="flex items-center gap-2 self-start md:self-auto">
+      <button onclick="navigate('requests')"
+        class="text-sm text-fuchsia-600 hover:text-fuchsia-800 font-medium transition px-3 py-2 border border-fuchsia-200 rounded-lg min-h-[44px]">➕ New Request</button>
+      <button onclick="loadPersonalExpenses()"
+        class="text-sm text-blue-600 hover:text-blue-800 font-medium transition px-3 py-2 border border-blue-200 rounded-lg min-h-[44px]">↺ Refresh</button>
+    </div>
+  </div>
+
+  <!-- Metric Cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="p-4 rounded-2xl bg-white border border-gray-200 shadow-sm">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Total Requested</div>
+      <div id="pex-total-requested" class="text-2xl font-black text-slate-700 font-mono">₱0.00</div>
+      <div class="text-[10px] text-gray-400 mt-1">across all personal requests</div>
+    </div>
+    <div class="p-4 rounded-2xl bg-white border border-gray-200 shadow-sm">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Total Spent</div>
+      <div id="pex-total-spent" class="text-2xl font-black text-indigo-600 font-mono">₱0.00</div>
+      <div class="text-[10px] text-gray-400 mt-1">settled items only</div>
+    </div>
+    <div class="p-4 rounded-2xl bg-white border border-gray-200 shadow-sm">
+      <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1">Paid Back</div>
+      <div id="pex-total-repaid" class="text-2xl font-black text-emerald-600 font-mono">₱0.00</div>
+      <div class="text-[10px] text-gray-400 mt-1">returned to the fund</div>
+    </div>
+    <div class="p-4 rounded-2xl bg-gradient-to-br from-fuchsia-50 to-pink-50 border-2 border-fuchsia-200 shadow-sm">
+      <div class="text-[10px] font-bold text-fuchsia-500 uppercase tracking-wide mb-1">Owed to Fund</div>
+      <div id="pex-outstanding" class="text-2xl font-black text-fuchsia-700 font-mono">₱0.00</div>
+      <div id="pex-outstanding-note" class="text-[10px] text-fuchsia-500 mt-1">nothing outstanding</div>
+    </div>
+  </div>
+
+  <div class="flex flex-col lg:grid lg:grid-cols-3 gap-4">
+
+    <!-- ── LEFT: Pay Back panel ── -->
+    <div class="lg:col-span-1 order-2 lg:order-1 space-y-4">
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden lg:sticky lg:top-4">
+        <div class="px-5 py-4 bg-gradient-to-r from-fuchsia-600 to-pink-500">
+          <p class="text-sm font-bold text-white">Pay Back to Fund</p>
+          <p class="text-fuchsia-100 text-xs mt-0.5">Record cash you have physically returned to the drawer</p>
+        </div>
+
+        <div class="p-5 space-y-4">
+          <div class="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3">
+            <div class="flex justify-between items-baseline">
+              <span class="text-xs font-bold text-fuchsia-600 uppercase">Currently Owed</span>
+              <span id="pex-owed-inline" class="text-lg font-black text-fuchsia-700 font-mono">₱0.00</span>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount <span class="text-red-400">*</span></label>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₱</span>
+              <input type="number" id="pexRepayAmount" placeholder="0.00" min="0" step="0.01"
+                class="w-full pl-7 pr-3 py-3 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-fuchsia-500 outline-none bg-gray-50">
+            </div>
+            <button onclick="fillPexFullAmount()" id="pexFillFullBtn"
+              class="mt-2 text-xs font-bold text-fuchsia-600 hover:text-fuchsia-800 transition">Pay the full outstanding amount</button>
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Date Returned</label>
+            <input type="date" id="pexRepayDate"
+              class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-fuchsia-500 outline-none bg-gray-50">
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Note <span class="text-gray-400 font-normal normal-case">(optional)</span></label>
+            <input type="text" id="pexRepayNote" placeholder="e.g. Covers groceries + fuel"
+              class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-fuchsia-500 outline-none bg-gray-50">
+          </div>
+
+          <p class="text-[11px] text-gray-500 leading-relaxed">
+            This records the cash as a fund addition on the chosen date, so cash on hand and the replenishment figure correct themselves. Partial payments are allowed.
+          </p>
+
+          <button onclick="confirmPersonalRepayment()" id="pexRepayBtn"
+            class="w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white text-sm font-bold rounded-xl shadow transition min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed">
+            💵 Record Payback
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── RIGHT: Requests + repayment history ── -->
+    <div class="lg:col-span-2 order-1 lg:order-2 space-y-4">
+
+      <!-- Personal requests -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="p-3 border-b border-gray-200 bg-gray-50">
+          <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Personal Requests</h2>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[620px]">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+              <tr>
+                <th class="px-3 py-3">Date</th>
+                <th class="px-3 py-3">Purpose</th>
+                <th class="px-3 py-3 text-right">Requested</th>
+                <th class="px-3 py-3 text-right">Spent</th>
+                <th class="px-3 py-3 text-right">Owed</th>
+                <th class="px-3 py-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody id="pexRequestsBody" class="divide-y divide-gray-100">
+              <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm italic">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Payback history -->
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="p-3 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
+          <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Payback History</h2>
+          <span class="text-xs text-gray-500 font-mono">Total: <span id="pex-repaid-inline" class="text-emerald-600 font-bold text-sm">₱0.00</span></span>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm min-w-[520px]">
+            <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
+              <tr>
+                <th class="px-3 py-3">Date</th>
+                <th class="px-3 py-3">Note</th>
+                <th class="px-3 py-3">Entry</th>
+                <th class="px-3 py-3 text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody id="pexRepaymentsBody" class="divide-y divide-gray-100">
+              <tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm italic">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- PERSONAL REPAYMENT CONFIRMATION MODAL -->
+<div id="pexRepayModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden">
+    <div class="bg-gradient-to-r from-fuchsia-600 to-pink-500 p-5 flex justify-between items-center">
+      <div>
+        <h3 class="text-white font-bold text-lg">Confirm Payback</h3>
+        <p class="text-fuchsia-100 text-xs mt-0.5">This adds cash back into the fund</p>
+      </div>
+      <button onclick="closePexRepayModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+    <div class="p-5 space-y-3">
+      <div id="pexRepayInfo" class="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-3 text-sm font-medium text-gray-800"></div>
+      <p class="text-xs text-gray-500">Only confirm once the cash is physically back in the drawer — the entry is recorded immediately and the day's summary is recalculated.</p>
+    </div>
+    <div class="p-4 bg-gray-50 border-t flex gap-3">
+      <button onclick="closePexRepayModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[44px]">Cancel</button>
+      <button onclick="submitPersonalRepayment(this)" class="flex-1 py-3 text-sm font-bold text-white bg-fuchsia-600 hover:bg-fuchsia-700 rounded-xl shadow transition min-h-[44px]">Confirm</button>
+    </div>
+  </div>
+</div>

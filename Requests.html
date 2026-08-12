@@ -61,6 +61,17 @@
             </div>
           </div>
 
+          <!-- Personal expense — Admin only, revealed by applyRoleUI() -->
+          <div id="pcr-personal-wrap" class="hidden">
+            <label class="flex items-start gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer transition has-[:checked]:border-fuchsia-500 has-[:checked]:bg-fuchsia-50">
+              <input type="checkbox" id="pcrIsPersonal" onchange="onPcrPersonalToggle()" class="mt-0.5 w-4 h-4 accent-fuchsia-600 shrink-0">
+              <div>
+                <p class="text-xs font-bold text-gray-800">🏠 Personal expense</p>
+                <p class="text-[10px] text-gray-500 mt-0.5">Petty cash taken for personal use — tracked separately and paid back into the fund.</p>
+              </div>
+            </label>
+          </div>
+
           <div>
             <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested For (Name) <span class="text-red-400">*</span></label>
             <div class="relative">

@@ -73,13 +73,21 @@
             <span class="text-gray-500">➕ Cash Over</span>
             <span id="ads-cashover" class="font-mono font-bold text-green-600">—</span>
           </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500">➕ Cash Returned</span>
+            <span id="ads-cashreturn" class="font-mono font-bold text-green-600">—</span>
+          </div>
           <div class="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
-            <span class="text-gray-500">➖ Total Expenses</span>
+            <span class="text-gray-500">➖ Cash Expenses</span>
             <span id="ads-expenses" class="font-mono font-bold text-red-600">—</span>
           </div>
           <div class="flex justify-between items-center py-1">
-            <span class="text-gray-500">➖ Cash Advance</span>
+            <span class="text-gray-500">➖ Cash Advance Released</span>
             <span id="ads-advance" class="font-mono font-bold text-red-600">—</span>
+          </div>
+          <div class="flex justify-between items-center py-1">
+            <span class="text-gray-500">➖ Reimbursements</span>
+            <span id="ads-reimbursement" class="font-mono font-bold text-red-600">—</span>
           </div>
           <div class="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
             <span class="text-gray-500 font-semibold">💵 Expected Closing</span>
@@ -92,6 +100,13 @@
           <div class="flex justify-between items-center py-1 border-t border-gray-100 pt-2">
             <span class="text-gray-500 font-semibold">✅ Variance</span>
             <span id="ads-variance" class="font-mono font-bold text-gray-700">—</span>
+          </div>
+          <!-- Memo — documents how released advances were spent. No drawer movement,
+               so it is NOT part of the equation above. Matches the "Total Expenses"
+               figure on the Daily Messenger / EOD report. -->
+          <div id="ads-advancespend-row" class="hidden flex justify-between items-center pt-2 border-t border-gray-100 text-[10px]">
+            <span class="text-gray-400 italic">Advance spend documented today</span>
+            <span id="ads-advancespend" class="font-mono font-semibold text-gray-400">—</span>
           </div>
         </div>
       </div>

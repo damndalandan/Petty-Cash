@@ -6,6 +6,20 @@
 let rrData = null;
 let rrDetailedActive = false; // State for fused table view
 
+// Category drill-down modal state
+let rrModalEntries  = [];   // entries for the clicked category
+let rrModalFiltered = [];   // after search filter
+let rrModalPage     = 1;
+let rrModalCategory = '';
+const RR_PAGE_SIZE  = 10;
+
+// Same ramp the summary report uses, so a category reads the same in both.
+const RR_COLORS = [
+  '#3b82f6','#10b981','#f59e0b','#ef4444',
+  '#8b5cf6','#06b6d4','#f97316','#84cc16',
+  '#ec4899','#6b7280'
+];
+
 async function loadReplenishReport() {
   document.getElementById('rrEmpty').classList.add('hidden');
   document.getElementById('rrContent').classList.add('hidden');
@@ -115,28 +129,131 @@ function renderRrCategoryBreakdown(rows, total) {
     return;
   }
 
-  const max     = rows[0].amount || 1;   // rows arrive largest-first from the server
-  const palette = ['bg-blue-500','bg-indigo-500','bg-purple-500','bg-pink-500',
-                   'bg-amber-500','bg-teal-500','bg-rose-500','bg-cyan-500'];
+  const max = rows[0].amount || 1;   // rows arrive largest-first from the server
 
   el.innerHTML = rows.map((r, i) => {
     const pctOfMax = Math.max(2, (r.amount / max) * 100);
-    const pctOfTot = total > 0 ? (r.amount / total) * 100 : 0;
-    const color    = palette[i % palette.length];
+    // Prefer the server's percent — it is computed against the same total the
+    // roll-ups reconcile to. Fall back for snapshots saved before that field.
+    const pctOfTot = (r.percent !== undefined && r.percent !== null)
+      ? r.percent
+      : (total > 0 ? Math.round((r.amount / total) * 100) : 0);
+    const color    = RR_COLORS[i % RR_COLORS.length];
     return `
-      <div class="no-break-inside">
+      <div onclick="openRrCategoryDetail(${i})"
+        class="no-break-inside cursor-pointer group hover:bg-slate-50 p-1.5 rounded-lg transition-all duration-200">
         <div class="flex items-center justify-between mb-1 gap-2">
-          <span class="text-xs font-medium text-gray-700 truncate" title="${r.category}">${r.category}</span>
+          <span class="text-xs font-medium text-gray-700 truncate group-hover:text-blue-600 transition-colors" title="${escHtml(r.category)}">${escHtml(r.category)}</span>
           <span class="text-xs font-mono font-bold text-gray-800 shrink-0">
             ${fmt(r.amount)}
-            <span class="text-[10px] text-gray-400 font-sans ml-0.5">${pctOfTot.toFixed(0)}%</span>
+            <span class="text-[10px] text-gray-400 font-sans ml-0.5">${pctOfTot}%</span>
           </span>
         </div>
-        <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-          <div class="h-full ${color} rounded-full" style="width:${pctOfMax}%"></div>
+        <div class="h-2 w-full bg-gray-100 rounded-full overflow-hidden shadow-inner">
+          <div class="h-full rounded-full transition-all duration-1000 ease-out" style="width:${pctOfMax}%; background:${color}"></div>
         </div>
       </div>`;
   }).join('');
+}
+
+// =============================================
+// CATEGORY DRILL-DOWN MODAL
+// =============================================
+
+// Resolved by index so a category name containing an apostrophe can never
+// break the inline onclick — only the safe integer index is interpolated.
+function openRrCategoryDetail(i) {
+  const cat = rrData && rrData.categoryBreakdown && rrData.categoryBreakdown[i];
+  if (!cat) return;
+  openRrDetailModal(cat.category);
+}
+
+function openRrDetailModal(category) {
+  if (!rrData) return;
+
+  rrModalCategory = category;
+  rrModalEntries  = (rrData.expenseEntries || [])
+    .filter(e => String(e.category).trim() === String(category).trim());
+  rrModalFiltered = [...rrModalEntries];
+  rrModalPage     = 1;
+
+  const total = rrModalEntries.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
+  document.getElementById('rrDetailModalTitle').textContent = category;
+  document.getElementById('rrDetailModalSub').textContent   =
+    `${rrData.periodFrom} → ${rrData.periodTo}`;
+  document.getElementById('rrDetailModalTotal').textContent = fmt(total);
+  document.getElementById('rrDetailSearch').value = '';
+
+  rrDetailRender();
+  document.getElementById('rrDetailModal').classList.remove('hidden');
+}
+
+function closeRrDetailModal() {
+  document.getElementById('rrDetailModal').classList.add('hidden');
+  rrModalEntries  = [];
+  rrModalFiltered = [];
+  rrModalCategory = '';
+}
+
+function rrDetailFilterAndRender() {
+  const q = document.getElementById('rrDetailSearch').value.toLowerCase();
+  rrModalFiltered = rrModalEntries.filter(e =>
+    (e.description  || '').toLowerCase().includes(q) ||
+    (e.supplierName || '').toLowerCase().includes(q) ||
+    (e.receiptNo    || '').toLowerCase().includes(q) ||
+    (e.referenceNo  || '').toLowerCase().includes(q) ||
+    (e.requestedBy  || '').toLowerCase().includes(q)
+  );
+  rrModalPage = 1;
+  rrDetailRender();
+}
+
+function rrDetailRender() {
+  const total    = rrModalFiltered.length;
+  const pages    = Math.max(1, Math.ceil(total / RR_PAGE_SIZE));
+  rrModalPage    = Math.min(rrModalPage, pages);
+  const start    = (rrModalPage - 1) * RR_PAGE_SIZE;
+  const pageRows = rrModalFiltered.slice(start, start + RR_PAGE_SIZE);
+
+  document.getElementById('rrDetailCount').textContent     = `${total} entr${total === 1 ? 'y' : 'ies'}`;
+  document.getElementById('rrDetailPageLabel').textContent = `Page ${rrModalPage} of ${pages}`;
+  document.getElementById('rrDetailPrev').disabled         = rrModalPage <= 1;
+  document.getElementById('rrDetailNext').disabled         = rrModalPage >= pages;
+
+  const tbody = document.getElementById('rrDetailBody');
+  if (pageRows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400 italic text-sm bg-slate-50/50">No entries found matching your search</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = pageRows.map(e => {
+    const dateLabel = new Date(e.date + 'T00:00:00')
+      .toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+    const receiptBadge = e.hasReceipt
+      ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-bold rounded uppercase">Yes</span>'
+      : '<span class="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded uppercase">No</span>';
+    const desc = escHtml(e.description || '—');
+    const sup  = e.supplierName ? `<div class="text-[10px] text-slate-400 truncate">${escHtml(e.supplierName)}</div>` : '';
+
+    return `<tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
+      <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${dateLabel}</td>
+      <td class="px-4 py-3 text-xs text-slate-700 font-medium">${desc}${sup}</td>
+      <td class="px-4 py-3 text-center">${receiptBadge}</td>
+      <td class="px-4 py-3 text-xs font-mono text-slate-400">${escHtml(e.receiptNo || e.referenceNo || '—')}</td>
+      <td class="px-4 py-3 text-xs text-slate-500 italic">${escHtml(e.requestedBy || '—')}</td>
+      <td class="px-4 py-3 text-sm text-right font-mono font-bold text-slate-800">${fmt(e.amount)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function rrDetailPagePrev() {
+  if (rrModalPage > 1) { rrModalPage--; rrDetailRender(); }
+}
+
+function rrDetailPageNext() {
+  const pages = Math.ceil(rrModalFiltered.length / RR_PAGE_SIZE);
+  if (rrModalPage < pages) { rrModalPage++; rrDetailRender(); }
 }
 
 function renderRrReceiptCoverage(withR, withoutR) {

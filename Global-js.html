@@ -164,9 +164,11 @@ function applyRoleUI() {
 
   if (isAdmin()) {
     // Admin sees everything except data-entry tasks
-    ['nav-requests', 'nav-denominations', 'nav-replenishment', 'nav-replenishrequests', 'nav-filing', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
+    ['nav-requests', 'nav-personalexpenses', 'nav-denominations', 'nav-replenishment', 'nav-replenishrequests', 'nav-filing', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
     show('admin-section');
     show('pcr-form-section');
+    // Only an Admin may tag a request personal (the server enforces this too).
+    show('pcr-personal-wrap');
   } else if (state.userRole === 'Auditor') {
     // Auditor sees review tools
     ['nav-requests', 'nav-replenishrequests', 'nav-auditreview', 'nav-auditlog'].forEach(show);
@@ -246,6 +248,7 @@ function navigate(page) {
   if (page === 'report')        initReportPage();
   if (page === 'dashboard')     loadDayData();
   if (page === 'requests')      loadRequests();
+  if (page === 'personalexpenses') loadPersonalExpenses();
   if (page === 'advances')      loadAdvances();
   if (page === 'replenishment') loadReplenishments();
   if (page === 'replenishrequests') loadReplenishRequests();

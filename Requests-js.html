@@ -158,9 +158,13 @@ function renderRequestCard(r) {
     CANCELLED       : 'Cancelled'
   };
 
-  const typeBadge = r.requestType === 'Cash Advance'
+  const typeBadge = (r.requestType === 'Cash Advance'
     ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">ADVANCE</span>`
-    : `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">EXPENSE</span>`;
+    : `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">EXPENSE</span>`)
+    // Server only sends isPersonal to Admin/Auditor — the cashier sees a plain request.
+    + (r.isPersonal
+      ? ` <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-fuchsia-100 text-fuchsia-700">🏠 PERSONAL</span>`
+      : '');
 
   // Cash Advance PCRs whose linked advance is awaiting auditor sign-off get a
   // distinct badge so cashier/auditor can tell at a glance that liquidation was
@@ -354,11 +358,23 @@ function escHtml(s) {
 
 // ── New Request Form ──────────────────────────
 
+// Personal draws are usually for the Admin herself, so prefill her name — but
+// leave it editable, since she sometimes sends someone else to collect the cash.
+function onPcrPersonalToggle() {
+  const checked = document.getElementById('pcrIsPersonal')?.checked;
+  const nameEl  = document.getElementById('pcrRequestedBy');
+  if (checked && nameEl && !nameEl.value.trim() && state.userName) {
+    nameEl.value = state.userName;
+  }
+}
+
 async function submitPettyCashRequest() {
   const purpose     = document.getElementById('pcrPurpose')?.value.trim();
   const amount      = parseFloat(document.getElementById('pcrAmount')?.value);
   const requestedBy = document.getElementById('pcrRequestedBy')?.value.trim();
   const requestType = document.querySelector('input[name="pcrType"]:checked')?.value || 'Expense';
+  // Server ignores this unless the caller is an Admin.
+  const isPersonal  = !!document.getElementById('pcrIsPersonal')?.checked;
   const date        = state.currentDate;
 
   if (!purpose)               { toast('Purpose is required.', 'warning'); return; }
@@ -367,16 +383,22 @@ async function submitPettyCashRequest() {
 
   const btn = document.querySelector('#pcr-form-section button[onclick="submitPettyCashRequest()"]');
   btnLoad(btn, true);
-  const res = await callServer('savePettyCashRequest', { date, purpose, amount, requestedBy, requestType });
+  const res = await callServer('savePettyCashRequest', { date, purpose, amount, requestedBy, requestType, isPersonal });
   btnLoad(btn, false);
 
   if (!res.success) { toast(res.message || 'Failed to submit request.', 'error'); return; }
 
-  toast('Request submitted for approval.');
+  // Admin-created requests are auto-approved server-side and go straight to
+  // "ready to release", so don't tell her it is waiting on an approver.
+  toast(isAdmin()
+    ? (isPersonal ? 'Personal request created — ready to release.' : 'Request created — ready to release.')
+    : 'Request submitted for approval.');
   document.getElementById('pcrPurpose').value      = '';
   document.getElementById('pcrAmount').value       = '';
   document.getElementById('pcrRequestedBy').value  = '';
-  switchPcrFilter('pending');
+  const personalEl = document.getElementById('pcrIsPersonal');
+  if (personalEl) personalEl.checked = false;
+  switchPcrFilter(isAdmin() ? 'approved' : 'pending');
   loadRequests();
 }
 

@@ -42,6 +42,60 @@
 </div>
 
 <!-- =============================================
+     REPLENISHMENT REPORT: CATEGORY DETAIL MODAL
+     ============================================= -->
+<div id="rrDetailModal" class="hidden fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
+  <div class="bg-white w-full max-w-5xl rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[88vh]">
+    <div class="bg-gradient-to-r from-slate-800 to-slate-700 p-4 flex justify-between items-center shrink-0 shadow-lg">
+      <div>
+        <div class="flex items-center gap-2">
+          <span class="text-xl">🧾</span>
+          <h3 class="text-white font-bold text-base" id="rrDetailModalTitle">Category</h3>
+        </div>
+        <p class="text-xs mt-0.5 text-slate-300" id="rrDetailModalSub">—</p>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="text-right hidden sm:block">
+          <div class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Total</div>
+          <div class="text-lg font-black font-mono text-white" id="rrDetailModalTotal">—</div>
+        </div>
+        <button onclick="closeRrDetailModal()" class="text-white/70 hover:text-white text-2xl font-light leading-none w-10 h-10 flex items-center justify-center">&times;</button>
+      </div>
+    </div>
+    <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-3 shrink-0">
+      <input type="text" id="rrDetailSearch" placeholder="Search…"
+        oninput="rrDetailFilterAndRender()"
+        class="flex-1 p-3 border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-400 bg-white min-h-[44px]">
+      <span class="text-xs text-gray-400 whitespace-nowrap" id="rrDetailCount">0 entries</span>
+    </div>
+    <div class="overflow-y-auto flex-1 min-h-0 bg-white overflow-x-auto">
+      <table class="w-full text-sm min-w-[400px]">
+        <thead class="bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-gray-500 uppercase font-bold text-[10px] tracking-wider">
+          <tr>
+            <th class="px-4 py-3 text-left">Date</th>
+            <th class="px-4 py-3 text-left">Description</th>
+            <th class="px-4 py-3 text-center">Receipt?</th>
+            <th class="px-4 py-3 text-left">Ref/OR</th>
+            <th class="px-4 py-3 text-left">Requested By</th>
+            <th class="px-4 py-3 text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody id="rrDetailBody" class="divide-y divide-gray-50 text-gray-700"></tbody>
+      </table>
+    </div>
+    <div class="px-4 py-3 border-t border-gray-100 bg-gray-100 flex items-center justify-between shrink-0">
+      <button onclick="rrDetailPagePrev()"
+        class="px-4 py-2.5 text-sm font-bold rounded-lg border border-gray-200 text-gray-600 hover:bg-white hover:shadow-sm transition disabled:opacity-40 min-h-[44px]"
+        id="rrDetailPrev">← Prev</button>
+      <span class="text-xs text-gray-400 font-mono" id="rrDetailPageLabel">Page 1 of 1</span>
+      <button onclick="rrDetailPageNext()"
+        class="px-4 py-2.5 text-sm font-bold rounded-lg border border-gray-200 text-gray-600 hover:bg-white hover:shadow-sm transition disabled:opacity-40 min-h-[44px]"
+        id="rrDetailNext">Next →</button>
+    </div>
+  </div>
+</div>
+
+<!-- =============================================
      AUDIT REVIEW: APPROVE MODAL
      ============================================= -->
 <div id="auditApproveModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">

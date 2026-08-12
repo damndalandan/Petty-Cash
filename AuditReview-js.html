@@ -228,11 +228,16 @@ function renderAuditEntries(entries) {
       }
     }
 
-    const typeBadge = isLiqPending
+    const typeBadge = (isLiqPending
       ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">💳 LIQUIDATION</span>`
       : isPcrAdv
         ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">PCR ADVANCE</span>`
-        : `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[e.type] || 'bg-gray-100 text-gray-600'}">${e.type.replace(/_/g,' ')}</span>`;
+        : `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${typeColors[e.type] || 'bg-gray-100 text-gray-600'}">${e.type.replace(/_/g,' ')}</span>`)
+      // Admin drew this for personal use and owes it back to the fund. Shown so
+      // the EOD "Personal Expense" line can be reconciled against real entries.
+      + (e.isPersonal
+        ? ` <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-fuchsia-100 text-fuchsia-700">🏠 PERSONAL</span>`
+        : '');
 
     const receiptBadge = e.hasReceipt
       ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200">🧾 Receipt</span>'
@@ -752,36 +757,44 @@ function updateAuditDaySummaryPanel() {
 
   const opening = parseFloat(s.openingCash || 0);
 
-  // Compute totals from live entries when available; fall back to summary before entries load.
+  // Cash-movement model — mirrors recalculateDailySummary() on the server and
+  // updateAuditVariance() above, so all three agree:
+  //   • CASH_ADVANCE / PCR_ADVANCE released today leave the drawer regardless of status.
+  //     A same-day settlement flips them to LIQUIDATED, but the cash still went out today.
+  //   • CASH_RETURN brings the unspent portion back in.
+  //   • LIQ_DETAIL / PCR_DETAIL only document how an already-released advance was spent —
+  //     no drawer movement (the advance may even have been released on an earlier day),
+  //     so they stay out of the equation and are shown as a memo line instead.
   const liveEntries = (state.entries || []).filter(e => e.status !== 'DELETED' && !e.carriedForward);
-  let replenish = 0, cashOver = 0, expenses = 0, advance = 0, cashReturn = 0, reimbursement = 0, pcrReleased = 0;
+  let replenish = 0, cashOver = 0, cashExpense = 0, advance = 0, cashReturn = 0, reimbursement = 0, advanceSpend = 0;
 
-  if (liveEntries.length > 0 || state.entries !== undefined) {
+  if (state.entries !== undefined) {
     liveEntries.forEach(e => {
-      // Skip sub-entries — PCR_DETAIL is netted via PCR_ADVANCE minus CASH_RETURN
-      if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL') return;
-
       const amt = parseFloat(e.amount || 0);
       if      (e.type === 'REPLENISHMENT')              replenish     += amt;
       else if (e.type === 'CASH_OVER')                  cashOver      += amt;
       else if (e.type === 'CASH_RETURN')                cashReturn    += amt;
       else if (e.type === 'CASH_ADVANCE_REIMBURSEMENT') reimbursement += amt;
-      else if (e.type === 'PCR_ADVANCE')                pcrReleased   += amt;
-      else if (e.type === 'CASH_ADVANCE' && (e.status === 'ACTIVE' || e.status === 'LIQUIDATION_PENDING')) {
-        // Only deduct advance if it was issued today
+      else if (e.type === 'LIQ_DETAIL' || e.type === 'PCR_DETAIL') advanceSpend += amt;
+      else if (e.type === 'CASH_ADVANCE' || e.type === 'PCR_ADVANCE') {
+        // Only advances released today move today's cash. Prior-day advances still
+        // pending liquidation ride along in the entry list — their cash left earlier.
         if (!e.originalDate || e.originalDate >= state.currentDate) advance += amt;
       }
-      else if (e.type === 'EXPENSE') expenses += amt;
+      else if (e.type === 'EXPENSE') cashExpense += amt;
     });
   } else {
+    // Pre-load approximation only — superseded as soon as entries arrive. totalExpenses
+    // includes advance-detail rows, so it can overstate cash expense for a moment.
     replenish     = parseFloat(s.totalReplenishment  || 0);
     cashOver      = parseFloat(s.totalCashOver       || 0);
-    expenses      = parseFloat(s.totalExpenses       || 0);
+    cashExpense   = parseFloat(s.totalExpenses       || 0);
     advance       = parseFloat(s.cashAdvance         || 0);
+    cashReturn    = parseFloat(s.totalCashReturn     || 0);
     reimbursement = parseFloat(s.totalReimbursement  || 0);
   }
 
-  const expected = (opening + replenish + cashOver + cashReturn) - (expenses + advance + reimbursement + pcrReleased);
+  const expected = (opening + replenish + cashOver + cashReturn) - (cashExpense + advance + reimbursement);
 
   // Physical: use live denomination inputs; fall back to saved closingCash
   let physical = 0;
@@ -797,13 +810,25 @@ function updateAuditDaySummaryPanel() {
     if (color) el.className = `font-mono font-bold ${color}`;
   };
 
-  set('ads-opening',      opening,   'text-gray-700');
-  set('ads-replenishment',replenish, replenish > 0 ? 'text-green-600' : 'text-gray-400');
-  set('ads-cashover',     cashOver,  cashOver  > 0 ? 'text-green-600' : 'text-gray-400');
-  set('ads-expenses',     expenses,  expenses  > 0 ? 'text-red-600'   : 'text-gray-400');
-  set('ads-advance',      advance,   advance   > 0 ? 'text-red-600'   : 'text-gray-400');
-  set('ads-expected',     expected,  'text-blue-700');
-  set('ads-physical',     physical,  'text-gray-700');
+  set('ads-opening',       opening,       'text-gray-700');
+  set('ads-replenishment', replenish,     replenish     > 0 ? 'text-green-600' : 'text-gray-400');
+  set('ads-cashover',      cashOver,      cashOver      > 0 ? 'text-green-600' : 'text-gray-400');
+  set('ads-cashreturn',    cashReturn,    cashReturn    > 0 ? 'text-green-600' : 'text-gray-400');
+  set('ads-expenses',      cashExpense,   cashExpense   > 0 ? 'text-red-600'   : 'text-gray-400');
+  set('ads-advance',       advance,       advance       > 0 ? 'text-red-600'   : 'text-gray-400');
+  set('ads-reimbursement', reimbursement, reimbursement > 0 ? 'text-red-600'   : 'text-gray-400');
+  set('ads-expected',      expected,      'text-blue-700');
+  set('ads-physical',      physical,      'text-gray-700');
+
+  // Memo — advance spend documented today (not a drawer movement, so it is excluded
+  // from the equation above). Shown only when there is something to reconcile.
+  const spendRow = document.getElementById('ads-advancespend-row');
+  if (spendRow) {
+    spendRow.classList.toggle('hidden', !(advanceSpend > 0));
+    spendRow.classList.toggle('flex',     advanceSpend > 0);
+    const spendEl = document.getElementById('ads-advancespend');
+    if (spendEl) spendEl.textContent = fmt(advanceSpend);
+  }
 
   const varianceEl = document.getElementById('ads-variance');
   if (varianceEl) {

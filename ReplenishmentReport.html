@@ -195,7 +195,14 @@
     
     /* Hide interactive elements */
     button, [onclick], #btn-rrDetails, #rrHeaderPeriod, .pb-4.border-b { display: none !important; }
-    
+
+    /* …but the category rows are content, not controls — they only carry an
+       onclick to open the drill-down, so keep them on paper. */
+    #rr-categoryBreakdown [onclick] { display: block !important; }
+
+    /* Never let an open drill-down bleed into the printed report */
+    #rrDetailModal { display: none !important; }
+
     /* Reflow the summary grid for paper */
     .grid { display: block !important; }
     .space-y-6 > * + * { margin-top: 1.5rem !important; }

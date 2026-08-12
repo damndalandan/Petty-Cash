@@ -16,8 +16,17 @@ const SHEETS = {
   FILING       : 'PettyCash_FilingChecklist',
   CATEGORIES   : 'PettyCash_Categories',
   REQUESTS     : 'PettyCash_Requests',
-  REPLENISH_REQS: 'PettyCash_ReplenishRequests'
+  REPLENISH_REQS: 'PettyCash_ReplenishRequests',
+  PERSONAL_REPAY: 'PettyCash_PersonalRepayments'
 };
+
+// Category stamped on the REPLENISHMENT entry an Admin personal payback creates.
+// It is what distinguishes "the Admin paid back what she drew" from "the company
+// topped up the fund" — the replenishment PERIOD tracker keys off this so a
+// payback never restarts the company's replenishment period. Declared here (not
+// in the personal-expenses section) because the period report reads it far above
+// that section. See the PERSONAL EXPENSES section for the full workflow.
+const PERSONAL_REPAY_CATEGORY = 'Personal Reimbursement';
 
 // ─────────────────────────────────────────────
 // WEB APP ENTRY POINT
@@ -475,6 +484,19 @@ function initializeSheets() {
     s.setColumnWidth(14, 220);
   }
 
+  if (!ss.getSheetByName(SHEETS.PERSONAL_REPAY)) {
+    const s = ss.insertSheet(SHEETS.PERSONAL_REPAY);
+    s.appendRow([
+      'Repayment_ID','Date','Amount','Note',
+      'Entry_ID','Recorded_By','Created_At'
+    ]);
+    s.setFrozenRows(1);
+    formatHeaderRow(s);
+    s.getRange('C2:C').setNumberFormat('₱#,##0.00');
+    s.setColumnWidths(1, 7, 130);
+    s.setColumnWidth(4, 240);
+  }
+
   return { success: true };
 }
 
@@ -521,7 +543,15 @@ const SHEET_SCHEMA = {
     'Request_ID','Date','Purpose','Amount','Request_Type',
     'Requested_By','Submitted_By','Status',
     'Approved_By','Approved_At','Released_At',
-    'Rejection_Note','Entry_ID','Created_At','Updated_At'
+    'Rejection_Note','Entry_ID','Created_At','Updated_At',
+    'Is_Personal'
+  ],
+  // Admin's personal use of petty cash, paid back out of her own pocket.
+  // One row per payback; each writes a REPLENISHMENT entry (Entry_ID) so the
+  // drawer and the fund-ceiling math self-correct with no special-casing.
+  [SHEETS.PERSONAL_REPAY]: [
+    'Repayment_ID','Date','Amount','Note',
+    'Entry_ID','Recorded_By','Created_At'
   ],
   [SHEETS.REPLENISH_REQS]: [
     'Request_ID','Date','Current_Balance','Amount_Requested','Target_Fund_Level',
@@ -921,6 +951,14 @@ function getExpenseEntries(date) {
     const dataRange = sheet.getDataRange().getValues();
     const entries   = [];
 
+    // PCR_ADVANCE / PCR_DETAIL rows carry the Request_ID in Reference_No, so the
+    // personal tag (stored on the Requests sheet) can be joined back onto the
+    // entry. Admin/Auditor only — lets the auditor reconcile the EOD "Personal
+    // Expense" line against the actual entries. Cashier sees a plain request.
+    const roleInfo   = getUserRole();
+    const isPrivileged = roleInfo.success && (roleInfo.role === 'Admin' || roleInfo.role === 'Auditor');
+    const personalIds  = isPrivileged ? getPersonalRequestIds_(ss) : null;
+
     for (let i = 1; i < dataRange.length; i++) {
       const row     = dataRange[i];
       const rowDate = normalizeDate(row[1]);
@@ -946,7 +984,8 @@ function getExpenseEntries(date) {
           createdAt       : row[11],
           updatedAt       : row[12],
           carriedForward  : false,
-          originalDate    : rowDate
+          originalDate    : rowDate,
+          isPersonal      : !!(personalIds && personalIds[row[7]])
         });
         continue;
       }
@@ -3098,6 +3137,11 @@ function getReplenishmentPeriodReport() {
     const today     = normalizeDate(new Date());
 
     // ── Collect all unique replenishment dates (sorted) ──
+    // The Admin paying back a personal draw is also a REPLENISHMENT entry (the
+    // drawer really does gain that cash), but it is NOT a company top-up, so it
+    // must not restart the replenishment period — doing so would truncate the
+    // period and understate Total_Disbursed on the next company request. Its
+    // amount still counts toward totalReplenishment and cash on hand below.
     const replenishDates = [];
     for (let i = 1; i < entryData.length; i++) {
       const row    = entryData[i];
@@ -3105,6 +3149,7 @@ function getReplenishmentPeriodReport() {
       const status = row[10];
       const date   = normalizeDate(row[1]);
       if (type !== 'REPLENISHMENT' || status === 'DELETED') continue;
+      if (String(row[3] || '').trim() === PERSONAL_REPAY_CATEGORY) continue;
       if (!replenishDates.includes(date)) replenishDates.push(date);
     }
     replenishDates.sort();
@@ -3138,9 +3183,11 @@ function getReplenishmentPeriodReport() {
 
     // Accountability roll-ups (reconcile with totalExpenses).
     const categoryTotals    = {};   // category -> spend
+    const categoryCounts    = {};   // category -> entry count
     let expWithReceipt      = 0;    // expense spend backed by a receipt
     let expWithoutReceipt   = 0;    // expense spend missing a receipt
     const detailByDate      = {};   // date -> PCR_DETAIL/LIQ_DETAIL spend (advance documentation)
+    const expenseEntries    = [];   // one row per spend entry — backs the category drill-down
 
     for (let i = 1; i < entryData.length; i++) {
       const row     = entryData[i];
@@ -3163,18 +3210,34 @@ function getReplenishmentPeriodReport() {
         description: row[4], amount, requestedBy: row[8], status
       };
 
-      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL' ||
+          type === 'CASH_ADVANCE_REIMBURSEMENT') {
+        // All four are fund spend charged to a category, so they must run
+        // through the SAME roll-up. The reimbursement used to be totalled and
+        // categorised on its own branch but skipped the receipt buckets, which
+        // left "Where the Money Went" over-stating spend against Receipt
+        // Coverage by exactly the reimbursement amount.
         totalExpenses += amount;
-        if (type !== 'EXPENSE') detailByDate[rowDate] = (detailByDate[rowDate] || 0) + amount;
+        if (type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
+          detailByDate[rowDate] = (detailByDate[rowDate] || 0) + amount;
+        }
         const cat = String(row[3] || 'Miscellaneous').trim();
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
-        if (row[6] === 'YES') expWithReceipt    += amount;
-        else                  expWithoutReceipt += amount;
-        periodEntries.push(detail);
-      } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
-        totalExpenses += amount; // outflow counted against fund usage
-        const cat = String(row[3] || 'Miscellaneous').trim();
-        categoryTotals[cat] = (categoryTotals[cat] || 0) + amount;
+        categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+        const hasReceipt = row[6] === 'YES';
+        if (hasReceipt) expWithReceipt    += amount;
+        else            expWithoutReceipt += amount;
+        expenseEntries.push({
+          id         : row[0],
+          date       : rowDate,
+          type,
+          category   : cat,
+          description: row[4],
+          amount,
+          referenceNo: row[7],
+          requestedBy: row[8],
+          hasReceipt
+        });
         periodEntries.push(detail);
       } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
         // Cash leaves the drawer on the advance/release date regardless of any
@@ -3191,6 +3254,18 @@ function getReplenishmentPeriodReport() {
     }
 
     periodEntries.sort((a, b) => a.date > b.date ? 1 : -1);
+
+    // ── Join receipt details so the category drill-down can show supplier /
+    //    OR number, the same way the summary report's modal does ──
+    const rcptSheet = ss.getSheetByName(SHEETS.RECEIPTS);
+    const rcptData  = rcptSheet ? rcptSheet.getDataRange().getValues() : [];
+    const rcptMap   = {};
+    for (let i = 1; i < rcptData.length; i++) {
+      const r = rcptData[i];
+      rcptMap[r[1]] = { supplierName: r[3], receiptNo: r[6] };
+    }
+    expenseEntries.forEach(e => { if (rcptMap[e.id]) Object.assign(e, rcptMap[e.id]); });
+    expenseEntries.sort((a, b) => a.date > b.date ? -1 : 1);   // newest first
 
     // ── Daily breakdown from summary — correct column indexes ──
     const dailyRows = [];
@@ -3227,8 +3302,16 @@ function getReplenishmentPeriodReport() {
     const toReplenish  = Math.max(0, FUND_CEILING - accounted);
 
     // Category breakdown, largest spend first (reconciles with totalExpenses).
+    // `category` / `amount` are load-bearing — the replenishment request sheet
+    // stores this array as JSON and the approver email renders it — so the
+    // percent/count fields are added alongside them, never in place of them.
     const categoryBreakdown = Object.keys(categoryTotals)
-      .map(cat => ({ category: cat, amount: categoryTotals[cat] }))
+      .map(cat => ({
+        category: cat,
+        amount  : categoryTotals[cat],
+        percent : totalExpenses > 0 ? Math.round((categoryTotals[cat] / totalExpenses) * 100) : 0,
+        count   : categoryCounts[cat] || 0
+      }))
       .sort((a, b) => b.amount - a.amount);
 
     return {
@@ -3246,6 +3329,7 @@ function getReplenishmentPeriodReport() {
         dailyRows,
         periodEntries,
         categoryBreakdown,
+        expenseEntries,
         expWithReceipt,
         expWithoutReceipt
       }
@@ -3934,10 +4018,12 @@ function getSummaryReportDataByRange(params) {
 // Request_Type  = 'Expense' | 'Cash Advance'
 // Requested_By  = employee name (who the cash is for)
 // Submitted_By  = cashier email (who created the request)
+// Is_Personal   = 'YES' when the Admin took the cash for personal use and owes
+//                 it back to the fund (see PERSONAL EXPENSES section below).
 // ─────────────────────────────────────────────
 
 function savePettyCashRequest(data) {
-  // data: { date, purpose, amount, requestedBy, requestType }
+  // data: { date, purpose, amount, requestedBy, requestType, isPersonal }
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.REQUESTS);
@@ -3953,6 +4039,10 @@ function savePettyCashRequest(data) {
     // Admin-created requests skip approval — they start as APPROVED immediately
     const initialStatus = creatorIsAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
 
+    // Only an Admin can mark a request personal — the flag creates a debt owed
+    // back to the fund, so a cashier must not be able to set it on her behalf.
+    const isPersonal = creatorIsAdmin && !!data.isPersonal;
+
     sheet.appendRow([
       id,                                // 1  Request_ID
       data.date,                         // 2  Date
@@ -3965,11 +4055,12 @@ function savePettyCashRequest(data) {
       creatorIsAdmin ? email : '',       // 9  Approved_By
       creatorIsAdmin ? now   : '',       // 10 Approved_At
       '', '', '',                        // 11-13 Released_At, Rejection_Note, Entry_ID
-      now, now                           // 14-15 Created_At, Updated_At
+      now, now,                          // 14-15 Created_At, Updated_At
+      isPersonal ? 'YES' : ''            // 16 Is_Personal
     ]);
 
     writeAuditLog('REQUEST_CREATED',
-      `PCR [${rType}] submitted by ${email}. For: ${data.requestedBy || '—'} | Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
+      `PCR [${rType}]${isPersonal ? ' [PERSONAL]' : ''} submitted by ${email}. For: ${data.requestedBy || '—'} | Purpose: ${data.purpose || '—'} | Amount: ₱${parseFloat(data.amount || 0).toFixed(2)}`,
       id, data.date);
 
     if (creatorIsAdmin) {
@@ -4076,7 +4167,10 @@ function getPettyCashRequests() {
         createdAt       : r[13],
         settledAt       : status === 'SETTLED' ? (r[14] || '') : '',
         settlementItems : settlementItems,
-        advanceStatus   : isAdvance ? (advanceStatusMap[entryId] || '') : ''
+        advanceStatus   : isAdvance ? (advanceStatusMap[entryId] || '') : '',
+        // Personal tag is visible to Admin/Auditor only — the cashier sees an
+        // ordinary request. The cash movement itself is visible to everyone.
+        isPersonal      : isPrivileged && r[15] === 'YES'
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -4676,6 +4770,262 @@ function updateSettledPcrSettlement(data) {
     return { success: false, message: e.toString() };
   }
 }
+
+// =============================================
+// PERSONAL EXPENSES (Admin)
+// The Admin sometimes draws petty cash for personal use — occasionally via a
+// third party sent to collect it — and pays it back out of her own pocket.
+// Such a request runs the ordinary PCR lifecycle (create → release → settle) so
+// every peso still moves through the drawer and shows up in Audit Review; the
+// only difference is the Is_Personal flag on the Requests sheet.
+//
+// Deliberate design choices:
+//   • Personal spend STAYS inside the normal expense totals. It is broken out
+//     as its own line in the EOD report, not carved out of the books.
+//   • Payback is a running balance, not a per-request settlement: one payment
+//     can cover many small items, and partial payments are allowed.
+//   • A payback writes an ordinary REPLENISHMENT entry, so cash on hand and the
+//     fund-ceiling math (toReplenish = ceiling − accounted) self-correct with no
+//     special-casing anywhere in the existing reports.
+//
+//   getPersonalRequestIds_(ss)       — { Request_ID: true } for personal requests
+//   getPersonalExpenseSummary()      — tab payload: requests, totals, repayments
+//   savePersonalRepayment(data)      — Admin: record a payback into the fund
+// =============================================
+
+// Lookup of every identifier that marks an entry as belonging to a personal
+// request, so a single `map[Reference_No]` test covers all four entry shapes:
+//   PCR_ADVANCE / CASH_ADVANCE → Reference_No is the Request_ID
+//   PCR_DETAIL                 → Reference_No is the Request_ID
+//   LIQ_DETAIL                 → Reference_No is the ADVANCE's Entry_ID
+// Both keys are therefore registered. Request_IDs ('PCR-…') and Entry_IDs
+// ('EXP-…') use distinct prefixes, so they cannot collide.
+function getPersonalRequestIds_(ss) {
+  const out = {};
+  try {
+    const sheet = ss.getSheetByName(SHEETS.REQUESTS);
+    if (!sheet) return out;
+    const rows = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (!rows[i][0] || rows[i][15] !== 'YES') continue;
+      out[rows[i][0]] = true;                       // Request_ID
+      if (rows[i][12]) out[rows[i][12]] = true;     // linked Entry_ID
+    }
+  } catch (e) { /* sheet missing / not yet migrated — treat as none personal */ }
+  return out;
+}
+
+// Cash the Admin still owes the fund for one personal request.
+//   RELEASED  → the whole released amount is out of the drawer, nothing back yet.
+//   SETTLED   → what she actually spent. Any change already returned to the fund
+//               as CASH_RETURN, and any overspend was paid back OUT of the fund
+//               as CASH_ADVANCE_REIMBURSEMENT — so the drawer is down by `spent`
+//               either way.
+//   otherwise → nothing has left the drawer, so nothing is owed.
+function personalOwedForRequest_(status, releasedAmount, spent) {
+  if (status === 'SETTLED') return spent;
+  if (status === 'RELEASED') return releasedAmount;
+  return 0;
+}
+
+function getPersonalExpenseSummary() {
+  try {
+    const role = getUserRole();
+    if (!(role.success && role.role === 'Admin')) {
+      return { success: false, message: 'Personal expenses are visible to the Admin only.' };
+    }
+    return { success: true, data: computePersonalExpenseSummary_(SpreadsheetApp.openById(SPREADSHEET_ID)) };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// Ungated computation — the EOD report runs on an unattended trigger where
+// there is no active user to role-check, so the role gate lives in the caller.
+function computePersonalExpenseSummary_(ss) {
+  const reqSheet = ss.getSheetByName(SHEETS.REQUESTS);
+  if (!reqSheet) return emptyPersonalSummary_();
+
+  // ── Spend per request, from the detail rows written at settlement ──
+  // An Expense request settles into PCR_DETAIL rows keyed by Request_ID; a Cash
+  // Advance request is liquidated into LIQ_DETAIL rows keyed by the advance's
+  // Entry_ID. Both are collected, or a personal Cash Advance would report zero
+  // spend and silently drop the debt once it reached SETTLED.
+  const spentByRequest = {};   // Request_ID       -> PCR_DETAIL total
+  const spentByAdvance = {};   // advance Entry_ID -> LIQ_DETAIL total
+  const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
+  if (entrySheet) {
+    const eRows = entrySheet.getDataRange().getValues();
+    for (let j = 1; j < eRows.length; j++) {
+      const e = eRows[j];
+      if (!e[0] || e[10] === 'VOID' || e[10] === 'DELETED') continue;
+      const ref = e[7];
+      if (!ref) continue;
+      const amt = parseFloat(e[5]) || 0;
+      if      (e[2] === 'PCR_DETAIL') spentByRequest[ref] = (spentByRequest[ref] || 0) + amt;
+      else if (e[2] === 'LIQ_DETAIL') spentByAdvance[ref] = (spentByAdvance[ref] || 0) + amt;
+    }
+  }
+
+  const rows     = reqSheet.getDataRange().getValues();
+  const requests = [];
+  let totalRequested = 0, totalSpent = 0, totalOwed = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[0] || r[15] !== 'YES') continue;
+
+    const status      = r[7];
+    const amount      = parseFloat(r[3]) || 0;
+    const requestType = r[4] || 'Expense';
+    const spent       = requestType === 'Cash Advance'
+      ? (spentByAdvance[r[12]] || 0)   // liquidated against the advance entry
+      : (spentByRequest[r[0]]  || 0);  // settled against the request itself
+    const owed        = personalOwedForRequest_(status, amount, spent);
+    // Change handed back at settlement (negative = she overspent and the fund
+    // reimbursed her the difference).
+    const change = status === 'SETTLED' ? parseFloat((amount - spent).toFixed(2)) : 0;
+
+    totalRequested += amount;
+    if (status === 'SETTLED') totalSpent += spent;
+    totalOwed += owed;
+
+    requests.push({
+      id         : r[0],
+      date       : normalizeDate(r[1]),
+      purpose    : r[2],
+      amount     : amount,
+      requestType: requestType,
+      status     : status,
+      spent      : spent,
+      change     : change,
+      owed       : owed,
+      entryId    : r[12],
+      createdAt  : r[13]
+    });
+  }
+  requests.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+
+  // ── Paybacks recorded so far ──
+  const repayments = [];
+  let totalRepaid = 0;
+  const repaySheet = ss.getSheetByName(SHEETS.PERSONAL_REPAY);
+  if (repaySheet) {
+    const pRows = repaySheet.getDataRange().getValues();
+    for (let k = 1; k < pRows.length; k++) {
+      const p = pRows[k];
+      if (!p[0]) continue;
+      const amt = parseFloat(p[2]) || 0;
+      totalRepaid += amt;
+      repayments.push({
+        id        : p[0],
+        date      : normalizeDate(p[1]),
+        amount    : amt,
+        note      : p[3],
+        entryId   : p[4],
+        recordedBy: p[5],
+        createdAt : p[6]
+      });
+    }
+    repayments.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
+  }
+
+  return {
+    requests,
+    repayments,
+    totalRequested,
+    totalSpent,
+    totalRepaid,
+    // What she still owes the drawer. Never negative — an overpayment just
+    // reads as fully settled rather than as the fund owing her money.
+    outstanding: Math.max(0, parseFloat((totalOwed - totalRepaid).toFixed(2))),
+    // Pre-payback total, so the tab can show "owed 4,200 − repaid 3,000".
+    totalOwed  : parseFloat(totalOwed.toFixed(2))
+  };
+}
+
+function emptyPersonalSummary_() {
+  return {
+    requests: [], repayments: [],
+    totalRequested: 0, totalSpent: 0, totalRepaid: 0, outstanding: 0, totalOwed: 0
+  };
+}
+
+// Admin records money she has physically put back into the drawer.
+// data: { amount, date, note }
+function savePersonalRepayment(data) {
+  try {
+    const role = getUserRole();
+    if (!(role.success && role.role === 'Admin')) {
+      return { success: false, message: 'Only the Admin can record a personal repayment.' };
+    }
+
+    const amount = parseFloat(data && data.amount) || 0;
+    if (amount <= 0) return { success: false, message: 'Enter a repayment amount greater than zero.' };
+
+    const snap = getPersonalExpenseSummary();
+    if (!snap.success) return snap;
+    if (snap.data.outstanding <= 0) {
+      return { success: false, message: 'There is nothing outstanding to repay.' };
+    }
+    if (amount > snap.data.outstanding + 0.01) {
+      return {
+        success: false,
+        message: `Amount exceeds the ${fmtPeso_(snap.data.outstanding)} still owed to the fund.`
+      };
+    }
+
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.PERSONAL_REPAY);
+    if (!sheet) return { success: false, message: 'Personal repayments sheet not found. Please run setup.' };
+
+    const email = getUserEmail();
+    const now   = new Date().toISOString();
+    const date  = normalizeDate(data.date) || normalizeDate(new Date());
+
+    // The payback is real cash entering the drawer, so it is an ordinary
+    // REPLENISHMENT entry — that is what makes cash on hand and toReplenish
+    // correct themselves without touching any existing report.
+    const entryResult = saveReplenishmentEntry({
+      date       : date,
+      category   : PERSONAL_REPAY_CATEGORY,
+      description: 'Personal expense repayment by ' + email + (data.note ? ' — ' + data.note : ''),
+      amount     : amount,
+      referenceNo: '',
+      requestedBy: '',
+      approvedBy : email
+    });
+    if (!entryResult.success) {
+      return { success: false, message: 'Failed to record the fund entry: ' + entryResult.message };
+    }
+
+    const id = generateId('PRP', date, sheet);
+    sheet.appendRow([
+      id,               // 1 Repayment_ID
+      date,             // 2 Date
+      amount,           // 3 Amount
+      data.note || '',  // 4 Note
+      entryResult.id,   // 5 Entry_ID
+      email,            // 6 Recorded_By
+      now               // 7 Created_At
+    ]);
+
+    // No recalculateDailySummary / checkReplenishmentThreshold_ here —
+    // saveExpenseEntry already ran both for the REPLENISHMENT entry above.
+
+    const remaining = Math.max(0, parseFloat((snap.data.outstanding - amount).toFixed(2)));
+    writeAuditLog('PERSONAL_REPAYMENT_RECORDED',
+      `Personal expense repayment of ${fmtPeso_(amount)} by ${email}. ` +
+      `Outstanding: ${fmtPeso_(snap.data.outstanding)} → ${fmtPeso_(remaining)}. ` +
+      `Entry: ${entryResult.id}${data.note ? ' | Note: ' + data.note : ''}`,
+      id, date);
+
+    return { success: true, id, entryId: entryResult.id, outstanding: remaining };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
 // =============================================
 // DAILY EOD REPORT → CEO CONSOLIDATED SHEET  (SOP JMN-SOP-FIN-002)
 // Enhanced end-of-day petty cash summary, pushed to the "CEO Raw Data JMN"
@@ -4779,7 +5129,10 @@ function getPettyCashEodReport(date) {
     // so they count toward Total Expenses but NOT toward the drawer balance.
     const entryData = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
     const categoryTotals = {};
-    let txnCount = 0, cashMovementExp = 0;
+    // The Admin's personal draws stay inside Total Expenses — they are reported
+    // as their own line rather than carved out of the books.
+    const personalIds = getPersonalRequestIds_(ss);
+    let txnCount = 0, cashMovementExp = 0, personalExp = 0;
     for (let i = 1; i < entryData.length; i++) {
       const row = entryData[i];
       if (row.length < 11) continue;
@@ -4792,8 +5145,13 @@ function getPettyCashEodReport(date) {
         categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
         txnCount++;
         if (type === 'EXPENSE') cashMovementExp += amt;
+        // Both detail shapes count: PCR_DETAIL (settled request, keyed by
+        // Request_ID) and LIQ_DETAIL (liquidated advance, keyed by Entry_ID).
+        // getPersonalRequestIds_ registers both keys.
+        if ((type === 'PCR_DETAIL' || type === 'LIQ_DETAIL') && personalIds[row[7]]) personalExp += amt;
       }
     }
+    const personalSnap = computePersonalExpenseSummary_(ss);
 
     const opening   = parseFloat(summary.openingCash)        || 0;
     const totalExp  = parseFloat(summary.totalExpenses)      || 0;
@@ -4834,6 +5192,11 @@ function getPettyCashEodReport(date) {
     L.push('FUND MOVEMENT');
     L.push(pcEodAmt_('Opening Balance:', pcEodFmtP_(opening)));
     L.push(pcEodAmt_('Total Expenses:', pcEodFmtP_(totalExp), '(' + txnCount + ' transaction' + (txnCount === 1 ? '' : 's') + ')'));
+    // Personal draws are part of Total Expenses above — flagged "(of the above)"
+    // so the figure is never added on top when reading the report.
+    if (personalExp > 0) {
+      L.push(pcEodAmt_('Personal Expense:', pcEodFmtP_(personalExp), '(of the above — repayable)'));
+    }
     L.push(pcEodAmt_('Replenishments:', pcEodFmtP_(replenish)));
     L.push(pcEodAmt_(isClosed ? 'Closing Balance:' : 'Expected Balance:', pcEodFmtP_(closing)));
     if (!isClosed)                         L.push(pcEodAmt_('Variance:', '—', 'pending close'));
@@ -4861,6 +5224,12 @@ function getPettyCashEodReport(date) {
     L.push(pcEodAmt_('Outstanding Advances:', pcEodFmtP_(advancesOutstanding)));
     L.push(pcEodAmt_('Fund Ceiling:', pcEodFmtP_(PCR_FUND_CEILING)));
     L.push(pcEodAmt_('To Replenish:', pcEodFmtP_(toReplenish)));
+    // Running personal balance still owed back. Shown here because it explains
+    // part of why To Replenish is elevated — that portion is coming back from
+    // the Admin's own pocket, not from a company top-up.
+    if (personalSnap.outstanding > 0) {
+      L.push(pcEodAmt_('Personal Owed Back:', pcEodFmtP_(personalSnap.outstanding), '(from Admin)'));
+    }
     L.push('  Status: ' + (toReplenish <= 0.01 ? 'FULLY FUNDED ✅' : 'REPLENISH NEEDED ⚠️'));
 
     L.push('');
@@ -5117,8 +5486,12 @@ function getReplenishmentAlertStatus() {
 
     // Date of the last recorded replenishment (the period starts ON that day,
     // so it is inside periodEntries). Null when the fund has never been topped up.
+    // Personal repayments are excluded — they are the Admin settling her own
+    // draw, not the company topping the fund up, and this date is reported as
+    // "Prev. Replenish" on the company replenishment request.
     const lastReplenishDate = (d.periodEntries || [])
-      .filter(e => e.type === 'REPLENISHMENT')
+      .filter(e => e.type === 'REPLENISHMENT'
+                && String(e.category || '').trim() !== PERSONAL_REPAY_CATEGORY)
       .map(e => e.date)
       .sort()
       .pop() || null;

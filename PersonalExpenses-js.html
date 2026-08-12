@@ -1,0 +1,201 @@
+<script>
+// =============================================
+// PERSONAL EXPENSES PAGE LOGIC (Admin only)
+//
+// Petty cash the Admin drew for personal use runs the ordinary request
+// lifecycle, so the money is always visible in Entries and Audit Review. This
+// page adds the part the request flow has no concept of: a running balance of
+// what she still owes the drawer, and a way to pay it back.
+// =============================================
+
+let pexData = null;
+
+async function loadPersonalExpenses() {
+  const reqBody = document.getElementById('pexRequestsBody');
+  const repBody = document.getElementById('pexRepaymentsBody');
+  if (!reqBody) return;
+
+  reqBody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm animate-pulse">Loading...</td></tr>';
+
+  const res = await callServer('getPersonalExpenseSummary');
+  if (!res.success) {
+    reqBody.innerHTML = `<tr><td colspan="6" class="px-4 py-8 text-center text-red-400 text-sm">${escHtml(res.message || 'Failed to load personal expenses.')}</td></tr>`;
+    if (repBody) repBody.innerHTML = '<tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm italic">—</td></tr>';
+    return;
+  }
+
+  pexData = res.data;
+  renderPexMetrics();
+  renderPexRequests();
+  renderPexRepayments();
+
+  // Default the payback date to the day currently selected in the sidebar.
+  const dateEl = document.getElementById('pexRepayDate');
+  if (dateEl && !dateEl.value) dateEl.value = state.currentDate;
+}
+
+function renderPexMetrics() {
+  const d = pexData || {};
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+
+  set('pex-total-requested', fmt(d.totalRequested));
+  set('pex-total-spent',     fmt(d.totalSpent));
+  set('pex-total-repaid',    fmt(d.totalRepaid));
+  set('pex-outstanding',     fmt(d.outstanding));
+  set('pex-owed-inline',     fmt(d.outstanding));
+  set('pex-repaid-inline',   fmt(d.totalRepaid));
+
+  const note = document.getElementById('pex-outstanding-note');
+  if (note) {
+    note.textContent = d.outstanding > 0
+      ? `${fmt(d.totalOwed)} drawn − ${fmt(d.totalRepaid)} paid back`
+      : 'nothing outstanding';
+  }
+
+  // Nothing owed → no payback to record.
+  const btn     = document.getElementById('pexRepayBtn');
+  const fillBtn = document.getElementById('pexFillFullBtn');
+  const settled = !(d.outstanding > 0);
+  if (btn) {
+    btn.disabled  = settled;
+    btn.innerHTML = settled ? '✓ Fully paid back' : '💵 Record Payback';
+  }
+  if (fillBtn) fillBtn.classList.toggle('hidden', settled);
+}
+
+function pexStatusBadge(status) {
+  const styles = {
+    PENDING_APPROVAL: 'bg-amber-100 text-amber-700',
+    APPROVED        : 'bg-green-100 text-green-700',
+    RELEASED        : 'bg-blue-100 text-blue-700',
+    SETTLED         : 'bg-slate-100 text-slate-600',
+    REJECTED        : 'bg-red-100 text-red-600',
+    VOIDED          : 'bg-gray-200 text-gray-600',
+    CANCELLED       : 'bg-gray-200 text-gray-600'
+  };
+  const labels = {
+    PENDING_APPROVAL: 'Pending',
+    APPROVED        : 'Approved',
+    RELEASED        : 'Released',
+    SETTLED         : 'Settled',
+    REJECTED        : 'Rejected',
+    VOIDED          : 'Voided',
+    CANCELLED       : 'Cancelled'
+  };
+  return `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${styles[status] || 'bg-gray-100 text-gray-500'}">${labels[status] || status}</span>`;
+}
+
+function renderPexRequests() {
+  const body = document.getElementById('pexRequestsBody');
+  if (!body) return;
+
+  const rows = (pexData && pexData.requests) || [];
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-gray-400 text-sm">
+      No personal expenses yet. Tick <span class="font-bold text-fuchsia-600">Personal expense</span> when creating a petty cash request.
+    </td></tr>`;
+    return;
+  }
+
+  body.innerHTML = rows.map(r => {
+    // Cash still out of the drawer for this request.
+    const owedCell = r.owed > 0
+      ? `<span class="font-mono font-bold text-fuchsia-700">${fmt(r.owed)}</span>`
+      : `<span class="font-mono text-gray-300">—</span>`;
+    // Settled requests show what came back (or, if negative, what the fund paid out).
+    const spentCell = r.status === 'SETTLED'
+      ? `<span class="font-mono text-indigo-700">${fmt(r.spent)}</span>` +
+        (Math.abs(r.change) >= 0.01
+          ? `<div class="text-[10px] ${r.change > 0 ? 'text-teal-600' : 'text-orange-600'} mt-0.5">${r.change > 0 ? fmt(r.change) + ' returned' : fmt(Math.abs(r.change)) + ' overspent'}</div>`
+          : '')
+      : `<span class="font-mono text-gray-300">—</span>`;
+
+    return `<tr class="hover:bg-fuchsia-50/40 transition">
+      <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 font-mono">${escHtml(r.date)}</td>
+      <td class="px-3 py-3">
+        <div class="text-gray-800 font-medium">${escHtml(r.purpose) || '<span class="text-gray-300">—</span>'}</div>
+        <div class="text-[10px] text-gray-400 font-mono mt-0.5">
+          ${escHtml(r.id)}${r.requestType === 'Cash Advance' ? ' &middot; <span class="text-blue-500 font-bold">ADVANCE</span>' : ''}
+        </div>
+      </td>
+      <td class="px-3 py-3 text-right font-mono text-gray-700">${fmt(r.amount)}</td>
+      <td class="px-3 py-3 text-right">${spentCell}</td>
+      <td class="px-3 py-3 text-right">${owedCell}</td>
+      <td class="px-3 py-3 text-center">${pexStatusBadge(r.status)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderPexRepayments() {
+  const body = document.getElementById('pexRepaymentsBody');
+  if (!body) return;
+
+  const rows = (pexData && pexData.repayments) || [];
+  if (!rows.length) {
+    body.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-gray-400 text-sm">No paybacks recorded yet.</td></tr>';
+    return;
+  }
+
+  body.innerHTML = rows.map(p => `<tr class="hover:bg-emerald-50/40 transition">
+    <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 font-mono">${escHtml(p.date)}</td>
+    <td class="px-3 py-3 text-gray-800">${escHtml(p.note) || '<span class="text-gray-300">—</span>'}</td>
+    <td class="px-3 py-3 text-[10px] text-gray-400 font-mono">${escHtml(p.entryId)}</td>
+    <td class="px-3 py-3 text-right font-mono font-bold text-emerald-600">${fmt(p.amount)}</td>
+  </tr>`).join('');
+}
+
+// ── Payback ───────────────────────────────────
+
+function fillPexFullAmount() {
+  const el = document.getElementById('pexRepayAmount');
+  if (el && pexData) el.value = pexData.outstanding.toFixed(2);
+}
+
+function confirmPersonalRepayment() {
+  const amount = parseFloat(document.getElementById('pexRepayAmount')?.value);
+  const date   = document.getElementById('pexRepayDate')?.value || state.currentDate;
+  const note   = document.getElementById('pexRepayNote')?.value.trim() || '';
+
+  if (!amount || amount <= 0) { toast('Enter an amount greater than zero.', 'warning'); return; }
+  if (!pexData || pexData.outstanding <= 0) { toast('There is nothing outstanding to repay.', 'warning'); return; }
+  // Server enforces this too — checked here so she gets the message before the round trip.
+  if (amount > pexData.outstanding + 0.01) {
+    toast(`That is more than the ${fmt(pexData.outstanding)} still owed.`, 'warning');
+    return;
+  }
+
+  const remaining = Math.max(0, pexData.outstanding - amount);
+  document.getElementById('pexRepayInfo').innerHTML =
+    `<div class="flex justify-between mb-1"><span>Paying back</span><span class="font-mono font-bold">${fmt(amount)}</span></div>` +
+    `<div class="flex justify-between text-xs text-gray-500"><span>Remaining after this</span><span class="font-mono">${fmt(remaining)}</span></div>` +
+    `<div class="text-xs text-gray-500 mt-1">Dated ${escHtml(date)}${note ? ' — ' + escHtml(note) : ''}</div>`;
+  document.getElementById('pexRepayModal').classList.remove('hidden');
+}
+
+function closePexRepayModal() {
+  document.getElementById('pexRepayModal').classList.add('hidden');
+}
+
+async function submitPersonalRepayment(btn) {
+  const amount = parseFloat(document.getElementById('pexRepayAmount')?.value);
+  const date   = document.getElementById('pexRepayDate')?.value || state.currentDate;
+  const note   = document.getElementById('pexRepayNote')?.value.trim() || '';
+
+  btnLoad(btn, true);
+  const res = await callServer('savePersonalRepayment', { amount, date, note });
+  btnLoad(btn, false);
+
+  if (!res.success) { toast(res.message || 'Failed to record the payback.', 'error'); return; }
+
+  closePexRepayModal();
+  toast(res.outstanding > 0
+    ? `Payback recorded. ${fmt(res.outstanding)} still owed.`
+    : 'Payback recorded — fully settled.');
+
+  document.getElementById('pexRepayAmount').value = '';
+  document.getElementById('pexRepayNote').value   = '';
+  loadPersonalExpenses();
+  // The drawer just changed, so refresh whatever fund figures are on screen.
+  if (typeof loadDayData === 'function') loadDayData();
+}
+</script>
