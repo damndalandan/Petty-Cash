@@ -17,8 +17,76 @@ const SHEETS = {
   CATEGORIES   : 'PettyCash_Categories',
   REQUESTS     : 'PettyCash_Requests',
   REPLENISH_REQS: 'PettyCash_ReplenishRequests',
-  PERSONAL_REPAY: 'PettyCash_PersonalRepayments'
+  PERSONAL_REPAY: 'PettyCash_PersonalRepayments',
+
+  // Replenishment journal — one tab per receipt type, written by
+  // exportReplenishmentJournal(). Kept apart from the operational sheets so the
+  // bookkeeper can read a section without wading through the entry ledger.
+  JRN_NO_RECEIPT : 'PettyCash_Journal_NoReceipt',
+  JRN_ACK        : 'PettyCash_Journal_AckReceipt',
+  JRN_NON_VAT    : 'PettyCash_Journal_NonVAT',
+  JRN_VAT        : 'PettyCash_Journal_VAT',
+  JRN_UNTAGGED   : 'PettyCash_Journal_Untagged'
 };
+
+// ─────────────────────────────────────────────
+// RECEIPT TYPE (tagged by the custodian at liquidation)
+// ─────────────────────────────────────────────
+// Stored as a stable code in PettyCash_Entries.Receipt_Type so the label can be
+// reworded without rewriting history. UNTAGGED is never written — it is what
+// normalizeReceiptType_() returns for a receipted row recorded before tagging
+// existed, so those amounts surface in their own journal section instead of
+// being silently guessed into VAT or Non-VAT.
+const RECEIPT_TYPES = {
+  VAT     : 'VAT',
+  NON_VAT : 'NON_VAT',
+  ACK     : 'ACK',
+  NONE    : 'NONE',
+  UNTAGGED: 'UNTAGGED'
+};
+
+const RECEIPT_TYPE_LABELS = {
+  VAT     : 'VAT Receipt',
+  NON_VAT : 'Non-VAT Receipt',
+  ACK     : 'Acknowledgement Receipt Only',
+  NONE    : 'No Receipt',
+  UNTAGGED: 'Untagged (recorded before receipt tagging)'
+};
+
+// Entry types that carry a receipt and therefore belong in the journal.
+// CASH_ADVANCE_REIMBURSEMENT is deliberately absent: it is the cash top-up for
+// an overspend, and the receipts behind that spend are already booked as
+// LIQ_DETAIL / PCR_DETAIL rows. Including it would book the same purchase twice.
+const JOURNAL_ENTRY_TYPES = ['EXPENSE', 'LIQ_DETAIL', 'PCR_DETAIL'];
+
+// Only VAT receipts carry claimable input VAT. Everything else is booked at its
+// face value, so computeVAT()'s 12% split must not be applied to them.
+function receiptTypeIsVatable_(receiptType) {
+  return normalizeReceiptType_(receiptType, true) === RECEIPT_TYPES.VAT;
+}
+
+// Accepts whatever is on the sheet (code, label, legacy blank) and returns a
+// canonical code. `hasReceipt` only decides how a blank is read: a row with no
+// receipt genuinely is "No Receipt", while a receipted row is UNTAGGED.
+function normalizeReceiptType_(raw, hasReceipt) {
+  const v = String(raw == null ? '' : raw).trim().toUpperCase();
+
+  if (!v) return hasReceipt ? RECEIPT_TYPES.UNTAGGED : RECEIPT_TYPES.NONE;
+
+  if (v === 'VAT' || v === 'VAT RECEIPT')            return RECEIPT_TYPES.VAT;
+  if (v === 'NON_VAT' || v === 'NON-VAT' ||
+      v === 'NONVAT'  || v === 'NON-VAT RECEIPT' ||
+      v === 'NON VAT RECEIPT')                       return RECEIPT_TYPES.NON_VAT;
+  if (v === 'ACK' || v.indexOf('ACKNOWLEDG') === 0)  return RECEIPT_TYPES.ACK;
+  if (v === 'NONE' || v === 'NO RECEIPT')            return RECEIPT_TYPES.NONE;
+
+  // Unrecognised value — surface it rather than mis-filing it as No Receipt.
+  return RECEIPT_TYPES.UNTAGGED;
+}
+
+function receiptTypeLabel_(code) {
+  return RECEIPT_TYPE_LABELS[code] || RECEIPT_TYPE_LABELS.UNTAGGED;
+}
 
 // Category stamped on the REPLENISHMENT entry an Admin personal payback creates.
 // It is what distinguishes "the Admin paid back what she drew" from "the company
@@ -508,7 +576,38 @@ function initializeSheets() {
     s.setColumnWidth(4, 240);
   }
 
+  // ── Replenishment journal tabs — one per receipt type ──
+  ensureJournalSheet_(ss, SHEETS.JRN_NO_RECEIPT, false);
+  ensureJournalSheet_(ss, SHEETS.JRN_ACK,        false);
+  ensureJournalSheet_(ss, SHEETS.JRN_NON_VAT,    false);
+  ensureJournalSheet_(ss, SHEETS.JRN_UNTAGGED,   false);
+  ensureJournalSheet_(ss, SHEETS.JRN_VAT,        true);
+
   return { success: true };
+}
+
+// Creates a journal tab on first use and returns it. Idempotent — an existing
+// tab is handed straight back so a re-export never rebuilds formatting.
+function ensureJournalSheet_(ss, name, itemized) {
+  const existing = ss.getSheetByName(name);
+  if (existing) return existing;
+
+  const s       = ss.insertSheet(name);
+  const headers = itemized ? JOURNAL_ITEMIZED_HEADERS_() : JOURNAL_SUMMARY_HEADERS_();
+  s.appendRow(headers);
+  s.setFrozenRows(1);
+  formatHeaderRow(s);
+  s.setColumnWidths(1, headers.length, 130);
+
+  if (itemized) {
+    s.getRange('J2:L').setNumberFormat('₱#,##0.00');
+    s.setColumnWidth(6, 260);   // Description
+    s.setColumnWidth(7, 200);   // Supplier_Name
+  } else {
+    s.getRange('D2:D').setNumberFormat('₱#,##0.00');
+    s.setColumnWidth(3, 200);   // Account_Type
+  }
+  return s;
 }
 
 // ─────────────────────────────────────────────
@@ -517,10 +616,13 @@ function initializeSheets() {
 // Canonical schema for every managed sheet. Header order here is authoritative —
 // any mismatch in the spreadsheet is overwritten when initializeDatabase() runs.
 const SHEET_SCHEMA = {
+  // Col 15 (Notes) has always been written by the liquidation / void paths but
+  // was missing from the schema, so initializeDatabase() blanked its header.
+  // Col 16 (Receipt_Type) is the custodian's liquidation tag — see RECEIPT_TYPES.
   [SHEETS.ENTRIES]: [
     'Entry_ID','Date','Type','Category','Description',
     'Amount','Has_Receipt','Reference_No','Requested_By','Approved_By',
-    'Status','Created_At','Updated_At','Deleted_At'
+    'Status','Created_At','Updated_At','Deleted_At','Notes','Receipt_Type'
   ],
   [SHEETS.DENOMINATIONS]: [
     'Record_ID','Date','Type',
@@ -538,7 +640,7 @@ const SHEET_SCHEMA = {
     'Receipt_ID','Entry_ID','Date','Supplier_Name',
     'Address','TIN','Receipt_No',
     'Gross_Amount','Vatable_Sales','VAT_Amount',
-    'Created_By','Created_At'
+    'Created_By','Created_At','Receipt_Type'
   ],
   [SHEETS.NO_RECEIPTS]: [
     'NR_ID','Entry_ID','Date','Description',
@@ -570,8 +672,35 @@ const SHEET_SCHEMA = {
     'Docs_Log','Docs_Receipts','Prev_Replenish_Date','Declaration','Notes',
     'Requested_By','Status','Decided_By','Decided_At','Decision_Note',
     'Fulfilled_Entry_ID','Fulfilled_At','Created_At','Updated_At'
-  ]
+  ],
+
+  // ── Replenishment journal tabs ──
+  // Rows are keyed by Period_From so re-exporting a period replaces just that
+  // period's rows and leaves older cycles on file. The three summarised
+  // sections carry one row per Account Type; VAT is itemised line by line
+  // because input VAT has to be traceable to a specific OR.
+  [SHEETS.JRN_NO_RECEIPT]: JOURNAL_SUMMARY_HEADERS_(),
+  [SHEETS.JRN_ACK]       : JOURNAL_SUMMARY_HEADERS_(),
+  [SHEETS.JRN_NON_VAT]   : JOURNAL_SUMMARY_HEADERS_(),
+  [SHEETS.JRN_UNTAGGED]  : JOURNAL_SUMMARY_HEADERS_(),
+  [SHEETS.JRN_VAT]       : JOURNAL_ITEMIZED_HEADERS_()
 };
+
+function JOURNAL_SUMMARY_HEADERS_() {
+  return [
+    'Period_From','Period_To','Account_Type',
+    'Total_Amount','Entry_Count','Generated_At','Generated_By'
+  ];
+}
+
+function JOURNAL_ITEMIZED_HEADERS_() {
+  return [
+    'Period_From','Period_To','Date','Entry_ID','Account_Type','Description',
+    'Supplier_Name','TIN','Receipt_No',
+    'Gross_Amount','Vatable_Sales','VAT_Amount',
+    'Generated_At','Generated_By'
+  ];
+}
 
 // Idempotent: creates any missing sheet (via initializeSheets), then rewrites
 // row 1 of every managed sheet to match SHEET_SCHEMA. Data rows are untouched.
@@ -722,11 +851,19 @@ function saveExpenseEntry(data) {
     const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
     const now        = new Date().toISOString();
     const id         = generateId('EXP', data.date, entrySheet);
+    const entryType  = data.type || 'EXPENSE';
+
+    // Only receipt-bearing spend carries a tag. Cash movements (advances,
+    // returns, top-ups) have no receipt to classify, so they stay blank rather
+    // than being filed as "No Receipt" and inflating that journal section.
+    const receiptType = JOURNAL_ENTRY_TYPES.includes(entryType)
+      ? normalizeReceiptType_(data.receiptType, !!data.hasReceipt)
+      : '';
 
     entrySheet.appendRow([
       id,                          // col 1  — Entry_ID
       data.date,                   // col 2  — Date
-      data.type        || 'EXPENSE',// col 3  — Type
+      entryType,                   // col 3  — Type
       data.category    || 'Miscellaneous', // col 4 — Category
       data.description || '',      // col 5  — Description
       parseFloat(data.amount) || 0,// col 6  — Amount
@@ -738,7 +875,8 @@ function saveExpenseEntry(data) {
       now,                         // col 12 — Created_At
       now,                         // col 13 — Updated_At
       '',                          // col 14 — (reserved / blank)
-      ''                           // col 15 — Notes/Remarks
+      '',                          // col 15 — Notes/Remarks
+      receiptType                  // col 16 — Receipt_Type
     ]);
 
     // ── Auto-log to PettyCash_NoReceipts if no receipt and type is EXPENSE/LIQ_DETAIL/PCR_DETAIL ──
@@ -826,6 +964,14 @@ function updateExpenseEntry(payload) {
         'ACTIVE'
       ]]);
       sheet.getRange(row, 13).setValue(now);
+
+      // Receipt_Type sits past the block written above, so it needs its own
+      // write. An edit that omits it keeps whatever tag is already on file.
+      const editType = payload.type || 'EXPENSE';
+      if (JOURNAL_ENTRY_TYPES.includes(editType) && payload.receiptType !== undefined) {
+        sheet.getRange(row, 16)
+          .setValue(normalizeReceiptType_(payload.receiptType, !!payload.hasReceipt));
+      }
 
       // ── Sync NoReceipts sheet on update ──
       // If receipt status changed TO no-receipt, add a record if not already there
@@ -994,6 +1140,7 @@ function getExpenseEntries(date) {
           status          : status,
           createdAt       : row[11],
           updatedAt       : row[12],
+          receiptType     : normalizeReceiptType_(row[15], row[6] === 'YES'),
           carriedForward  : false,
           originalDate    : rowDate,
           isPersonal      : !!(personalIds && personalIds[row[7]])
@@ -1174,7 +1321,18 @@ function saveReceiptRecord(data) {
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.RECEIPTS);
-    const vat   = computeVAT(data.grossAmount);
+
+    // A receipt only carries claimable input VAT when the custodian tagged it
+    // VAT. Anything else (non-VAT supplier, acknowledgement receipt) is booked
+    // at face value — splitting out 12% there would overstate input VAT in the
+    // purchases journal. Untagged receipts keep the historical 12% behaviour.
+    const rcptType = normalizeReceiptType_(data.receiptType, true);
+    const vat      = rcptType === RECEIPT_TYPES.NON_VAT || rcptType === RECEIPT_TYPES.ACK
+      ? { grossAmount  : parseFloat(parseFloat(data.grossAmount || 0).toFixed(2)),
+          vatableSales : parseFloat(parseFloat(data.grossAmount || 0).toFixed(2)),
+          vatAmount    : 0 }
+      : computeVAT(data.grossAmount);
+
     SpreadsheetApp.flush();
     const id    = generateId('RCP', data.date, sheet);
     const user  = getUserEmail();
@@ -1190,9 +1348,10 @@ function saveReceiptRecord(data) {
       data.receiptNo  || '', // Receipt_No / OR No.
       vat.grossAmount,       // Gross_Amount
       vat.vatableSales,      // Vatable_Sales (Less: VAT)
-      vat.vatAmount,         // VAT_Amount (12%)
+      vat.vatAmount,         // VAT_Amount (12% — 0 for non-VAT / ack receipts)
       user,                  // Created_By
-      now                    // Created_At
+      now,                   // Created_At
+      rcptType               // Receipt_Type
     ]);
 
     // ── Update Has_Receipt on the linked entry ──
@@ -1203,6 +1362,9 @@ function saveReceiptRecord(data) {
         if (entryRows[i][0] === data.entryId) {
           entrySheet.getRange(i + 1, 7).setValue('YES');
           entrySheet.getRange(i + 1, 13).setValue(now);
+          // Keep the entry's tag in step with the receipt actually filed, so
+          // the journal and the purchases journal can never disagree.
+          if (data.receiptType) entrySheet.getRange(i + 1, 16).setValue(rcptType);
           markNoReceiptDeleted(data.entryId);
           recalculateDailySummary(data.date);
           break;
@@ -1210,7 +1372,7 @@ function saveReceiptRecord(data) {
       }
     }
 
-    return { success: true, id, vat };
+    return { success: true, id, vat, receiptType: rcptType };
   } catch(e) {
     return { success: false, message: e.toString() };
   }
@@ -1239,7 +1401,8 @@ function getReceiptByEntryId(entryId) {
           vatableSales: row[8],
           vatAmount   : row[9],
           createdBy   : row[10],
-          createdAt   : row[11]
+          createdAt   : row[11],
+          receiptType : normalizeReceiptType_(row[12], true)
         }
       };
     }
@@ -1271,7 +1434,8 @@ function getReceiptsByDate(date) {
         receiptNo   : row[6],
         grossAmount : row[7],
         vatableSales: row[8],
-        vatAmount   : row[9]
+        vatAmount   : row[9],
+        receiptType : normalizeReceiptType_(row[12], true)
       });
     }
     return { success: true, data: records };
@@ -1804,6 +1968,7 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
             description: entry.desc       || '',
             amount     : parseFloat(entry.amount) || 0,
             hasReceipt : !!entry.hasReceipt,
+            receiptType: entry.receiptType,
             referenceNo: advId,
             requestedBy: requestedBy,
             approvedBy : approverEmail
@@ -1813,8 +1978,9 @@ function finalizePendingLiquidations(approvalDate, flaggedEntries, approverEmail
           if (entry.hasReceipt && entry.receipt && liqEntry.id) {
             const rcptResult = saveReceiptRecord({
               ...entry.receipt,
-              entryId: liqEntry.id,
-              date   : approvalDate
+              entryId    : liqEntry.id,
+              date       : approvalDate,
+              receiptType: entry.receiptType
             });
             if (!rcptResult || !rcptResult.success) {
               writeAuditLog(
@@ -2172,12 +2338,18 @@ function submitLiquidation(data) {
           description: entry.desc       || '',
           amount     : amt,
           hasReceipt : !!entry.hasReceipt,
+          receiptType: entry.receiptType,
           referenceNo: data.id,
           requestedBy: rows[i][8] || '',
           approvedBy : ''
         });
         if (entry.hasReceipt && entry.receipt && liqEntry && liqEntry.id) {
-          const rcptResult = saveReceiptRecord({ ...entry.receipt, entryId: liqEntry.id, date: today });
+          const rcptResult = saveReceiptRecord({
+            ...entry.receipt,
+            entryId    : liqEntry.id,
+            date       : today,
+            receiptType: entry.receiptType
+          });
           if (!rcptResult || !rcptResult.success) {
             writeAuditLog(
               'RECEIPT_SAVE_FAILED',
@@ -3285,7 +3457,8 @@ function getReplenishmentPeriodReport(params) {
           amount,
           referenceNo: row[7],
           requestedBy: row[8],
-          hasReceipt
+          hasReceipt,
+          receiptType: normalizeReceiptType_(row[15], hasReceipt)
         });
         periodEntries.push(detail);
       } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
@@ -3311,7 +3484,15 @@ function getReplenishmentPeriodReport(params) {
     const rcptMap   = {};
     for (let i = 1; i < rcptData.length; i++) {
       const r = rcptData[i];
-      rcptMap[r[1]] = { supplierName: r[3], receiptNo: r[6] };
+      rcptMap[r[1]] = {
+        supplierName: r[3],
+        address     : r[4],
+        tin         : r[5],
+        receiptNo   : r[6],
+        grossAmount : parseFloat(r[7]) || 0,
+        vatableSales: parseFloat(r[8]) || 0,
+        vatAmount   : parseFloat(r[9]) || 0
+      };
     }
     expenseEntries.forEach(e => { if (rcptMap[e.id]) Object.assign(e, rcptMap[e.id]); });
     expenseEntries.sort((a, b) => a.date > b.date ? -1 : 1);   // newest first
@@ -3363,9 +3544,12 @@ function getReplenishmentPeriodReport(params) {
       }))
       .sort((a, b) => b.amount - a.amount);
 
+    const journal = buildReplenishmentJournal_(expenseEntries, fromStr, toStr);
+
     return {
       success: true,
       data: {
+        journal,
         periodFrom         : fromStr,
         periodTo           : toStr,
         isCurrentPeriod,
@@ -3388,6 +3572,201 @@ function getReplenishmentPeriodReport(params) {
     };
   } catch(e) {
     return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// REPLENISHMENT JOURNAL — grouped by receipt type, for journal entry
+// ─────────────────────────────────────────────
+// Splits a period's receipted spend into one section per receipt type. The
+// three undocumented / non-creditable sections are summed by Account Type
+// (= the entry's Category) because the bookkeeper posts them as a single line
+// each; VAT is itemised because every peso of input VAT has to trace back to a
+// specific OR.
+//
+// Scope note: only EXPENSE / LIQ_DETAIL / PCR_DETAIL rows are journalled.
+// CASH_ADVANCE_REIMBURSEMENT is a cash top-up for an overspend whose receipts
+// are already booked as detail rows, so the journal's grand total is
+// deliberately the sum of the sections — not the report's totalExpenses.
+const JOURNAL_SECTION_ORDER = [
+  { key: RECEIPT_TYPES.NONE,     itemized: false },
+  { key: RECEIPT_TYPES.ACK,      itemized: false },
+  { key: RECEIPT_TYPES.NON_VAT,  itemized: false },
+  { key: RECEIPT_TYPES.VAT,      itemized: true  },
+  { key: RECEIPT_TYPES.UNTAGGED, itemized: false }
+];
+
+function buildReplenishmentJournal_(expenseEntries, fromStr, toStr) {
+  const journalled = (expenseEntries || [])
+    .filter(e => JOURNAL_ENTRY_TYPES.includes(e.type));
+
+  const sections = JOURNAL_SECTION_ORDER.map(spec => {
+    const rows = journalled
+      .filter(e => e.receiptType === spec.key)
+      .sort((a, b) => a.date > b.date ? 1 : -1);   // oldest first — reads like a ledger
+
+    const total = rows.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+
+    const section = {
+      key      : spec.key,
+      label    : receiptTypeLabel_(spec.key),
+      itemized : spec.itemized,
+      total    : parseFloat(total.toFixed(2)),
+      count    : rows.length,
+      groups   : [],
+      items    : []
+    };
+
+    // Every section carries its Account Type roll-up — the summarised sections
+    // render it, and the VAT section uses it for its per-account subtotals.
+    const byAccount = {};
+    rows.forEach(e => {
+      const acct = String(e.category || 'Miscellaneous').trim() || 'Miscellaneous';
+      if (!byAccount[acct]) byAccount[acct] = { accountType: acct, amount: 0, count: 0 };
+      byAccount[acct].amount += parseFloat(e.amount) || 0;
+      byAccount[acct].count  += 1;
+    });
+    section.groups = Object.keys(byAccount)
+      .map(a => ({
+        accountType: a,
+        amount     : parseFloat(byAccount[a].amount.toFixed(2)),
+        count      : byAccount[a].count
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    if (spec.itemized) {
+      section.items = rows.map(e => ({
+        id          : e.id,
+        date        : e.date,
+        accountType : String(e.category || 'Miscellaneous').trim() || 'Miscellaneous',
+        description : e.description || '',
+        supplierName: e.supplierName || '',
+        tin         : e.tin          || '',
+        receiptNo   : e.receiptNo    || '',
+        amount      : parseFloat(e.amount) || 0,
+        // Receipts filed before tagging may be missing their split; fall back to
+        // the 12% derivation so a VAT line is never shown with a blank VAT.
+        vatableSales: e.vatableSales != null ? e.vatableSales : computeVAT(e.amount).vatableSales,
+        vatAmount   : e.vatAmount    != null ? e.vatAmount    : computeVAT(e.amount).vatAmount
+      }));
+      section.vatTotal = parseFloat(
+        section.items.reduce((s, i) => s + (parseFloat(i.vatAmount) || 0), 0).toFixed(2)
+      );
+    }
+
+    return section;
+  });
+
+  const grandTotal = sections.reduce((s, sec) => s + sec.total, 0);
+
+  return {
+    periodFrom: fromStr,
+    periodTo  : toStr,
+    // Empty sections are kept so the report always shows the same shape — the
+    // UI hides them, but the export writes an explicit zero rather than an
+    // absent tab, which reads as "nothing here" instead of "not generated".
+    sections,
+    grandTotal: parseFloat(grandTotal.toFixed(2)),
+    entryCount: journalled.length
+  };
+}
+
+// Which spreadsheet tab a section writes to.
+function journalSheetFor_(key) {
+  return {
+    [RECEIPT_TYPES.NONE]    : SHEETS.JRN_NO_RECEIPT,
+    [RECEIPT_TYPES.ACK]     : SHEETS.JRN_ACK,
+    [RECEIPT_TYPES.NON_VAT] : SHEETS.JRN_NON_VAT,
+    [RECEIPT_TYPES.VAT]     : SHEETS.JRN_VAT,
+    [RECEIPT_TYPES.UNTAGGED]: SHEETS.JRN_UNTAGGED
+  }[key] || null;
+}
+
+/**
+ * Writes the selected period's journal into the database spreadsheet — one tab
+ * per receipt type. Re-running the same period replaces only that period's
+ * rows, so the export is safe to repeat and older cycles stay on file.
+ *
+ * @param {{periodFrom?: string}} params — same period key the report uses.
+ */
+function exportReplenishmentJournal(params) {
+  try {
+    const report = getReplenishmentPeriodReport(params || {});
+    if (!report.success) return { success: false, message: report.message };
+
+    const journal = report.data && report.data.journal;
+    if (!journal) return { success: false, message: 'No journal data for this period.' };
+
+    const ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const user = getUserEmail();
+    const now  = new Date().toISOString();
+    const from = journal.periodFrom;
+    const to   = journal.periodTo;
+
+    const written = [];
+
+    journal.sections.forEach(section => {
+      const name = journalSheetFor_(section.key);
+      if (!name) return;
+
+      const sheet = ensureJournalSheet_(ss, name, section.itemized);
+
+      const newRows = section.itemized
+        ? section.items.map(i => ([
+            from, to, i.date, i.id, i.accountType, i.description,
+            i.supplierName, i.tin, i.receiptNo,
+            i.amount, i.vatableSales, i.vatAmount,
+            now, user
+          ]))
+        : section.groups.map(g => ([
+            from, to, g.accountType, g.amount, g.count, now, user
+          ]));
+
+      replaceJournalPeriod_(sheet, section.itemized, from, newRows);
+      written.push({ sheet: name, label: section.label, rows: newRows.length, total: section.total });
+    });
+
+    writeAuditLog(
+      'JOURNAL_EXPORTED',
+      `Replenishment journal exported for ${from} → ${to}. ` +
+      written.map(w => `${w.label}: ${w.rows} row(s) / ₱${w.total.toFixed(2)}`).join(' | '),
+      from,
+      normalizeDate(new Date())
+    );
+
+    return {
+      success: true,
+      data: { periodFrom: from, periodTo: to, written, grandTotal: journal.grandTotal }
+    };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// Rewrites a journal tab so it holds every period EXCEPT `periodFrom`, followed
+// by the freshly generated rows for that period. Keyed on Period_From (col 1)
+// because that is the period's identity everywhere else in the report.
+function replaceJournalPeriod_(sheet, itemized, periodFrom, newRows) {
+  const headers = itemized ? JOURNAL_ITEMIZED_HEADERS_() : JOURNAL_SUMMARY_HEADERS_();
+  const width   = headers.length;
+
+  const existing = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, width).getValues()
+    : [];
+
+  const kept = existing.filter(r =>
+    String(r[0] || '').trim() !== '' &&
+    normalizeDate(r[0]) !== periodFrom
+  );
+
+  const out = kept.concat(newRows);
+
+  // Clear below the header first so a shorter result can't leave stale rows.
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
+  }
+  if (out.length) {
+    sheet.getRange(2, 1, out.length, width).setValues(out);
   }
 }
 
@@ -4159,7 +4538,8 @@ function getPettyCashRequests() {
             category   : e[3],
             description: e[4],
             amount     : parseFloat(e[5]) || 0,
-            hasReceipt : e[6] === 'YES'
+            hasReceipt : e[6] === 'YES',
+            receiptType: normalizeReceiptType_(e[15], e[6] === 'YES')
           });
         } else if (type === 'LIQ_DETAIL' && ref) {
           if (!advanceItemsMap[ref]) advanceItemsMap[ref] = [];
@@ -4167,7 +4547,8 @@ function getPettyCashRequests() {
             category   : e[3],
             description: e[4],
             amount     : parseFloat(e[5]) || 0,
-            hasReceipt : e[6] === 'YES'
+            hasReceipt : e[6] === 'YES',
+            receiptType: normalizeReceiptType_(e[15], e[6] === 'YES')
           });
         } else if (type === 'CASH_ADVANCE') {
           advanceStatusMap[e[0]] = e[10];
@@ -4465,6 +4846,7 @@ function settlePettyCashRequest(data) {
           description: entry.description|| '',
           amount     : amt,
           hasReceipt : !!entry.hasReceipt,
+          receiptType: entry.receiptType,
           referenceNo: data.requestId,
           requestedBy: requestedFor,
           approvedBy : approvedBy
@@ -4478,7 +4860,8 @@ function settlePettyCashRequest(data) {
             address     : entry.receipt.address      || '',
             tin         : entry.receipt.tin          || '',
             receiptNo   : entry.receipt.receiptNo    || '',
-            grossAmount : amt
+            grossAmount : amt,
+            receiptType : entry.receiptType
           });
           if (!rcptResult || !rcptResult.success) {
             receiptSaveFailures.push({
@@ -4618,7 +5001,13 @@ function updateSettledPcrSettlement(data) {
         if (e[7] !== data.requestId) continue;
         if (e[10] === 'DELETED' || e[10] === 'VOID') continue;
         if (e[2] === 'PCR_DETAIL') {
-          existing[e[0]] = { row: j + 1, date: normalizeDate(e[1]), amount: parseFloat(e[5]) || 0, hasReceipt: e[6] === 'YES' };
+          existing[e[0]] = {
+            row        : j + 1,
+            date       : normalizeDate(e[1]),
+            amount     : parseFloat(e[5]) || 0,
+            hasReceipt : e[6] === 'YES',
+            receiptType: normalizeReceiptType_(e[15], e[6] === 'YES')
+          };
           if (!settleDate) settleDate = normalizeDate(e[1]);
         } else if (e[2] === 'CASH_RETURN' || e[2] === 'CASH_ADVANCE_REIMBURSEMENT') {
           reconRow = { row: j + 1, type: e[2], date: normalizeDate(e[1]) };
@@ -4680,12 +5069,31 @@ function updateSettledPcrSettlement(data) {
           ]]);
           entrySheet.getRange(ex.row, 13).setValue(now);
 
+          // Re-tag if the custodian changed the receipt type during the edit.
+          // A receipt already on file can't be detached here, so a tag claiming
+          // there is no receipt is refused rather than half-applied — it would
+          // leave the entry contradicting its own BIR record.
+          let editedType = item.receiptType
+            ? normalizeReceiptType_(item.receiptType, !!item.receipt || ex.hasReceipt)
+            : ex.receiptType;
+          if (ex.hasReceipt &&
+              editedType !== RECEIPT_TYPES.VAT && editedType !== RECEIPT_TYPES.NON_VAT) {
+            editedType = ex.receiptType;
+          }
+          entrySheet.getRange(ex.row, 16).setValue(editedType);
+
           if (ex.hasReceipt) {
             // Keep the BIR purchases journal in step with the corrected amount
-            if (Math.abs(amt - ex.amount) > 0.005 && rcptSheet && rcptRowByEntry[item.id]) {
-              const vat = computeVAT(amt);
+            // and tag. A receipt retagged to non-VAT must lose its 12% split.
+            const typeChanged = editedType !== ex.receiptType;
+            if ((Math.abs(amt - ex.amount) > 0.005 || typeChanged) &&
+                rcptSheet && rcptRowByEntry[item.id]) {
+              const vat = receiptTypeIsVatable_(editedType)
+                ? computeVAT(amt)
+                : { grossAmount: amt, vatableSales: amt, vatAmount: 0 };
               rcptSheet.getRange(rcptRowByEntry[item.id], 8, 1, 3)
                 .setValues([[vat.grossAmount, vat.vatableSales, vat.vatAmount]]);
+              rcptSheet.getRange(rcptRowByEntry[item.id], 13).setValue(editedType);
             }
           } else if (item.receipt) {
             // Receipt attached during the edit — flips Has_Receipt and clears the NRC row
@@ -4696,7 +5104,8 @@ function updateSettledPcrSettlement(data) {
               address     : item.receipt.address      || '',
               tin         : item.receipt.tin          || '',
               receiptNo   : item.receipt.receiptNo    || '',
-              grossAmount : amt
+              grossAmount : amt,
+              receiptType : editedType
             });
             if (!rcptResult || !rcptResult.success) {
               receiptSaveFailures.push({ entryId: item.id, supplier: item.receipt.supplierName || '', reason: (rcptResult && rcptResult.message) || 'unknown' });
@@ -4717,6 +5126,7 @@ function updateSettledPcrSettlement(data) {
             description: item.description|| '',
             amount     : amt,
             hasReceipt : !!item.receipt,
+            receiptType: item.receiptType,
             referenceNo: data.requestId,
             requestedBy: requestedFor,
             approvedBy : approvedBy
@@ -4729,7 +5139,8 @@ function updateSettledPcrSettlement(data) {
               address     : item.receipt.address      || '',
               tin         : item.receipt.tin          || '',
               receiptNo   : item.receipt.receiptNo    || '',
-              grossAmount : amt
+              grossAmount : amt,
+              receiptType : item.receiptType
             });
             if (!rcptResult || !rcptResult.success) {
               receiptSaveFailures.push({ entryId: expResult.id, supplier: item.receipt.supplierName || '', reason: (rcptResult && rcptResult.message) || 'unknown' });

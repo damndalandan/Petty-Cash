@@ -104,7 +104,8 @@ function renderAdvances() {
             <span class="text-gray-300">└</span>
             ${sub.desc || '—'}
             <span class="text-gray-400">(${sub.category || ''})</span>
-            ${sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>'}
+            ${sub.receiptType ? receiptTypeBadgeHtml(sub.receiptType)
+                              : (sub.hasReceipt ? '<span class="text-green-600">🧾</span>' : '<span class="text-amber-500">⚠️</span>')}
           </span>
           <span class="font-mono text-gray-700 shrink-0">${fmt(parseFloat(sub.amount) || 0)}</span>
         </div>`
@@ -315,7 +316,9 @@ function closeLiquidationModal() {
 }
 
 function addLiqEntry() {
-  liqEntries.push({ desc: '', category: 'Miscellaneous', amount: '', receipt: null });
+  // receiptType starts empty on purpose — the custodian must pick one before
+  // the liquidation can be submitted (see confirmLiquidationAction).
+  liqEntries.push({ desc: '', category: 'Miscellaneous', amount: '', receipt: null, receiptType: '' });
   renderLiqEntries();
 }
 
@@ -327,6 +330,13 @@ function removeLiqEntry(idx) {
 function updateLiqEntry(idx, field, value) {
   liqEntries[idx][field] = value;
   if (field === 'amount') updateLiqTotals();
+
+  // Switching to a tag that carries no official receipt drops any receipt the
+  // custodian had already attached — keeping it would file a BIR receipt the
+  // tag says does not exist.
+  if (field === 'receiptType' && !receiptTypeNeedsReceipt(value)) {
+    liqEntries[idx].receipt = null;
+  }
 }
 
 function attachLiqReceipt(idx) {
@@ -393,16 +403,38 @@ function renderLiqEntries() {
       : '';
 
 
-    const receiptBtn = e.receipt
-      ? `<div class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
-           <span class="text-green-600 text-sm">🧾</span>
-           <span class="text-xs font-medium text-green-700 flex-1">${e.receipt.supplierName || 'Receipt'} · ${fmt(e.receipt.grossAmount)}</span>
-           <button onclick="removeLiqReceipt(${i})" class="text-xs text-red-400 hover:text-red-600 font-medium">✕</button>
-         </div>`
-      : `<button onclick="attachLiqReceipt(${i})"
-           class="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition">
-           🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>
-         </button>`;
+    // The receipt-type tag decides whether an official receipt belongs here at
+    // all: VAT / Non-VAT require one, Acknowledgement Receipt and No Receipt
+    // have none to file. Until a tag is picked, neither is offered.
+    const needsRcpt = receiptTypeNeedsReceipt(e.receiptType);
+
+    const receiptBtn = !e.receiptType
+      ? `<p class="text-[10px] text-gray-400 italic text-center py-1">Pick a receipt type above to continue</p>`
+      : !needsRcpt
+        ? `<p class="text-[10px] text-gray-500 text-center py-1.5 bg-white border border-dashed border-gray-200 rounded-lg">
+             ${e.receiptType === 'ACK' ? 'Acknowledgement receipt — no BIR receipt to file' : 'No receipt for this expense'}
+           </p>`
+        : e.receipt
+          ? `<div class="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+               <span class="text-green-600 text-sm">🧾</span>
+               <span class="text-xs font-medium text-green-700 flex-1">${e.receipt.supplierName || 'Receipt'} · ${fmt(e.receipt.grossAmount)}</span>
+               <button onclick="removeLiqReceipt(${i})" class="text-xs text-red-400 hover:text-red-600 font-medium">✕</button>
+             </div>`
+          : `<button onclick="attachLiqReceipt(${i})"
+               class="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-amber-300 bg-amber-50/50 rounded-lg text-xs font-medium text-amber-700 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition">
+               🧾 Add ${e.receiptType === 'VAT' ? 'VAT' : 'Non-VAT'} Receipt <span class="text-[10px] text-amber-500 ml-1">(required)</span>
+             </button>`;
+
+    const rcptTypeSel = `
+      <div>
+        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">
+          Receipt Type <span class="text-red-500">*</span>
+        </label>
+        <select onchange="updateLiqEntry(${i}, 'receiptType', this.value); renderLiqEntries()"
+          class="w-full p-1.5 border rounded-lg text-xs bg-white focus:ring-1 focus:ring-blue-400 outline-none ${e.receiptType ? 'border-gray-200' : 'border-amber-300 bg-amber-50'}">
+          ${receiptTypeOptionsHtml(e.receiptType)}
+        </select>
+      </div>`;
 
     return `
       <div class="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-2">
@@ -420,6 +452,7 @@ function renderLiqEntries() {
         <input type="number" placeholder="0.00" value="${e.amount}" step="0.01"
           oninput="updateLiqEntry(${i}, 'amount', this.value)"
           class="w-full p-1.5 border border-gray-200 rounded-lg text-xs font-mono bg-white focus:ring-1 focus:ring-blue-400 outline-none">
+        ${rcptTypeSel}
         ${receiptBtn}
       </div>`;
   }).join('');
@@ -445,6 +478,22 @@ async function confirmLiquidationAction() {
   const valid = liqEntries.filter(e => e.desc.trim() && parseFloat(e.amount) > 0);
   if (!valid.length) { toast('Add at least one entry with a description and amount', 'warning'); return; }
 
+  // Every liquidated line must be classified — the replenishment journal groups
+  // on this tag, so an untagged line would silently fall out of the sections.
+  const untagged = valid.findIndex(e => !e.receiptType);
+  if (untagged !== -1) {
+    toast(`Entry ${untagged + 1} ("${valid[untagged].desc}") needs a receipt type.`, 'warning');
+    return;
+  }
+
+  // A VAT / Non-VAT tag is a claim that an official receipt exists — it has to
+  // be on file, otherwise the journal's VAT section can't be traced to an OR.
+  const missingRcpt = valid.findIndex(e => receiptTypeNeedsReceipt(e.receiptType) && !e.receipt);
+  if (missingRcpt !== -1) {
+    toast(`Entry ${missingRcpt + 1} is tagged ${receiptTypeShort(valid[missingRcpt].receiptType)} — attach the receipt details.`, 'warning');
+    return;
+  }
+
   const btn = document.getElementById('liqConfirmBtn');
   btnLoad(btn, true);
 
@@ -452,11 +501,12 @@ async function confirmLiquidationAction() {
     id,
     note,
     entries: valid.map(e => ({
-      category  : e.category,
-      desc      : e.desc,
-      amount    : parseFloat(e.amount),
-      hasReceipt: !!e.receipt,
-      receipt   : e.receipt || null
+      category   : e.category,
+      desc       : e.desc,
+      amount     : parseFloat(e.amount),
+      hasReceipt : !!e.receipt,
+      receiptType: e.receiptType,
+      receipt    : e.receipt || null
     }))
   };
 

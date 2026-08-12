@@ -58,6 +58,62 @@ function btnLoad(btn, loading) {
   }
 }
 
+// =============================================
+// RECEIPT TYPE — the custodian's tag on every expense line
+// =============================================
+// Mirrors RECEIPT_TYPES / RECEIPT_TYPE_LABELS in Code.js. The tag drives the
+// replenishment journal, so the same four choices must appear on every surface
+// that records spend: liquidation, PCR settlement, and direct entry.
+const RECEIPT_TYPE_OPTIONS = [
+  { value: 'VAT',     label: 'VAT Receipt',                   short: 'VAT',      needsReceipt: true  },
+  { value: 'NON_VAT', label: 'Non-VAT Receipt',               short: 'Non-VAT',  needsReceipt: true  },
+  { value: 'ACK',     label: 'Acknowledgement Receipt Only',  short: 'Ack. Rcpt',needsReceipt: false },
+  { value: 'NONE',    label: 'No Receipt',                    short: 'No Rcpt',  needsReceipt: false }
+];
+
+// Badge styling per tag — reused by the entry list, the journal report and the
+// settlement panels so a tag reads the same colour everywhere.
+const RECEIPT_TYPE_BADGE = {
+  VAT     : 'bg-emerald-100 text-emerald-700',
+  NON_VAT : 'bg-sky-100 text-sky-700',
+  ACK     : 'bg-amber-100 text-amber-700',
+  NONE    : 'bg-slate-200 text-slate-600',
+  UNTAGGED: 'bg-rose-100 text-rose-700'
+};
+
+function receiptTypeLabel(code) {
+  const o = RECEIPT_TYPE_OPTIONS.find(x => x.value === code);
+  return o ? o.label : 'Untagged';
+}
+
+function receiptTypeShort(code) {
+  const o = RECEIPT_TYPE_OPTIONS.find(x => x.value === code);
+  return o ? o.short : 'Untagged';
+}
+
+// True when the tag means "an official receipt is on file", i.e. a BIR receipt
+// record must be attached. Acknowledgement receipts are NOT official receipts —
+// they stay Has_Receipt = NO so the BIR purchases journal is unaffected.
+function receiptTypeNeedsReceipt(code) {
+  const o = RECEIPT_TYPE_OPTIONS.find(x => x.value === code);
+  return !!(o && o.needsReceipt);
+}
+
+function receiptTypeBadgeHtml(code, extraCls) {
+  const cls = RECEIPT_TYPE_BADGE[code] || RECEIPT_TYPE_BADGE.UNTAGGED;
+  return `<span class="px-1.5 py-0.5 text-[9px] font-bold rounded uppercase tracking-wide ${cls} ${extraCls || ''}">${receiptTypeShort(code)}</span>`;
+}
+
+// Renders the <option> list. `selected` may be empty — the placeholder then
+// stays chosen, which is what forces the custodian to make a deliberate call
+// instead of inheriting a default.
+function receiptTypeOptionsHtml(selected) {
+  const placeholder = `<option value="" ${!selected ? 'selected' : ''}>— Select receipt type —</option>`;
+  return placeholder + RECEIPT_TYPE_OPTIONS.map(o =>
+    `<option value="${o.value}" ${selected === o.value ? 'selected' : ''}>${o.label}</option>`
+  ).join('');
+}
+
 // Unified server call wrapper — google.script.run supports one argument only
 function callServer(fn, data) {
   return new Promise((resolve) => {

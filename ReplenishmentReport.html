@@ -180,7 +180,46 @@
       </div>
     </div>
 
+    <!-- =========================================================
+         REPLENISHMENT JOURNAL — grouped by receipt type
+         Sections mirror how the bookkeeper posts the batch: the three
+         non-creditable types are summed by Account Type, VAT is itemised
+         because each peso of input VAT must trace back to an OR.
+         ========================================================= -->
+    <div id="rrJournal" class="bg-white rounded-xl border-2 border-indigo-200 shadow-sm overflow-hidden">
 
+      <div class="px-5 py-4 border-b border-indigo-100 bg-indigo-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">
+            <span>📒</span> Replenishment Journal
+          </h2>
+          <p class="text-[10px] text-gray-500 mt-0.5">
+            Grouped by receipt type, summed by Account Type — for journal entry
+          </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <button onclick="printReplenishJournal()"
+            class="flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[40px]">
+            <span>⬇️</span> Journal PDF
+          </button>
+          <button id="rrJournalExportBtn" onclick="exportReplenishJournal(this)"
+            class="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow transition min-h-[40px]">
+            <span>📊</span> <span class="hidden sm:inline">Write to</span> Sheets
+          </button>
+        </div>
+      </div>
+
+      <!-- Section tabs — one per receipt type, each showing its period total -->
+      <div class="px-3 pt-3 bg-white border-b border-gray-100">
+        <div id="rrJournalTabs" class="flex gap-1.5 overflow-x-auto pb-3"></div>
+      </div>
+
+      <!-- Active section -->
+      <div id="rrJournalPane" class="p-4 sm:p-5"></div>
+
+      <!-- Reconciliation footer -->
+      <div id="rrJournalFoot" class="px-5 py-3 bg-gray-50 border-t border-gray-100"></div>
+    </div>
 
     <!-- Refresh button -->
     <div class="flex justify-center pb-4">
@@ -224,6 +263,10 @@
 
     /* Never let an open drill-down bleed into the printed report */
     #rrDetailModal { display: none !important; }
+
+    /* The journal shows one section at a time on screen, so browser-printing it
+       would emit a partial document. It has its own complete PDF export. */
+    #rrJournal { display: none !important; }
 
     /* Reflow the summary grid for paper */
     .grid { display: block !important; }

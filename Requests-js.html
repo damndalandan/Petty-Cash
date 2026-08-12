@@ -290,7 +290,10 @@ function renderRequestCard(r) {
             <span class="text-gray-300 text-xs shrink-0">└</span>
             <div class="min-w-0">
               <div class="text-xs font-medium text-gray-700 leading-tight">${escHtml(item.description)}${item.hasReceipt ? ' <span class="text-[10px] text-green-600" title="Has official receipt">🧾</span>' : ''}</div>
-              <div class="text-[10px] text-gray-400 leading-tight">${escHtml(item.category)}</div>
+              <div class="text-[10px] text-gray-400 leading-tight flex items-center gap-1.5 flex-wrap">
+                ${escHtml(item.category)}
+                ${item.receiptType ? receiptTypeBadgeHtml(item.receiptType) : ''}
+              </div>
             </div>
           </div>
           <span class="text-xs font-mono font-semibold text-gray-700 shrink-0">${fmt(item.amount)}</span>
@@ -605,10 +608,18 @@ function addPcrItem(prefill) {
         <input type="number" placeholder="Amount" min="0" step="0.01" class="pcr-amt w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white" oninput="updatePcrSummary()">
       </div>
     </div>
-    <div class="pt-1 border-t border-dashed border-gray-200">
-      <button type="button" class="pcr-receipt-btn w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-xs font-medium text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition"
+    <div class="pt-1 border-t border-dashed border-gray-200 space-y-1.5">
+      <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+        Receipt Type <span class="text-red-500">*</span>
+      </label>
+      <select class="pcr-rcpt-type w-full p-2 border border-amber-300 bg-amber-50 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+        onchange="onPcrReceiptTypeChange(this)">
+        ${receiptTypeOptionsHtml('')}
+      </select>
+      <p class="pcr-rcpt-hint text-[10px] text-gray-400 italic">Pick a receipt type to continue</p>
+      <button type="button" class="pcr-receipt-btn hidden w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-amber-300 bg-amber-50/50 rounded-lg text-xs font-medium text-amber-700 hover:border-green-400 hover:text-green-600 hover:bg-green-50 transition"
         onclick="openPcrItemReceipt(this)">
-        🧾 Add Official Receipt <span class="text-[10px] text-gray-400 ml-1">(optional)</span>
+        🧾 Add Official Receipt <span class="text-[10px] text-amber-500 ml-1">(required)</span>
       </button>
       <div class="pcr-receipt-preview hidden mt-1.5 flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
         <span class="text-xs text-green-700 font-medium pcr-receipt-label"></span>
@@ -630,6 +641,15 @@ function addPcrItem(prefill) {
       sel.appendChild(opt);
     }
     if (prefill.category) sel.value = prefill.category;
+
+    // Restore the tag so an edit doesn't silently reclassify the line. Rows
+    // recorded before tagging come back UNTAGGED, which is not a choosable
+    // option — the placeholder stays selected and forces a decision.
+    const typeSel = div.querySelector('.pcr-rcpt-type');
+    if (typeSel && prefill.receiptType && prefill.receiptType !== 'UNTAGGED') {
+      typeSel.value = prefill.receiptType;
+    }
+
     if (prefill.hasReceipt) {
       // Receipt already on file — amount corrections update its BIR record
       // server-side; detaching a filed receipt is not supported here.
@@ -638,8 +658,62 @@ function addPcrItem(prefill) {
       preview.querySelector('.pcr-receipt-label').textContent = '🧾 Official receipt on file';
       preview.querySelector('button').classList.add('hidden');
       preview.classList.remove('hidden');
+      div.dataset.receiptOnFile = '1';
     }
+    if (typeSel) onPcrReceiptTypeChange(typeSel);
   }
+}
+
+// Shows or hides the receipt attachment depending on the tag: VAT / Non-VAT
+// claim an official receipt exists, so one must be attached; Acknowledgement
+// Receipt and No Receipt have nothing to file.
+function onPcrReceiptTypeChange(sel) {
+  const item = sel.closest('.pcr-item');
+  if (!item) return;
+
+  const type    = sel.value;
+  const btn     = item.querySelector('.pcr-receipt-btn');
+  const preview = item.querySelector('.pcr-receipt-preview');
+  const hint    = item.querySelector('.pcr-rcpt-hint');
+  const onFile  = item.dataset.receiptOnFile === '1';
+
+  sel.classList.toggle('border-amber-300', !type);
+  sel.classList.toggle('bg-amber-50',      !type);
+  sel.classList.toggle('border-gray-200',  !!type);
+
+  if (!type) {
+    hint.textContent = 'Pick a receipt type to continue';
+    hint.classList.remove('hidden');
+    if (!onFile) { btn.classList.add('hidden'); preview.classList.add('hidden'); }
+    return;
+  }
+
+  if (receiptTypeNeedsReceipt(type)) {
+    hint.classList.add('hidden');
+    if (!onFile && !item._receipt) btn.classList.remove('hidden');
+    return;
+  }
+
+  // A receipt already filed against this entry can't be detached here, so
+  // tagging it "no receipt" would leave the entry and its BIR record
+  // contradicting each other. Refuse the change instead of half-applying it.
+  if (onFile) {
+    toast('This item already has an official receipt on file — it can only be tagged VAT or Non-VAT.', 'warning');
+    sel.value = '';
+    hint.textContent = 'Pick VAT or Non-VAT for this receipted item';
+    hint.classList.remove('hidden');
+    return;
+  }
+
+  // Non-receipt tag — drop anything already attached so we never file a BIR
+  // receipt the tag says does not exist.
+  hint.textContent = type === 'ACK'
+    ? 'Acknowledgement receipt — no BIR receipt to file'
+    : 'No receipt for this expense';
+  hint.classList.remove('hidden');
+  item._receipt = null;
+  btn.classList.add('hidden');
+  preview.classList.add('hidden');
 }
 
 function openPcrItemReceipt(btn) {
@@ -703,15 +777,32 @@ async function confirmPcrSettle() {
   let valid = true;
 
   for (const item of items) {
-    const desc    = item.querySelector('.pcr-desc')?.value.trim();
-    const cat     = item.querySelector('.pcr-cat')?.value;
-    const amt     = parseFloat(item.querySelector('.pcr-amt')?.value) || 0;
-    const receipt = item._receipt || null;
+    const desc     = item.querySelector('.pcr-desc')?.value.trim();
+    const cat      = item.querySelector('.pcr-cat')?.value;
+    const amt      = parseFloat(item.querySelector('.pcr-amt')?.value) || 0;
+    const rcptType = item.querySelector('.pcr-rcpt-type')?.value || '';
+    const onFile   = item.dataset.receiptOnFile === '1';
+    const receipt  = item._receipt || null;
 
     if (!desc) { toast('All items must have a description.', 'warning'); valid = false; break; }
     if (amt <= 0) { toast('All items must have an amount greater than zero.', 'warning'); valid = false; break; }
 
-    const entry = { category: cat, description: desc, amount: amt, hasReceipt: !!receipt, receipt };
+    // The replenishment journal groups on this tag, so an untagged line would
+    // fall out of every section.
+    if (!rcptType) {
+      toast(`"${desc}" needs a receipt type.`, 'warning'); valid = false; break;
+    }
+    // VAT / Non-VAT assert an official receipt exists — it must be attached (or
+    // already filed from the original settlement).
+    if (receiptTypeNeedsReceipt(rcptType) && !receipt && !onFile) {
+      toast(`"${desc}" is tagged ${receiptTypeShort(rcptType)} — attach the receipt details.`, 'warning');
+      valid = false; break;
+    }
+
+    const entry = {
+      category: cat, description: desc, amount: amt,
+      hasReceipt: !!receipt, receiptType: rcptType, receipt
+    };
     if (isEdit && item.dataset.entryId) entry.id = item.dataset.entryId;
     entries.push(entry);
   }

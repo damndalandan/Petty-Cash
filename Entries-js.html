@@ -400,11 +400,18 @@ function renderEntries() {
       ? '<div class="mt-1 text-xs text-red-600 font-bold">🚩 Flagged by Auditor' + (e.auditNote ? ': ' + e.auditNote : '') + ' — Please correct this entry.</div>'
       : '';
 
-    const receiptCell = e.hasReceipt
+    // The receipt-type tag is what the replenishment journal groups on, so it
+    // is shown alongside the receipt action — an UNTAGGED badge on a receipted
+    // row is the cue that the line predates tagging and needs classifying.
+    const rcptTypeBadge = ['EXPENSE','LIQ_DETAIL','PCR_DETAIL'].includes(e.type) && e.receiptType
+      ? '<div class="mt-1">' + receiptTypeBadgeHtml(e.receiptType) + '</div>'
+      : '';
+
+    const receiptCell = (e.hasReceipt
       ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-green-600 hover:text-green-800 text-xs font-bold">🧾 View</button>'
       : (isCashier()
           ? '<button onclick="viewReceipt(\'' + e.id + '\')" class="text-gray-400 hover:text-gray-600 text-xs">+ Attach</button>'
-          : '<span class="text-gray-300 text-xs">—</span>');
+          : '<span class="text-gray-300 text-xs">—</span>')) + rcptTypeBadge;
 
     if (isCarried || e.type === 'CASH_ADVANCE') {
       const subs       = advanceSubEntries[e.id] || [];

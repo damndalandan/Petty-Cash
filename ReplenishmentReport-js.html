@@ -176,8 +176,215 @@ function renderReplenishReport(d) {
   // ── Fused Table ──
   renderRrFusedTable(d.dailyRows, d.periodEntries);
 
+  // ── Journal (grouped by receipt type) ──
+  renderRrJournal(d.journal);
+
   // Show content
   document.getElementById('rrContent').classList.remove('hidden');
+}
+
+// =============================================
+// REPLENISHMENT JOURNAL
+// =============================================
+
+// Which section the pane is showing. Reset on every report load so a period
+// change never leaves you looking at a tab that no longer has rows.
+let rrJournalTab = '';
+
+function rrJournalSections() {
+  return (rrData && rrData.journal && rrData.journal.sections) || [];
+}
+
+// Empty sections are dropped from the tab strip — except UNTAGGED, which is
+// only ever non-empty, and must stay visible when it is: those are receipted
+// lines recorded before tagging existed and they need classifying before the
+// journal balances.
+function rrJournalVisibleSections() {
+  return rrJournalSections().filter(s => s.count > 0);
+}
+
+function renderRrJournal(journal) {
+  const wrap = document.getElementById('rrJournal');
+  if (!wrap) return;
+
+  const sections = rrJournalVisibleSections();
+
+  if (!journal || sections.length === 0) {
+    document.getElementById('rrJournalTabs').innerHTML = '';
+    document.getElementById('rrJournalPane').innerHTML =
+      `<p class="text-sm text-gray-400 italic py-6 text-center">No receipted spend in this period</p>`;
+    document.getElementById('rrJournalFoot').innerHTML = '';
+    return;
+  }
+
+  // Keep the current tab if it still has rows, otherwise fall to the first.
+  if (!sections.some(s => s.key === rrJournalTab)) rrJournalTab = sections[0].key;
+
+  renderRrJournalTabs();
+  renderRrJournalPane();
+
+  const jt = journal.grandTotal || 0;
+  document.getElementById('rrJournalFoot').innerHTML = `
+    <div class="flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Journal Total</div>
+        <div class="text-[10px] text-gray-400 mt-0.5">
+          ${journal.entryCount} receipted line${journal.entryCount === 1 ? '' : 's'} across ${sections.length} section${sections.length === 1 ? '' : 's'}
+        </div>
+      </div>
+      <div class="text-xl font-black font-mono text-gray-800">${fmt(jt)}</div>
+    </div>`;
+}
+
+function renderRrJournalTabs() {
+  const el = document.getElementById('rrJournalTabs');
+  if (!el) return;
+
+  el.innerHTML = rrJournalVisibleSections().map(s => {
+    const active = s.key === rrJournalTab;
+    const base   = 'shrink-0 px-3 py-2 rounded-lg text-left transition border';
+    const cls    = active
+      ? 'bg-indigo-600 border-indigo-700 text-white shadow-sm'
+      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50';
+    return `
+      <button onclick="switchRrJournalTab('${s.key}')" class="${base} ${cls}">
+        <div class="text-[10px] font-bold uppercase tracking-wide whitespace-nowrap">${escHtml(s.label)}</div>
+        <div class="text-xs font-mono font-bold ${active ? 'text-white' : 'text-gray-800'}">${fmt(s.total)}</div>
+      </button>`;
+  }).join('');
+}
+
+function switchRrJournalTab(key) {
+  rrJournalTab = key;
+  renderRrJournalTabs();
+  renderRrJournalPane();
+}
+
+function renderRrJournalPane() {
+  const pane = document.getElementById('rrJournalPane');
+  if (!pane) return;
+
+  const s = rrJournalSections().find(x => x.key === rrJournalTab);
+  if (!s) { pane.innerHTML = ''; return; }
+
+  pane.innerHTML = s.itemized ? rrJournalItemizedHtml(s) : rrJournalGroupedHtml(s);
+}
+
+// Summed by Account Type — the bookkeeper posts one line per account.
+function rrJournalGroupedHtml(s) {
+  const note = {
+    NONE    : 'Undocumented spend — no receipt of any kind on file.',
+    ACK     : 'Acknowledgement receipt only — not an official receipt, no input VAT claimable.',
+    NON_VAT : 'Non-VAT supplier — booked at face value, no input VAT.',
+    UNTAGGED: 'Recorded before receipt tagging existed. Classify these lines so they post to the right section.'
+  }[s.key] || '';
+
+  const rows = s.groups.map(g => `
+    <tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition">
+      <td class="px-4 py-2.5 text-sm text-gray-700 font-medium">${escHtml(g.accountType)}</td>
+      <td class="px-4 py-2.5 text-xs text-gray-400 text-center">${g.count}</td>
+      <td class="px-4 py-2.5 text-sm text-right font-mono font-bold text-gray-800">${fmt(g.amount)}</td>
+    </tr>`).join('');
+
+  return `
+    ${note ? `<p class="text-[11px] text-gray-500 mb-3 italic">${note}</p>` : ''}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[380px]">
+        <thead class="bg-gray-50 border-b border-gray-100">
+          <tr>
+            <th class="px-4 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Account Type</th>
+            <th class="px-4 py-2.5 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Entries</th>
+            <th class="px-4 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot class="border-t-2 border-gray-200 bg-gray-50">
+          <tr>
+            <td class="px-4 py-2.5 text-[10px] font-bold text-gray-600 uppercase tracking-wider">${escHtml(s.label)} Total</td>
+            <td class="px-4 py-2.5 text-xs text-gray-400 text-center">${s.count}</td>
+            <td class="px-4 py-2.5 text-right font-mono font-black text-gray-900">${fmt(s.total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>`;
+}
+
+// Itemised — every VAT line shown individually with its Account Type, because
+// input VAT has to be traceable to a specific official receipt.
+function rrJournalItemizedHtml(s) {
+  const dayLabel = (d) => new Date(d + 'T00:00:00')
+    .toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+
+  const rows = s.items.map(i => `
+    <tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition">
+      <td class="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">${dayLabel(i.date)}</td>
+      <td class="px-3 py-2.5 text-xs text-gray-700 font-medium">${escHtml(i.accountType)}</td>
+      <td class="px-3 py-2.5 text-xs text-gray-700">
+        ${escHtml(i.description || '—')}
+        ${i.supplierName ? `<div class="text-[10px] text-gray-400 truncate">${escHtml(i.supplierName)}</div>` : ''}
+      </td>
+      <td class="px-3 py-2.5 text-xs font-mono text-gray-400 whitespace-nowrap">${escHtml(i.receiptNo || '—')}</td>
+      <td class="px-3 py-2.5 text-sm text-right font-mono font-bold text-gray-800 whitespace-nowrap">${fmt(i.amount)}</td>
+      <td class="px-3 py-2.5 text-xs text-right font-mono text-emerald-700 whitespace-nowrap">${fmt(i.vatAmount)}</td>
+    </tr>`).join('');
+
+  return `
+    <p class="text-[11px] text-gray-500 mb-3 italic">
+      Itemised — each line carries its own official receipt, so input VAT stays traceable to an OR.
+    </p>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm min-w-[640px]">
+        <thead class="bg-gray-50 border-b border-gray-100">
+          <tr>
+            <th class="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Date</th>
+            <th class="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Account Type</th>
+            <th class="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Description</th>
+            <th class="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">OR No.</th>
+            <th class="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+            <th class="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">VAT</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+        <tfoot class="border-t-2 border-gray-200 bg-gray-50">
+          <tr>
+            <td colspan="4" class="px-3 py-2.5 text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+              ${escHtml(s.label)} Total &middot; ${s.count} line${s.count === 1 ? '' : 's'}
+            </td>
+            <td class="px-3 py-2.5 text-right font-mono font-black text-gray-900">${fmt(s.total)}</td>
+            <td class="px-3 py-2.5 text-right font-mono font-black text-emerald-700">${fmt(s.vatTotal || 0)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- Per-account roll-up, so the VAT batch can still be posted by account -->
+    <div class="mt-5 pt-4 border-t border-dashed border-gray-200">
+      <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">VAT spend by Account Type</p>
+      <div class="space-y-1">
+        ${s.groups.map(g => `
+          <div class="flex items-center justify-between text-xs py-1">
+            <span class="text-gray-600">${escHtml(g.accountType)} <span class="text-gray-300">&middot; ${g.count}</span></span>
+            <span class="font-mono font-bold text-gray-800">${fmt(g.amount)}</span>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ── Write the journal into the database spreadsheet, one tab per receipt type ──
+async function exportReplenishJournal(btn) {
+  if (!rrData) { toast('No report data to export', 'warning'); return; }
+
+  btnLoad(btn, true);
+  const res = await callServer('exportReplenishmentJournal', { periodFrom: rrData.periodFrom });
+  btnLoad(btn, false);
+
+  if (!res.success) {
+    toast(res.message || 'Failed to write the journal to Sheets', 'error');
+    return;
+  }
+
+  const rows = (res.data.written || []).reduce((s, w) => s + w.rows, 0);
+  toast(`Journal written — ${rows} row(s) across ${res.data.written.length} tab(s) ✓`, 'success');
 }
 
 function renderRrCategoryBreakdown(rows, total) {
@@ -649,6 +856,199 @@ function printReplenishReport() {
   } catch (err) {
     console.error('PDF Export Error:', err);
     toast('Failed to generate PDF', 'error');
+  }
+}
+
+// =============================================
+// JOURNAL PDF — one section per receipt type
+// =============================================
+// A separate document from the category export above: this is what the
+// bookkeeper posts from, so it follows the journal's own structure — the three
+// non-creditable sections summed by Account Type, VAT itemised line by line.
+function printReplenishJournal() {
+  if (!rrData || !rrData.journal) {
+    toast('No journal data to export', 'warning');
+    return;
+  }
+
+  const ns    = window.jspdf || (typeof jspdf !== 'undefined' ? jspdf : null);
+  const JsPDF = (ns && ns.jsPDF) || window.jsPDF;
+  if (!JsPDF) {
+    toast('PDF library not loaded — refresh the page and try again', 'error');
+    return;
+  }
+
+  const d       = rrData;
+  const journal = d.journal;
+  const doc     = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+
+  // ── Page geometry (A4 = 210 × 297mm) ──
+  const LEFT = 15, RIGHT = 195, BOTTOM = 282;
+  const DATE_X = 17, ACCT_X = 33, DESC_X = 69, DESC_W = 66;
+  const AMT_X  = 168;   // right edge of the Amount column, leaving VAT at RIGHT
+
+  let y = 0;
+
+  const fullDate = (s) => new Date(s + 'T00:00:00')
+    .toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+  const dayLabel = (s) => new Date(s + 'T00:00:00')
+    .toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+
+  const rule = (weight) => {
+    doc.setLineWidth(weight);
+    doc.line(LEFT, y, RIGHT, y);
+    doc.setLineWidth(0.2);
+  };
+
+  const startPage = (continued) => {
+    y = 18;
+    doc.setFont('helvetica', 'bold').setFontSize(13);
+    doc.text('PETTY CASH - REPLENISHMENT JOURNAL' + (continued ? ' (continued)' : ''), LEFT, y);
+    y += 5;
+    doc.setFont('helvetica', 'normal').setFontSize(9);
+    doc.text(rrPdfText(`${fullDate(journal.periodFrom)} to ${fullDate(journal.periodTo)}   |   All amounts in PHP`), LEFT, y);
+    y += 3;
+    rule(0.6);
+    y += 7;
+  };
+
+  const needRoom = (mm) => {
+    if (y + mm > BOTTOM) { doc.addPage(); startPage(true); }
+  };
+
+  startPage(false);
+
+  const sections = (journal.sections || []).filter(s => s.count > 0);
+
+  if (sections.length === 0) {
+    doc.setFont('helvetica', 'italic').setFontSize(10);
+    doc.text('No receipted spend in this period.', LEFT, y);
+  }
+
+  sections.forEach(s => {
+    needRoom(22);
+
+    // ── Section header ──
+    doc.setFont('helvetica', 'bold').setFontSize(11);
+    doc.text(rrPdfText(s.label.toUpperCase()), LEFT, y);
+    doc.text(rrPdfAmount(s.total), RIGHT, y, { align: 'right' });
+    y += 1.8;
+    rule(0.4);
+    y += 5;
+
+    if (!s.itemized) {
+      // Summed by Account Type — one posting line per account.
+      doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(120);
+      doc.text('ACCOUNT TYPE', LEFT + 2, y);
+      doc.text('AMOUNT', RIGHT, y, { align: 'right' });
+      doc.setTextColor(0);
+      y += 4;
+
+      doc.setFont('helvetica', 'normal').setFontSize(9);
+      s.groups.forEach(g => {
+        needRoom(6);
+        const lines = doc.splitTextToSize(rrPdfText(g.accountType), 120);
+        doc.text(lines, LEFT + 2, y);
+        doc.setTextColor(150);
+        doc.text(`(${g.count})`, LEFT + 128, y);
+        doc.setTextColor(0);
+        doc.text(rrPdfAmount(g.amount), RIGHT, y, { align: 'right' });
+        y += lines.length * 4 + 1.5;
+      });
+    } else {
+      // Itemised — every VAT line, so input VAT traces back to an OR.
+      doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(120);
+      doc.text('DATE', DATE_X, y);
+      doc.text('ACCOUNT', ACCT_X, y);
+      doc.text('PARTICULARS', DESC_X, y);
+      doc.text('AMOUNT', AMT_X, y, { align: 'right' });
+      doc.text('VAT', RIGHT, y, { align: 'right' });
+      doc.setTextColor(0);
+      y += 4;
+
+      doc.setFont('helvetica', 'normal').setFontSize(8.5);
+      s.items.forEach(i => {
+        const particulars = rrPdfText(i.description || '-')
+          + (i.supplierName ? ' (' + rrPdfText(i.supplierName) + ')' : '')
+          + (i.receiptNo    ? ' OR# ' + rrPdfText(i.receiptNo)      : '');
+        const descLines = doc.splitTextToSize(particulars, DESC_W);
+        const acctLines = doc.splitTextToSize(rrPdfText(i.accountType), 34);
+        const rowLines  = Math.max(descLines.length, acctLines.length);
+
+        needRoom(rowLines * 3.8 + 2);
+
+        doc.setTextColor(110);
+        doc.text(dayLabel(i.date), DATE_X, y);
+        doc.setTextColor(0);
+        doc.text(acctLines, ACCT_X, y);
+        doc.text(descLines, DESC_X, y);
+        doc.text(rrPdfAmount(i.amount), AMT_X, y, { align: 'right' });
+        doc.text(rrPdfAmount(i.vatAmount), RIGHT, y, { align: 'right' });
+
+        y += rowLines * 3.8 + 1.5;
+      });
+
+      // Per-account roll-up so the VAT batch can still be posted by account.
+      needRoom(10 + s.groups.length * 5);
+      y += 3;
+      doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(120);
+      doc.text('VAT SPEND BY ACCOUNT TYPE', LEFT + 2, y);
+      doc.setTextColor(0);
+      y += 4.5;
+      doc.setFont('helvetica', 'normal').setFontSize(9);
+      s.groups.forEach(g => {
+        needRoom(6);
+        doc.text(rrPdfText(g.accountType), LEFT + 2, y);
+        doc.text(rrPdfAmount(g.amount), RIGHT, y, { align: 'right' });
+        y += 4.5;
+      });
+
+      y += 1;
+      doc.setFont('helvetica', 'bold').setFontSize(9);
+      doc.text('Total Input VAT', LEFT + 2, y);
+      doc.text(rrPdfAmount(s.vatTotal || 0), RIGHT, y, { align: 'right' });
+      y += 4.5;
+    }
+
+    // ── Section subtotal ──
+    needRoom(10);
+    y += 1;
+    doc.setFont('helvetica', 'bold').setFontSize(9.5);
+    doc.text(rrPdfText(s.label + ' - Total'), LEFT + 2, y);
+    doc.text(rrPdfAmount(s.total), RIGHT, y, { align: 'right' });
+    y += 9;
+  });
+
+  // ── Grand total ──
+  needRoom(20);
+  y += 2;
+  rule(0.6);
+  y += 6;
+  doc.setFont('helvetica', 'bold').setFontSize(11);
+  doc.text('JOURNAL TOTAL', LEFT, y);
+  doc.text(rrPdfAmount(journal.grandTotal), RIGHT, y, { align: 'right' });
+
+  // ── Footer on every page ──
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++) {
+    doc.setPage(p);
+    doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(130);
+    doc.text(rrPdfText('Generated ' + new Date().toLocaleDateString('en-PH', {
+      month: 'long', day: 'numeric', year: 'numeric'
+    })), LEFT, 290);
+    doc.text(`Page ${p} of ${pages}`, RIGHT, 290, { align: 'right' });
+    doc.setTextColor(0);
+  }
+
+  const from = journal.periodFrom.replace(/-/g, '');
+  const to   = journal.periodTo.replace(/-/g, '');
+
+  try {
+    doc.save(`PettyCash_Journal_${from}_to_${to}.pdf`);
+    toast('Journal exported successfully!', 'success');
+  } catch (err) {
+    console.error('Journal PDF Export Error:', err);
+    toast('Failed to generate the journal PDF', 'error');
   }
 }
 </script>
