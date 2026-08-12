@@ -474,8 +474,9 @@ function renderRrFusedTable(rows, entries) {
 // =============================================
 //
 // This does NOT screenshot the page. It writes text straight into the PDF with
-// jsPDF (bundled inside html2pdf), so the output is a small, crisp, selectable
-// text document instead of a picture of the dashboard.
+// jsPDF (loaded in Index.html as the UMD build, which exposes window.jspdf), so
+// the output is a small, crisp, selectable text document — not a picture of the
+// dashboard.
 
 // jsPDF's built-in fonts only cover Latin-1, so ₱ and smart quotes come out as
 // garbage. Everything printed goes through here first.
@@ -524,7 +525,10 @@ function printReplenishReport() {
     return;
   }
 
-  const JsPDF = (window.jspdf && window.jspdf.jsPDF) || window.jsPDF;
+  // The UMD build attaches window.jspdf; the bare global and the old 1.x
+  // window.jsPDF are checked too so a CDN swap can't silently break the export.
+  const ns    = window.jspdf || (typeof jspdf !== 'undefined' ? jspdf : null);
+  const JsPDF = (ns && ns.jsPDF) || window.jsPDF;
   if (!JsPDF) {
     toast('PDF library not loaded — refresh the page and try again', 'error');
     return;
