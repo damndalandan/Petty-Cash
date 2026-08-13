@@ -270,31 +270,47 @@ function renderRrJournalPane() {
   pane.innerHTML = s.itemized ? rrJournalItemizedHtml(s) : rrJournalGroupedHtml(s);
 }
 
-// Summed by Account Type — the bookkeeper posts one line per account.
-function rrJournalGroupedHtml(s) {
-  const note = {
+// What each section means, shown above its table and again in the drill-down.
+function rrJournalNote(key) {
+  return {
     NONE    : 'Undocumented spend — no receipt of any kind on file.',
     ACK     : 'Acknowledgement receipt only — not an official receipt, no input VAT claimable.',
     NON_VAT : 'Non-VAT supplier — booked at face value, no input VAT.',
+    VAT     : 'Official receipts — each line carries its own OR, so input VAT stays traceable.',
     UNTAGGED: 'Recorded before receipt tagging existed. Classify these lines so they post to the right section.'
-  }[s.key] || '';
+  }[key] || '';
+}
 
-  const rows = s.groups.map(g => `
-    <tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition">
+// Summed by Account Type — the bookkeeper posts one line per account. Each row
+// opens the transactions behind it, so the posting line can be traced to the
+// receipts it was built from.
+function rrJournalGroupedHtml(s) {
+  const note = rrJournalNote(s.key);
+
+  const rows = s.groups.map((g, i) => `
+    <tr onclick="openRrJournalDetailAt('${s.key}', ${i})"
+      class="group border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 transition cursor-pointer">
       <td class="px-4 py-2.5 text-sm text-gray-700 font-medium">${escHtml(g.accountType)}</td>
       <td class="px-4 py-2.5 text-xs text-gray-400 text-center">${g.count}</td>
       <td class="px-4 py-2.5 text-sm text-right font-mono font-bold text-gray-800">${fmt(g.amount)}</td>
+      <td class="px-3 py-2.5 text-right whitespace-nowrap">
+        <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide
+          bg-white border border-gray-200 text-gray-500 group-hover:border-indigo-300 group-hover:text-indigo-600 transition">
+          Details <span class="text-xs leading-none">›</span>
+        </span>
+      </td>
     </tr>`).join('');
 
   return `
     ${note ? `<p class="text-[11px] text-gray-500 mb-3 italic">${note}</p>` : ''}
     <div class="overflow-x-auto">
-      <table class="w-full text-sm min-w-[380px]">
+      <table class="w-full text-sm min-w-[460px]">
         <thead class="bg-gray-50 border-b border-gray-100">
           <tr>
             <th class="px-4 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Account Type</th>
             <th class="px-4 py-2.5 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider">Entries</th>
             <th class="px-4 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+            <th class="px-3 py-2.5"></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -303,6 +319,7 @@ function rrJournalGroupedHtml(s) {
             <td class="px-4 py-2.5 text-[10px] font-bold text-gray-600 uppercase tracking-wider">${escHtml(s.label)} Total</td>
             <td class="px-4 py-2.5 text-xs text-gray-400 text-center">${s.count}</td>
             <td class="px-4 py-2.5 text-right font-mono font-black text-gray-900">${fmt(s.total)}</td>
+            <td class="px-3 py-2.5"></td>
           </tr>
         </tfoot>
       </table>
@@ -315,8 +332,9 @@ function rrJournalItemizedHtml(s) {
   const dayLabel = (d) => new Date(d + 'T00:00:00')
     .toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 
-  const rows = s.items.map(i => `
-    <tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition">
+  const rows = s.items.map((i, idx) => `
+    <tr onclick="openRrJournalDetailForItem('${s.key}', ${idx})"
+      class="border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 transition cursor-pointer">
       <td class="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">${dayLabel(i.date)}</td>
       <td class="px-3 py-2.5 text-xs text-gray-700 font-medium">${escHtml(i.accountType)}</td>
       <td class="px-3 py-2.5 text-xs text-gray-700">
@@ -326,14 +344,16 @@ function rrJournalItemizedHtml(s) {
       <td class="px-3 py-2.5 text-xs font-mono text-gray-400 whitespace-nowrap">${escHtml(i.receiptNo || '—')}</td>
       <td class="px-3 py-2.5 text-sm text-right font-mono font-bold text-gray-800 whitespace-nowrap">${fmt(i.amount)}</td>
       <td class="px-3 py-2.5 text-xs text-right font-mono text-emerald-700 whitespace-nowrap">${fmt(i.vatAmount)}</td>
+      <td class="px-2 py-2.5 text-right text-gray-300 text-xs">🧾</td>
     </tr>`).join('');
 
   return `
     <p class="text-[11px] text-gray-500 mb-3 italic">
       Itemised — each line carries its own official receipt, so input VAT stays traceable to an OR.
+      Click a line to open its receipt.
     </p>
     <div class="overflow-x-auto">
-      <table class="w-full text-sm min-w-[640px]">
+      <table class="w-full text-sm min-w-[680px]">
         <thead class="bg-gray-50 border-b border-gray-100">
           <tr>
             <th class="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Date</th>
@@ -342,6 +362,7 @@ function rrJournalItemizedHtml(s) {
             <th class="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">OR No.</th>
             <th class="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">Amount</th>
             <th class="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider">VAT</th>
+            <th class="px-2 py-2.5"></th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -352,6 +373,7 @@ function rrJournalItemizedHtml(s) {
             </td>
             <td class="px-3 py-2.5 text-right font-mono font-black text-gray-900">${fmt(s.total)}</td>
             <td class="px-3 py-2.5 text-right font-mono font-black text-emerald-700">${fmt(s.vatTotal || 0)}</td>
+            <td class="px-2 py-2.5"></td>
           </tr>
         </tfoot>
       </table>
@@ -361,13 +383,270 @@ function rrJournalItemizedHtml(s) {
     <div class="mt-5 pt-4 border-t border-dashed border-gray-200">
       <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">VAT spend by Account Type</p>
       <div class="space-y-1">
-        ${s.groups.map(g => `
-          <div class="flex items-center justify-between text-xs py-1">
+        ${s.groups.map((g, i) => `
+          <div onclick="openRrJournalDetailAt('${s.key}', ${i})"
+            class="flex items-center justify-between text-xs py-1 px-1.5 -mx-1.5 rounded cursor-pointer hover:bg-indigo-50/50 transition">
             <span class="text-gray-600">${escHtml(g.accountType)} <span class="text-gray-300">&middot; ${g.count}</span></span>
             <span class="font-mono font-bold text-gray-800">${fmt(g.amount)}</span>
           </div>`).join('')}
       </div>
     </div>`;
+}
+
+// =============================================
+// JOURNAL DRILL-DOWN — the transactions behind a posting line
+// =============================================
+// A journal row is a total; this is what it was built from. Every line shows the
+// receipt filed against it and carries the two fix-ups the journal exists to
+// prompt: re-tag the receipt type, and add or edit the receipt itself.
+
+let rrJrnCtx      = null;   // { sectionKey, accountType } — survives a refresh
+let rrJrnLines    = [];     // the section/account's items, oldest first
+let rrJrnExpanded = {};     // entry id -> receipt panel open?
+
+function rrJrnSection() {
+  return rrJrnCtx ? rrJournalSections().find(s => s.key === rrJrnCtx.sectionKey) : null;
+}
+
+// Resolved by index so an account name containing a quote can never break the
+// inline onclick — only the safe integer index is interpolated.
+function openRrJournalDetailAt(sectionKey, groupIndex) {
+  const s = rrJournalSections().find(x => x.key === sectionKey);
+  const g = s && s.groups[groupIndex];
+  if (g) openRrJournalDetail(sectionKey, g.accountType);
+}
+
+// From an itemised (VAT) row — opens that line's account and expands its receipt.
+function openRrJournalDetailForItem(sectionKey, itemIndex) {
+  const s = rrJournalSections().find(x => x.key === sectionKey);
+  const i = s && s.items && s.items[itemIndex];
+  if (!i) return;
+  rrJrnExpanded = { [i.id]: true };
+  openRrJournalDetail(sectionKey, i.accountType, true);
+}
+
+function openRrJournalDetail(sectionKey, accountType, keepExpanded) {
+  const s = rrJournalSections().find(x => x.key === sectionKey);
+  if (!s) return;
+
+  rrJrnCtx = { sectionKey, accountType };
+  if (!keepExpanded) rrJrnExpanded = {};
+  rrJrnLines = (s.items || []).filter(i => i.accountType === accountType);
+
+  document.getElementById('rrJrnModal').classList.remove('hidden');
+  rrJrnRender();
+}
+
+function closeRrJournalDetail() {
+  document.getElementById('rrJrnModal').classList.add('hidden');
+  rrJrnCtx      = null;
+  rrJrnLines    = [];
+  rrJrnExpanded = {};
+}
+
+function rrJrnToggleLine(idx) {
+  const line = rrJrnLines[idx];
+  if (!line) return;
+  rrJrnExpanded[line.id] = !rrJrnExpanded[line.id];
+  rrJrnRender();
+}
+
+function rrJrnRender() {
+  const s = rrJrnSection();
+  if (!s || !rrJrnCtx) return;
+
+  const total = rrJrnLines.reduce((t, i) => t + (parseFloat(i.amount) || 0), 0);
+
+  document.getElementById('rrJrnModalTitle').textContent = rrJrnCtx.accountType;
+  document.getElementById('rrJrnModalSub').textContent   =
+    `${s.label} · ${rrData.periodFrom} → ${rrData.periodTo}`;
+  document.getElementById('rrJrnModalTotal').textContent = fmt(total);
+  document.getElementById('rrJrnModalNote').textContent  = rrJournalNote(s.key);
+  document.getElementById('rrJrnModalCount').textContent =
+    `${rrJrnLines.length} line${rrJrnLines.length === 1 ? '' : 's'}`;
+
+  document.getElementById('rrJrnModalBody').innerHTML = rrJrnLines.length
+    ? rrJrnLines.map((i, idx) => rrJrnLineHtml(i, idx, s.key)).join('')
+    : `<p class="text-sm text-gray-400 italic py-10 text-center">
+         Every line here has been reclassified — it now sits in another section.
+       </p>`;
+}
+
+function rrJrnLineHtml(i, idx, sectionKey) {
+  const dateLabel = new Date(i.date + 'T00:00:00')
+    .toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+  const open = !!rrJrnExpanded[i.id];
+
+  return `
+    <div class="bg-white border ${open ? 'border-indigo-200 shadow-sm' : 'border-gray-200'} rounded-xl overflow-hidden transition">
+
+      <div onclick="rrJrnToggleLine(${idx})" class="flex items-center gap-3 px-3 sm:px-4 py-3 cursor-pointer hover:bg-gray-50/70 transition">
+        <span class="shrink-0 text-gray-300 text-xs w-3">${open ? '▾' : '▸'}</span>
+        <span class="shrink-0 text-[11px] text-gray-500 font-mono w-[76px]">${dateLabel}</span>
+        <div class="min-w-0 flex-1">
+          <div class="text-sm text-gray-700 font-medium truncate">${escHtml(i.description || '—')}</div>
+          <div class="text-[10px] text-gray-400 truncate">
+            ${i.supplierName ? escHtml(i.supplierName) : 'No supplier on file'}
+            ${i.receiptNo ? ` &middot; OR# ${escHtml(i.receiptNo)}` : ''}
+            ${i.requestedBy ? ` &middot; ${escHtml(i.requestedBy)}` : ''}
+          </div>
+        </div>
+        ${receiptTypeBadgeHtml(i.receiptType, 'shrink-0 hidden sm:inline-block')}
+        <span class="shrink-0 text-sm font-mono font-bold text-gray-800 tabular-nums w-24 text-right">${fmt(i.amount)}</span>
+      </div>
+
+      ${open ? rrJrnLinePanelHtml(i, idx, sectionKey) : ''}
+    </div>`;
+}
+
+// The receipt behind one line, plus the two things you can do about it.
+function rrJrnLinePanelHtml(i, idx, sectionKey) {
+  const field = (label, value) => `
+    <div class="flex justify-between gap-3 py-1.5 border-b border-gray-100 last:border-0">
+      <span class="text-[11px] text-gray-400 uppercase tracking-wide shrink-0">${label}</span>
+      <span class="text-xs text-gray-700 font-medium text-right break-words">${escHtml(value || '—')}</span>
+    </div>`;
+
+  // Only the VAT section has a split to show. Non-VAT, acknowledgement and
+  // untagged lines are booked at face value, so no 12% figure is displayed —
+  // the amount itself is the whole story.
+  const vatRows = (sectionKey === 'VAT' && i.vatAmount != null) ? `
+    <div class="flex justify-between gap-3 py-1.5 border-b border-gray-100">
+      <span class="text-[11px] text-gray-400 uppercase tracking-wide">Less: VAT (12%)</span>
+      <span class="text-xs font-mono text-red-500 font-semibold">${fmt(i.vatAmount)}</span>
+    </div>
+    <div class="flex justify-between gap-3 py-1.5">
+      <span class="text-[11px] text-gray-400 uppercase tracking-wide">Net of VAT</span>
+      <span class="text-xs font-mono font-bold text-emerald-700">${fmt(i.vatableSales)}</span>
+    </div>` : '';
+
+  const receiptCard = i.hasReceipt ? `
+    <div class="rounded-lg border border-emerald-200 bg-emerald-50/40 p-3">
+      <p class="text-[10px] font-bold text-emerald-700 uppercase tracking-widest mb-2">🧾 Official receipt on file</p>
+      ${field('Supplier',  i.supplierName)}
+      ${field('OR No.',    i.receiptNo)}
+      ${field('TIN',       i.tin)}
+      ${field('Address',   i.address)}
+      <div class="flex justify-between gap-3 py-1.5 ${vatRows ? 'border-b border-gray-100' : ''}">
+        <span class="text-[11px] text-gray-400 uppercase tracking-wide">Amount</span>
+        <span class="text-xs font-mono font-bold text-gray-800">${fmt(i.amount)}</span>
+      </div>
+      ${vatRows}
+    </div>` : `
+    <div class="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 text-center">
+      <p class="text-xs text-gray-500">
+        ${i.receiptType === 'ACK'
+          ? 'Acknowledgement receipt only — nothing filed with the BIR records.'
+          : 'No official receipt on file for this line.'}
+      </p>
+    </div>`;
+
+  const tagOptions = RECEIPT_TYPE_OPTIONS.map(o =>
+    `<option value="${o.value}" ${i.receiptType === o.value ? 'selected' : ''}>${o.label}</option>`
+  ).join('');
+
+  return `
+    <div class="px-3 sm:px-4 pb-4 pt-1 space-y-3 bg-gray-50/50 border-t border-gray-100">
+      ${receiptCard}
+
+      <div class="flex flex-col sm:flex-row sm:items-end gap-2">
+        <div class="flex-1 min-w-0">
+          <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Receipt type</label>
+          <select onchange="rrJrnRetag(${idx}, this.value)"
+            class="w-full p-2 border ${i.receiptType === 'UNTAGGED' ? 'border-rose-300 bg-rose-50' : 'border-gray-200 bg-white'} rounded-lg text-xs outline-none focus:ring-2 focus:ring-indigo-400">
+            ${i.receiptType === 'UNTAGGED' ? '<option value="" selected>— Classify this line —</option>' : ''}
+            ${tagOptions}
+          </select>
+        </div>
+        <button onclick="rrJrnOpenReceipt(${idx})"
+          class="shrink-0 px-3 py-2 rounded-lg text-xs font-bold transition min-h-[38px] ${
+            i.hasReceipt
+              ? 'border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
+              : 'border-2 border-dashed border-gray-300 text-gray-500 hover:border-green-400 hover:text-green-600 hover:bg-green-50'
+          }">
+          ${i.hasReceipt ? '✏️ Edit receipt' : '🧾 Add receipt'}
+        </button>
+      </div>
+    </div>`;
+}
+
+// ── Re-tag one line ──
+async function rrJrnRetag(idx, value) {
+  const line = rrJrnLines[idx];
+  if (!line || !value || value === line.receiptType) { rrJrnRender(); return; }
+
+  // VAT / Non-VAT assert an official receipt exists. When none is on file, the
+  // receipt has to be captured first — the tag and the BIR record must agree —
+  // so the choice opens the receipt form instead of failing against the server.
+  if (receiptTypeNeedsReceipt(value) && !line.hasReceipt) {
+    rrJrnOpenReceipt(idx, value);
+    return;
+  }
+
+  const res = await callServer('updateEntryReceiptTag', {
+    entryId    : line.id,
+    receiptType: value
+  });
+
+  if (!res.success) {
+    toast(res.message || 'Could not change the receipt type', 'error');
+    rrJrnRender();   // snap the select back to what is actually on file
+    return;
+  }
+
+  toast(`Tagged ${receiptTypeShort(value)} ✓`, 'success');
+  await rrJrnRefresh();
+}
+
+// ── Add / edit the receipt behind one line ──
+async function rrJrnOpenReceipt(idx, presetType) {
+  const line = rrJrnLines[idx];
+  if (!line) return;
+
+  const onSaved = () => rrJrnRefresh();
+
+  if (line.hasReceipt) {
+    const res = await callServer('getReceiptByEntryId', line.id);
+    if (res.success && res.data) {
+      openReceiptModal({
+        mode         : 'view',
+        receiptData  : res.data,
+        entryId      : line.id,
+        receiptType  : presetType || res.data.receiptType || line.receiptType,
+        fromEditModal: true,          // makes the fields editable + shows Save
+        onSaved
+      });
+      return;
+    }
+  }
+
+  const type = presetType || (receiptTypeNeedsReceipt(line.receiptType) ? line.receiptType : '');
+  if (!type) {
+    toast('Tag this line VAT or Non-VAT first — those are the tags that carry an official receipt.', 'warning');
+    return;
+  }
+
+  openReceiptModal({
+    mode       : 'attach',
+    entryId    : line.id,
+    date       : line.date,           // file it on the entry's own date
+    grossAmount: line.amount,
+    receiptType: type,
+    onSaved
+  });
+}
+
+// Re-pull the period, then land back on the same account so a run of lines can
+// be classified without reopening the drill-down each time.
+async function rrJrnRefresh() {
+  const ctx = rrJrnCtx;
+  await loadReplenishReport();
+  if (!ctx) return;
+
+  const s = rrJournalSections().find(x => x.key === ctx.sectionKey);
+  const stillThere = s && (s.items || []).some(i => i.accountType === ctx.accountType);
+  if (stillThere) openRrJournalDetail(ctx.sectionKey, ctx.accountType, true);
+  else            closeRrJournalDetail();
 }
 
 // ── Write the journal into the database spreadsheet, one tab per receipt type ──

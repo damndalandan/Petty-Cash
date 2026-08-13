@@ -1334,25 +1334,54 @@ function saveReceiptRecord(data) {
       : computeVAT(data.grossAmount);
 
     SpreadsheetApp.flush();
-    const id    = generateId('RCP', data.date, sheet);
     const user  = getUserEmail();
     const now   = new Date().toISOString();
 
-    sheet.appendRow([
-      id,                    // Receipt_ID
-      data.entryId  || '',   // Entry_ID (FK)
-      data.date,             // Date
-      data.supplierName,     // Supplier_Name
-      data.address    || '', // Address
-      data.tin        || '', // TIN
-      data.receiptNo  || '', // Receipt_No / OR No.
-      vat.grossAmount,       // Gross_Amount
-      vat.vatableSales,      // Vatable_Sales (Less: VAT)
-      vat.vatAmount,         // VAT_Amount (12% — 0 for non-VAT / ack receipts)
-      user,                  // Created_By
-      now,                   // Created_At
-      rcptType               // Receipt_Type
-    ]);
+    // One receipt per entry. Re-saving — correcting an OR number, editing the
+    // receipt from the replenishment journal — must rewrite that row: appending
+    // a second one would leave getReceiptByEntryId() and the report's join
+    // reading two different records for the same expense.
+    let existingRow = 0;
+    let id          = '';
+    if (data.entryId) {
+      const rcptRows = sheet.getDataRange().getValues();
+      for (let i = 1; i < rcptRows.length; i++) {
+        if (rcptRows[i][1] === data.entryId) { existingRow = i + 1; id = rcptRows[i][0]; break; }
+      }
+    }
+
+    if (existingRow) {
+      // Cols 3–10: Date … VAT_Amount. Receipt_ID / Entry_ID / Created_By /
+      // Created_At are left as filed so the record keeps its original identity.
+      sheet.getRange(existingRow, 3, 1, 8).setValues([[
+        data.date,
+        data.supplierName,
+        data.address   || '',
+        data.tin       || '',
+        data.receiptNo || '',
+        vat.grossAmount,
+        vat.vatableSales,
+        vat.vatAmount
+      ]]);
+      sheet.getRange(existingRow, 13).setValue(rcptType);
+    } else {
+      id = generateId('RCP', data.date, sheet);
+      sheet.appendRow([
+        id,                    // Receipt_ID
+        data.entryId  || '',   // Entry_ID (FK)
+        data.date,             // Date
+        data.supplierName,     // Supplier_Name
+        data.address    || '', // Address
+        data.tin        || '', // TIN
+        data.receiptNo  || '', // Receipt_No / OR No.
+        vat.grossAmount,       // Gross_Amount
+        vat.vatableSales,      // Vatable_Sales (Less: VAT)
+        vat.vatAmount,         // VAT_Amount (12% — 0 for non-VAT / ack receipts)
+        user,                  // Created_By
+        now,                   // Created_At
+        rcptType               // Receipt_Type
+      ]);
+    }
 
     // ── Update Has_Receipt on the linked entry ──
     if (data.entryId) {
@@ -1409,6 +1438,105 @@ function getReceiptByEntryId(entryId) {
     return { success: true, data: null };
   } catch(e) {
     return { success: false, message: e.toString(), data: null };
+  }
+}
+
+/**
+ * Re-tags one expense line's Receipt_Type — the fix-up path behind the
+ * replenishment journal's drill-down, where the bookkeeper reclassifies the
+ * lines the journal has flagged (untagged history, spend filed as "No Receipt"
+ * that actually has an acknowledgement receipt).
+ *
+ * Deliberately NOT day-locked: every line this exists to clear sits in a period
+ * the auditor has already closed, so a closed-day guard would make the workflow
+ * impossible. Each change is written to the audit log instead.
+ *
+ * @param {{entryId: string, receiptType: string}} payload
+ */
+function updateEntryReceiptTag(payload) {
+  try {
+    const entryId = payload && payload.entryId;
+    if (!entryId) return { success: false, message: 'No Entry_ID provided' };
+
+    const wanted = normalizeReceiptType_(payload.receiptType, true);
+    if (wanted === RECEIPT_TYPES.UNTAGGED) {
+      return { success: false, message: 'Pick a receipt type — "untagged" is the state the journal is asking you to clear.' };
+    }
+
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.ENTRIES);
+    const rows  = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][0] !== entryId) continue;
+
+      const row = i + 1;
+      if (!JOURNAL_ENTRY_TYPES.includes(rows[i][2])) {
+        return { success: false, message: 'Only expense lines carry a receipt tag.' };
+      }
+      if (rows[i][10] === 'DELETED') {
+        return { success: false, message: 'This entry has been deleted.' };
+      }
+
+      const date       = normalizeDate(rows[i][1]);
+      const amount     = parseFloat(rows[i][5]) || 0;
+      const hasReceipt = rows[i][6] === 'YES';
+      const current    = normalizeReceiptType_(rows[i][15], hasReceipt);
+
+      if (current === wanted) return { success: true, receiptType: wanted, unchanged: true };
+
+      // VAT / Non-VAT assert that an official receipt is on file. Setting either
+      // without one would put the line in a journal section that has no OR to
+      // trace it to — and, for VAT, invent a 12% input credit out of nothing.
+      if (!hasReceipt && (wanted === RECEIPT_TYPES.VAT || wanted === RECEIPT_TYPES.NON_VAT)) {
+        return {
+          success: false,
+          needsReceipt: true,
+          message: 'Attach the official receipt first — a VAT / Non-VAT tag claims a receipt that is not on file.'
+        };
+      }
+
+      // The mirror of that rule, and the same one the settlement editor applies:
+      // a filed receipt can't be detached here, so a tag saying there is none
+      // would leave the entry contradicting its own BIR record.
+      if (hasReceipt && wanted !== RECEIPT_TYPES.VAT && wanted !== RECEIPT_TYPES.NON_VAT) {
+        return { success: false, message: 'An official receipt is already on file for this line — it can only be tagged VAT or Non-VAT.' };
+      }
+
+      sheet.getRange(row, 16).setValue(wanted);
+      sheet.getRange(row, 13).setValue(new Date().toISOString());
+
+      // Keep the BIR purchases journal in step: only a VAT receipt carries a
+      // claimable split, so a line retagged Non-VAT is rewritten to face value.
+      if (hasReceipt) {
+        const rcptSheet = ss.getSheetByName(SHEETS.RECEIPTS);
+        const rcptRows  = rcptSheet ? rcptSheet.getDataRange().getValues() : [];
+        for (let j = 1; j < rcptRows.length; j++) {
+          if (rcptRows[j][1] !== entryId) continue;
+          const gross = parseFloat(rcptRows[j][7]) || amount;
+          const vat   = receiptTypeIsVatable_(wanted)
+            ? computeVAT(gross)
+            : { grossAmount: gross, vatableSales: gross, vatAmount: 0 };
+          rcptSheet.getRange(j + 1, 8, 1, 3)
+            .setValues([[vat.grossAmount, vat.vatableSales, vat.vatAmount]]);
+          rcptSheet.getRange(j + 1, 13).setValue(wanted);
+          break;
+        }
+      }
+
+      writeAuditLog(
+        'ENTRY_RETAGGED',
+        `Receipt type changed ${receiptTypeLabel_(current)} → ${receiptTypeLabel_(wanted)}. ` +
+        `Desc: ${rows[i][4] || '—'} | Amount: ₱${amount.toFixed(2)}`,
+        entryId,
+        date
+      );
+
+      return { success: true, receiptType: wanted };
+    }
+    return { success: false, message: 'Entry not found' };
+  } catch (e) {
+    return { success: false, message: e.toString() };
   }
 }
 
@@ -3494,7 +3622,18 @@ function getReplenishmentPeriodReport(params) {
         vatAmount   : parseFloat(r[9]) || 0
       };
     }
-    expenseEntries.forEach(e => { if (rcptMap[e.id]) Object.assign(e, rcptMap[e.id]); });
+    expenseEntries.forEach(e => {
+      if (!rcptMap[e.id]) return;
+      Object.assign(e, rcptMap[e.id]);
+      // Only a VAT receipt carries a claimable split. Receipts filed before the
+      // non-VAT rule existed may still hold a 12% figure on the sheet, so the
+      // stored split is overridden here rather than surfaced on a line the
+      // custodian has tagged Non-VAT / Acknowledgement.
+      if (!receiptTypeIsVatable_(e.receiptType)) {
+        e.vatableSales = e.grossAmount != null ? e.grossAmount : e.amount;
+        e.vatAmount    = 0;
+      }
+    });
     expenseEntries.sort((a, b) => a.date > b.date ? -1 : 1);   // newest first
 
     // ── Daily breakdown from summary — correct column indexes ──
@@ -3634,21 +3773,38 @@ function buildReplenishmentJournal_(expenseEntries, fromStr, toStr) {
       }))
       .sort((a, b) => b.amount - a.amount);
 
-    if (spec.itemized) {
-      section.items = rows.map(e => ({
+    // Every section carries its own lines — the report's Account Type rows open
+    // a drill-down that has to show the transactions (and the receipt filed
+    // against each) behind the number, not just the roll-up.
+    section.items = rows.map(e => {
+      const item = {
         id          : e.id,
         date        : e.date,
         accountType : String(e.category || 'Miscellaneous').trim() || 'Miscellaneous',
         description : e.description || '',
         supplierName: e.supplierName || '',
+        address     : e.address      || '',
         tin         : e.tin          || '',
         receiptNo   : e.receiptNo    || '',
         amount      : parseFloat(e.amount) || 0,
+        hasReceipt  : !!e.hasReceipt,
+        receiptType : e.receiptType,
+        requestedBy : e.requestedBy  || ''
+      };
+
+      // A VAT split is attached to VAT lines only. Non-VAT, acknowledgement and
+      // untagged spend is booked at face value, so no 12% figure is derived for
+      // them — an absent field is the honest answer, not a zero-looking one.
+      if (spec.key === RECEIPT_TYPES.VAT) {
         // Receipts filed before tagging may be missing their split; fall back to
         // the 12% derivation so a VAT line is never shown with a blank VAT.
-        vatableSales: e.vatableSales != null ? e.vatableSales : computeVAT(e.amount).vatableSales,
-        vatAmount   : e.vatAmount    != null ? e.vatAmount    : computeVAT(e.amount).vatAmount
-      }));
+        item.vatableSales = e.vatableSales != null ? e.vatableSales : computeVAT(e.amount).vatableSales;
+        item.vatAmount    = e.vatAmount    != null ? e.vatAmount    : computeVAT(e.amount).vatAmount;
+      }
+      return item;
+    });
+
+    if (spec.itemized) {
       section.vatTotal = parseFloat(
         section.items.reduce((s, i) => s + (parseFloat(i.vatAmount) || 0), 0).toFixed(2)
       );

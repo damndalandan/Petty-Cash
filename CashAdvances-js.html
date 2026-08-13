@@ -343,6 +343,9 @@ function attachLiqReceipt(idx) {
   openReceiptModal({
     mode: 'new',
     grossAmount: parseFloat(liqEntries[idx].amount) || 0,
+    // The tag is already chosen on the line — the modal needs it so a Non-VAT
+    // receipt is captured at face value instead of showing a 12% breakdown.
+    receiptType: liqEntries[idx].receiptType,
     onAttach: (receiptData) => {
       liqEntries[idx].receipt = receiptData;
       renderLiqEntries();

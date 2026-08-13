@@ -259,6 +259,10 @@ function switchEntryTab(tab) {
 
 function syncEntryAmount() {
   if (_pendingReceipt) return; // don't overwrite if receipt already finalized
+  // A caller that handles its own refresh (the journal drill-down) is editing an
+  // entry that already exists — mirroring into the new-entry form would clobber
+  // whatever is half-typed there on the entries page.
+  if (typeof _rCtx.onSaved === 'function') return;
   const gross   = parseFloat(document.getElementById('rcptGross')?.value) || 0;
   const entryAmt = document.getElementById('entryAmount');
   if (entryAmt && gross) entryAmt.value = gross;
@@ -757,7 +761,8 @@ async function viewReceipt(entryId) {
     openReceiptModal({
       mode       : 'attach',
       entryId    : entryId,
-      grossAmount: entry ? entry.amount : 0
+      grossAmount: entry ? entry.amount : 0,
+      receiptType: entry ? entry.receiptType : ''
     });
     return;
   }
@@ -765,13 +770,14 @@ async function viewReceipt(entryId) {
   // Has receipt — fetch existing data to view/edit
   const res = await callServer('getReceiptByEntryId', entryId);
   if (res.success && res.data) {
-    openReceiptModal({ mode: 'view', receiptData: res.data });
+    openReceiptModal({ mode: 'view', receiptData: res.data, entryId });
   } else {
     // Receipt flag set but no record found — fall back to attach mode
     openReceiptModal({
       mode       : 'attach',
       entryId    : entryId,
-      grossAmount: entry ? entry.amount : 0
+      grossAmount: entry ? entry.amount : 0,
+      receiptType: entry ? entry.receiptType : ''
     });
   }
 }
@@ -793,7 +799,16 @@ function openReceiptModal(ctx) {
 
   const dateEl  = document.getElementById('rcptDate');
   const grossEl = document.getElementById('rcptGross');
-  if (dateEl) dateEl.value = state.currentDate;
+  // ctx.date lets a caller working on a past entry (the journal drill-down) file
+  // the receipt on that entry's own date instead of whatever day is on screen.
+  if (dateEl) dateEl.value = ctx.date || state.currentDate;
+
+  // View mode reads the tag off the record itself; every other mode is told by
+  // the caller which tag this receipt is being filed under.
+  if (ctx.mode === 'view' && ctx.receiptData && !ctx.receiptType) {
+    _rCtx.receiptType = ctx.receiptData.receiptType;
+  }
+  applyReceiptTypeToModal(_rCtx.receiptType);
 
   if (ctx.mode === 'new') {
     if (_pendingReceipt) {
@@ -876,6 +891,48 @@ function closeReceiptModal() {
 }
 
 // ─────────────────────────────────────────────
+// RECEIPT TYPE → which amount panel the modal shows
+// ─────────────────────────────────────────────
+// Only a VAT receipt carries claimable input VAT. A Non-VAT supplier or an
+// acknowledgement receipt is booked at face value, so the 12% breakdown is not
+// just zeroed — it is taken off the screen, because showing a VAT card on a
+// non-VAT receipt invites someone to post a credit that does not exist.
+function receiptModalIsVatable() {
+  const t = _rCtx.receiptType;
+  // No tag at all (a caller that never set one) keeps the historical behaviour:
+  // the VAT breakdown is shown, matching what the server still computes.
+  return t !== 'NON_VAT' && t !== 'ACK';
+}
+
+function applyReceiptTypeToModal(code) {
+  const vatCard   = document.getElementById('rcptVatCard');
+  const noVatCard = document.getElementById('rcptNoVatCard');
+  const badge     = document.getElementById('rcptTypeBadge');
+  const heading   = document.getElementById('rcptAmountHeading');
+  const grossLbl  = document.getElementById('rcptGrossLabel');
+  const note      = document.getElementById('rcptNoVatNote');
+  const vatable   = receiptModalIsVatable();
+
+  if (badge) {
+    badge.innerHTML = code ? receiptTypeBadgeHtml(code) : '';
+    badge.classList.toggle('hidden', !code);
+  }
+  if (vatCard)   vatCard.classList.toggle('hidden', !vatable);
+  if (noVatCard) noVatCard.classList.toggle('hidden', vatable);
+  if (heading)   heading.textContent = vatable ? 'Amount & VAT Breakdown' : 'Amount';
+  if (grossLbl) {
+    grossLbl.innerHTML = (vatable ? 'Gross Amount (VAT-inclusive)' : 'Amount')
+      + ' <span class="text-red-500">*</span>';
+  }
+  if (note) {
+    note.textContent = code === 'ACK'
+      ? 'Acknowledgement receipt — not an official receipt, so no input VAT is claimable.'
+      : 'Non-VAT supplier — the full amount is the expense, with no input VAT to split out.';
+  }
+  computeReceiptVAT();
+}
+
+// ─────────────────────────────────────────────
 // VAT BREAKDOWN — 3 lines only:
 //   Gross Amount  (display only)
 //   Less: VAT     (= Gross - Gross/1.12)
@@ -883,11 +940,18 @@ function closeReceiptModal() {
 // Net of VAT removed.
 // ─────────────────────────────────────────────
 function computeReceiptVAT() {
-  const gross     = parseFloat(document.getElementById('rcptGross')?.value) || 0;
+  const gross = parseFloat(document.getElementById('rcptGross')?.value) || 0;
+  const setT  = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmt(v); };
+
+  // Non-VAT / acknowledgement: the amount stands on its own, nothing is derived.
+  if (!receiptModalIsVatable()) {
+    setT('rcptFaceValue', gross);
+    return;
+  }
+
   const vatAmount = gross - (gross / 1.12);   // the VAT portion
   const netOfVat  = gross / 1.12;             // amount excluding VAT
 
-  const setT = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = fmt(v); };
   setT('rcptGrossDisplay', gross);     // Gross Amount (display)
   setT('rcptVatAmount',    vatAmount); // Less: VAT (12%)
   setT('rcptVatableSales', netOfVat);  // VAT Amount (net line)
@@ -906,7 +970,8 @@ async function saveReceiptModal() {
     address     : document.getElementById('rcptAddress')?.value.trim()   || '',
     tin         : document.getElementById('rcptTin')?.value.trim()       || '',
     receiptNo   : document.getElementById('rcptReceiptNo')?.value.trim() || '',
-    grossAmount : gross
+    grossAmount : gross,
+    receiptType : _rCtx.receiptType || ''
   };
 
   if (_rCtx.mode === 'new') {
@@ -926,17 +991,23 @@ async function saveReceiptModal() {
   const saveBtn = document.getElementById('receiptSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
 
-  const res = await callServer('saveReceiptRecord', {
-    ...receiptData,
-    entryId: _rCtx.entryId || ''
-  });
+  // View mode is opened with the receipt record rather than an entry id; without
+  // this the save would post with a blank Entry_ID and orphan the record.
+  const entryId = _rCtx.entryId ||
+    (_rCtx.receiptData && _rCtx.receiptData.entryId) || '';
+
+  const res = await callServer('saveReceiptRecord', { ...receiptData, entryId });
 
   if (saveBtn) { saveBtn.disabled = false; saveBtn.innerHTML = '💾 Save Receipt'; }
 
   if (res.success) {
+    const onSaved = _rCtx.onSaved;
     toast('Receipt saved ✓', 'success');
     closeReceiptModal();
-    loadEntries();
+    // Callers outside the entries page (the journal drill-down) refresh their
+    // own view — reloading the entry list would leave their numbers stale.
+    if (typeof onSaved === 'function') onSaved(res);
+    else loadEntries();
   } else {
     toast(res.message || 'Failed to save receipt', 'error');
   }
@@ -993,12 +1064,12 @@ async function openEditReceiptModal() {
   if (state.editHasReceipt) {
     const res = await callServer('getReceiptByEntryId', id);
     if (res.success && res.data) {
-      openReceiptModal({ mode: 'view', receiptData: res.data, fromEditModal: true });
+      openReceiptModal({ mode: 'view', receiptData: res.data, entryId: id, fromEditModal: true });
     } else {
-      openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0, fromEditModal: true });
+      openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0, receiptType: entry ? entry.receiptType : '', fromEditModal: true });
     }
   } else {
-    openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0, fromEditModal: true });
+    openReceiptModal({ mode: 'attach', entryId: id, grossAmount: entry ? entry.amount : 0, receiptType: entry ? entry.receiptType : '', fromEditModal: true });
   }
 }
 

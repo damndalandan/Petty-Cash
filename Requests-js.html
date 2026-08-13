@@ -722,6 +722,8 @@ function openPcrItemReceipt(btn) {
   openReceiptModal({
     mode       : 'new',
     grossAmount: amt,
+    // A Non-VAT line is captured at face value — the modal drops its 12% split.
+    receiptType: item.querySelector('.pcr-rcpt-type')?.value || '',
     onAttach   : (receiptData) => {
       item._receipt = receiptData;
       btn.classList.add('hidden');

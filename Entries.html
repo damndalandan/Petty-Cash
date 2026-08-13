@@ -123,18 +123,36 @@
 
       <!-- RIGHT — Amount + VAT Breakdown -->
       <div class="space-y-4 flex flex-col">
-        <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Amount & VAT Breakdown</p>
+        <div class="flex items-center justify-between gap-2">
+          <p class="text-xs font-bold text-gray-400 uppercase tracking-widest" id="rcptAmountHeading">Amount &amp; VAT Breakdown</p>
+          <!-- The tag this receipt is being filed under — set by the surface that
+               opened the modal (liquidation, PCR settlement, journal drill-down). -->
+          <span id="rcptTypeBadge" class="hidden"></span>
+        </div>
 
         <!-- Gross Amount input -->
         <div>
-          <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Gross Amount (VAT-inclusive) <span class="text-red-500">*</span></label>
+          <label class="block text-xs font-bold text-gray-500 uppercase mb-1" id="rcptGrossLabel">Gross Amount (VAT-inclusive) <span class="text-red-500">*</span></label>
           <input type="number" id="rcptGross" placeholder="0.00" step="0.01" min="0"
               oninput="computeReceiptVAT(); syncEntryAmount()"
             class="w-full p-2 border border-gray-300 rounded text-sm font-mono focus:ring-2 focus:ring-green-500 outline-none text-right text-lg font-bold">
         </div>
 
+        <!-- Non-VAT / acknowledgement receipts are booked at face value — no 12%
+             split is computed or shown, so this card replaces the breakdown. -->
+        <div id="rcptNoVatCard" class="hidden bg-sky-50 border border-sky-200 rounded-xl p-4 flex-1 flex flex-col justify-center">
+          <p class="text-xs font-bold text-sky-700 uppercase tracking-wider mb-3">Booked at face value</p>
+          <div class="flex justify-between items-center py-2.5 border-t border-sky-200">
+            <span class="text-sm font-bold text-gray-700">Amount</span>
+            <span class="font-mono font-black text-sky-700 text-base" id="rcptFaceValue">₱0.00</span>
+          </div>
+          <p class="text-[10px] text-gray-500 mt-3 leading-relaxed" id="rcptNoVatNote">
+            No input VAT is claimable on this receipt, so nothing is split out.
+          </p>
+        </div>
+
         <!-- VAT Breakdown card -->
-        <div class="bg-green-50 border border-green-200 rounded-xl p-4 flex-1 flex flex-col justify-between">
+        <div id="rcptVatCard" class="bg-green-50 border border-green-200 rounded-xl p-4 flex-1 flex flex-col justify-between">
           <p class="text-xs font-bold text-green-700 uppercase tracking-wider mb-3">VAT Breakdown <span class="font-normal text-green-500">(Auto-computed @ 12%)</span></p>
 
           <div class="space-y-0">
