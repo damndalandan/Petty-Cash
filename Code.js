@@ -4677,9 +4677,12 @@ function savePettyCashRequest(data) {
     // Admin-created requests skip approval — they start as APPROVED immediately
     const initialStatus = creatorIsAdmin ? 'APPROVED' : 'PENDING_APPROVAL';
 
-    // Only an Admin can mark a request personal — the flag creates a debt owed
-    // back to the fund, so a cashier must not be able to set it on her behalf.
-    const isPersonal = creatorIsAdmin && !!data.isPersonal;
+    // Admin and cashier both draw petty cash personally, so both can tag their
+    // own request. The flag creates a debt owed back to the fund, so it stays
+    // off-limits to the Auditor, who neither draws cash nor pays it back.
+    const creatorIsCustodian = roleInfo.success &&
+      (roleInfo.role === 'Admin' || roleInfo.role === 'Cashier');
+    const isPersonal = creatorIsCustodian && !!data.isPersonal;
 
     sheet.appendRow([
       id,                                // 1  Request_ID
@@ -4808,9 +4811,11 @@ function getPettyCashRequests() {
         settledAt       : status === 'SETTLED' ? (r[14] || '') : '',
         settlementItems : settlementItems,
         advanceStatus   : isAdvance ? (advanceStatusMap[entryId] || '') : '',
-        // Personal tag is visible to Admin/Auditor only — the cashier sees an
-        // ordinary request. The cash movement itself is visible to everyone.
-        isPersonal      : isPrivileged && r[15] === 'YES'
+        // Personal tag goes to Admin/Auditor, plus the cashier who submitted
+        // that request — she needs to see her own tag took effect, but still
+        // sees anyone else's personal draw as an ordinary request. The cash
+        // movement itself is visible to everyone.
+        isPersonal      : (isPrivileged || r[6] === email) && r[15] === 'YES'
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -5571,7 +5576,11 @@ function computePersonalExpenseSummary_(ss) {
       change     : change,
       owed       : owed,
       entryId    : r[12],
-      createdAt  : r[13]
+      createdAt  : r[13],
+      // Who the draw was for, and who tagged it. Both Admin and cashier can tag
+      // a request personal, so a row without a name is no longer attributable.
+      requestedFor: r[5] || '',
+      submittedBy : r[6] || ''
     });
   }
   requests.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));

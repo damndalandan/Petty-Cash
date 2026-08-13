@@ -161,7 +161,8 @@ function renderRequestCard(r) {
   const typeBadge = (r.requestType === 'Cash Advance'
     ? `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">ADVANCE</span>`
     : `<span class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700">EXPENSE</span>`)
-    // Server only sends isPersonal to Admin/Auditor — the cashier sees a plain request.
+    // Server sends isPersonal to Admin/Auditor, and to the cashier who submitted
+    // it — someone else's personal draw reads as a plain request.
     + (r.isPersonal
       ? ` <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-fuchsia-100 text-fuchsia-700">🏠 PERSONAL</span>`
       : '');
@@ -373,8 +374,9 @@ function escHtml(s) {
 
 // ── New Request Form ──────────────────────────
 
-// Personal draws are usually for the Admin herself, so prefill her name — but
-// leave it editable, since she sometimes sends someone else to collect the cash.
+// A personal draw is usually for whoever is filling in the form, so prefill her
+// own name — but leave it editable, since the cash is sometimes collected by
+// someone else.
 function onPcrPersonalToggle() {
   const checked = document.getElementById('pcrIsPersonal')?.checked;
   const nameEl  = document.getElementById('pcrRequestedBy');

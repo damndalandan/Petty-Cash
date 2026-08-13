@@ -223,7 +223,6 @@ function applyRoleUI() {
     ['nav-requests', 'nav-personalexpenses', 'nav-denominations', 'nav-replenishment', 'nav-replenishrequests', 'nav-filing', 'nav-replenishreport', 'nav-auditreview', 'nav-auditlog'].forEach(show);
     show('admin-section');
     show('pcr-form-section');
-    // Only an Admin may tag a request personal (the server enforces this too).
     show('pcr-personal-wrap');
   } else if (state.userRole === 'Auditor') {
     // Auditor sees review tools
@@ -234,6 +233,10 @@ function applyRoleUI() {
     // Cashier sees operational tools
     ['nav-requests', 'nav-entries', 'nav-denominations', 'nav-replenishment', 'nav-replenishrequests', 'nav-filing', 'nav-replenishreport'].forEach(show);
     show('pcr-form-section');
+    // The custodian draws petty cash for personal use as well, so she tags her
+    // own request the same way the Admin does. She only ever sees the tag on
+    // requests she submitted herself (see getPettyCashRequests).
+    show('pcr-personal-wrap');
   }
 }
 
