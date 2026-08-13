@@ -155,6 +155,16 @@ function renderAdvances() {
     } else if (a.status === 'LIQUIDATION_PENDING') {
       actions = `<span class="text-xs text-amber-600 font-medium italic">Submitted — under review</span>`;
     }
+    // A liquidated advance can still be corrected — a mistyped amount, or a
+    // second receipt that surfaced after submitting. The server refuses once the
+    // auditor has closed the day the liquidation was booked on.
+    if (a.status === 'LIQUIDATED' && isCashier()) {
+      actions = `
+        <button onclick="openLiquidationModal('${a.id}', 'edit')"
+          class="px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition">
+          ✏️ Edit Liquidation
+        </button>`;
+    }
 
     return `
       <div class="rounded-xl border ${urgency} p-4 shadow-sm transition-all">
@@ -204,6 +214,9 @@ function renderAdvances() {
 // ─── Liquidation state ───
 let liqEntries = [];
 let liqAdvanceAmount = 0;
+// Set when the modal is opened from another page (the Requests list) so the
+// right list refreshes after saving instead of only the advances one.
+let liqAfterSave = null;
 
 function getLiqCategories() {
   const cats = window.appCategories || [
@@ -219,7 +232,7 @@ function getLiqCategories() {
   return cats.map(c => typeof c === 'string' ? { name: c, description: '' } : c);
 }
 
-function openLiquidationModal(id, action) {
+function openLiquidationModal(id, action, opts) {
   let advance = allAdvances.find(a => a.id === id);
   if (!advance) {
     // allAdvances may not be populated yet — reload and retry
@@ -229,6 +242,7 @@ function openLiquidationModal(id, action) {
   }
 
   liqEntries = [];
+  liqAfterSave = (opts && opts.onSaved) || null;
   liqAdvanceAmount = parseFloat(advance.amount) || 0;
 
   document.getElementById('liqAdvanceId').value = id;
@@ -237,18 +251,28 @@ function openLiquidationModal(id, action) {
   // Clear all liqNote fields
   document.querySelectorAll('#liqNote').forEach(el => el.value = '');
 
-  const isEdit = action === 'edit';
+  const isEdit   = action === 'edit';
+  const isClosed = advance.status === 'LIQUIDATED';
   document.getElementById('liqModalTitle').textContent    = isEdit ? 'Edit Liquidation' : 'Submit Liquidation';
-  document.getElementById('liqModalSubtitle').textContent = isEdit ? 'Update expense entries for this advance' : 'Add expense entries to liquidate this advance';
+  document.getElementById('liqModalSubtitle').textContent = !isEdit
+    ? 'Add expense entries to liquidate this advance'
+    : isClosed
+      ? 'Correct the recorded liquidation — amounts, categories, or a missed receipt'
+      : 'Update expense entries for this advance';
   document.getElementById('liqConfirmBtn').className      = 'flex-1 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow transition';
 
-  // Pre-fill existing entries when editing a submitted liquidation
+  // Pre-fill existing entries when editing a submitted liquidation. The receipt
+  // tag has to come back with the line — dropping it would force the custodian
+  // to re-classify every row (and re-attach receipts already on file) just to
+  // fix one typo. Rows recorded before tagging existed come back untagged, which
+  // is not a choosable option, so the picker forces a decision on those.
   if (isEdit && advance.liqBreakdown && advance.liqBreakdown.entries) {
     liqEntries = advance.liqBreakdown.entries.map(e => ({
-      category  : e.category  || '',
-      desc      : e.desc      || '',
-      amount    : e.amount    || 0,
-      receipt   : e.receipt   || null
+      category   : e.category    || '',
+      desc       : e.desc        || '',
+      amount     : e.amount      || 0,
+      receiptType: e.receiptType || '',
+      receipt    : e.receipt     || null
     }));
     // Pre-fill note if present
     const noteVal = advance.liqBreakdown.note || '';
@@ -282,8 +306,9 @@ function openLiquidationModal(id, action) {
       if (inner) { inner.classList.remove('max-w-md'); inner.classList.add('max-w-4xl'); }
       const advAmt = document.getElementById('liqAdvanceAmt');
       if (advAmt) advAmt.textContent = fmt(liqAdvanceAmount);
-      // Only add a blank entry if starting fresh (not editing)
-      if (action === 'submit') addLiqEntry();
+      // Only add a blank entry if starting fresh (not editing) — or if an edit
+      // found nothing to prefill, so the modal never opens with no rows at all.
+      if (action === 'submit' || !liqEntries.length) addLiqEntry();
       renderLiqEntries();
     } else {
       twoCol.classList.add('hidden');
@@ -312,7 +337,8 @@ function openLiquidationModal(id, action) {
 
 function closeLiquidationModal() {
   document.getElementById('liquidationModal').classList.add('hidden');
-  liqEntries = [];
+  liqEntries   = [];
+  liqAfterSave = null;
 }
 
 function addLiqEntry() {
@@ -517,9 +543,10 @@ async function confirmLiquidationAction() {
   btnLoad(btn, false);
 
   if (res.success) {
-    toast('Liquidation submitted ✓', 'success');
+    const done = liqAfterSave;          // closeLiquidationModal clears it
+    toast(done ? 'Liquidation updated ✓' : 'Liquidation submitted ✓', 'success');
     closeLiquidationModal();
-    loadAdvances();
+    if (done) done(); else loadAdvances();
   } else {
     toast(res.message || 'Action failed', 'error');
   }

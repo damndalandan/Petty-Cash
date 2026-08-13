@@ -247,14 +247,26 @@ function renderRequestCard(r) {
     }
   }
 
-  // Cashier/Admin: correct a mistyped settlement (amounts, categories, items).
-  // The server refuses once the settlement day is CLOSED by the auditor.
-  if (r.status === 'SETTLED' && r.requestType !== 'Cash Advance' && isCashier()) {
-    actions = `
-      <button onclick="openPcrEditSettleModal('${r.id}')"
-        class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
-        ✏️ Edit Settlement
-      </button>`;
+  // Cashier/Admin: correct what was recorded — a mistyped amount, a wrong
+  // category, or a second receipt missed because the first was submitted right
+  // away. The server refuses once that day is CLOSED by the auditor.
+  if (r.status === 'SETTLED' && isCashier()) {
+    if (r.requestType !== 'Cash Advance') {
+      actions = `
+        <button onclick="openPcrEditSettleModal('${r.id}')"
+          class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
+          ✏️ Edit Settlement
+        </button>`;
+    } else if (r.entryId) {
+      // An advance is settled by its liquidation, so the correction runs through
+      // the liquidation modal — opened here so the cashier doesn't have to hunt
+      // down the same transaction on the Cash Advances page.
+      actions = `
+        <button onclick="openPcrLiquidationEdit('${r.entryId}')"
+          class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
+          ✏️ Edit Liquidation
+        </button>`;
+    }
   }
 
   const approvalLine = r.approvedBy
@@ -571,6 +583,24 @@ function openPcrEditSettleModal(requestId) {
   setPcrSettleMode(true);
   updatePcrSummary();
   document.getElementById('pcrSettleModal').classList.remove('hidden');
+}
+
+// A Cash Advance PCR is settled by its liquidation, so correcting one means
+// editing that liquidation rather than the PCR_DETAIL rows an Expense PCR has.
+// The advance list belongs to the Cash Advances page — fetch it on demand so the
+// fix can be made from here.
+async function openPcrLiquidationEdit(advanceId) {
+  if (!advanceId) {
+    toast('This request has no linked advance to edit.', 'warning');
+    return;
+  }
+  if (!allAdvances.some(a => a.id === advanceId)) await loadAdvances();
+  if (!allAdvances.some(a => a.id === advanceId)) {
+    toast('Could not load this advance — try the Cash Advances page.', 'error');
+    return;
+  }
+  // Refresh in place: the cashier stays on whichever filter they were reading.
+  openLiquidationModal(advanceId, 'edit', { onSaved: () => loadRequests() });
 }
 
 function setPcrSettleMode(editMode) {

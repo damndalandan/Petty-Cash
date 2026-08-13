@@ -2375,16 +2375,66 @@ function submitLiquidation(data) {
   // Settles the advance immediately (no audit gate): marks it LIQUIDATED,
   // stores the breakdown JSON in the notes column, and records the spend as
   // LIQ_DETAIL expense rows plus any change as CASH_RETURN.
+  //
+  // Re-submitting against an advance that is already LIQUIDATED (or still
+  // LIQUIDATION_PENDING) is a correction — a mistyped amount, a second receipt
+  // that was missed because the first was submitted too quickly. The previous
+  // LIQ_DETAIL / change rows are voided and rewritten. A correction re-books on
+  // the ORIGINAL liquidation date, never today: re-dating it would pull the
+  // spend out of the day it was already reported on and leave that day short.
+  // Refused once the auditor has CLOSED that day — those numbers are final.
   try {
+    const role = getUserRole();
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Only a cashier or admin can liquidate an advance.' };
+    }
+
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.ENTRIES);
     const rows  = sheet.getDataRange().getValues();
     const now   = new Date().toISOString();
+    const today = normalizeDate(new Date());
 
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][0] !== data.id) continue;
       const row         = i + 1;
       const advanceDate = normalizeDate(rows[i][1]);
+      const prevStatus  = rows[i][10];
+      const isEdit      = prevStatus === 'LIQUIDATED' || prevStatus === 'LIQUIDATION_PENDING';
+
+      // ── Rows a previous liquidation left behind ──
+      // Collected from the same snapshot, before anything is written: new rows
+      // are appended at the end, so these 1-based positions stay valid.
+      const voidTypes = ['CASH_RETURN', 'CASH_ADVANCE_REIMBURSEMENT', 'LIQ_DETAIL'];
+      const staleRows = [];   // { row, entryId, type }
+      let   priorDate = '';
+      for (let j = 1; j < rows.length; j++) {
+        if (!voidTypes.includes(rows[j][2]))            continue;
+        if (String(rows[j][7]) !== String(data.id))     continue;
+        if (rows[j][10] === 'DELETED')                  continue;
+        staleRows.push({ row: j + 1, entryId: rows[j][0], type: rows[j][2] });
+        if (!priorDate) priorDate = normalizeDate(rows[j][1]);
+      }
+      // Fall back to the "[LIQUIDATED (BY …) on <date>]" marker when a prior edit
+      // already voided every row (e.g. a fully-spent liquidation with no change).
+      if (!priorDate) {
+        const marker = String(rows[i][14] || '').match(/\[LIQUIDATED[^\]]*?on (\d{4}-\d{2}-\d{2})\]/);
+        if (marker) priorDate = marker[1];
+      }
+      const bookDate = isEdit ? (priorDate || today) : today;
+
+      // ── Day lock: a correction may not rewrite a day the auditor has closed ──
+      if (isEdit) {
+        const sumSheet = ss.getSheetByName(SHEETS.SUMMARY);
+        const sumRows  = sumSheet ? sumSheet.getDataRange().getValues() : [];
+        for (let s = 1; s < sumRows.length; s++) {
+          if (normalizeDate(sumRows[s][1]) !== bookDate) continue;
+          if ((sumRows[s][13] || '') === 'CLOSED') {
+            return { success: false, message: `The ${bookDate} audit is already closed — this liquidation can no longer be edited. Ask the auditor to flag the day first.` };
+          }
+          break;
+        }
+      }
 
       // Calculate change (advance amount - total spent)
       const advanceAmount = parseFloat(rows[i][5]) || 0;
@@ -2403,32 +2453,27 @@ function submitLiquidation(data) {
       // Mark the advance LIQUIDATED right away — cash advances are settled by the
       // cashier's liquidation and no longer wait for a day-close audit. The marker
       // is kept BEFORE the JSON so the notes still parse, and so the LIQ_DETAIL
-      // reference-repair fallback can match by "on <date>".
-      const today = normalizeDate(new Date());
+      // reference-repair fallback can match by "on <date>" — which is why it
+      // carries the booking date, not today's.
       sheet.getRange(row, 11).setValue('LIQUIDATED');
       sheet.getRange(row, 13).setValue(now);
-      sheet.getRange(row, 15).setValue('[LIQUIDATED on ' + today + '] ' + breakdownJson);
+      sheet.getRange(row, 15).setValue('[LIQUIDATED on ' + bookDate + '] ' + breakdownJson);
 
-      // If this is a re-submission (edit), void any previously created CASH_RETURN or
-      // CASH_ADVANCE_REIMBURSEMENT entries linked to this advance so we don't double-count
-      const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
-      const entryRows  = entrySheet.getDataRange().getValues();
-      const voidTypes  = ['CASH_RETURN', 'CASH_ADVANCE_REIMBURSEMENT', 'LIQ_DETAIL'];
-      for (let j = 1; j < entryRows.length; j++) {
-        if (voidTypes.includes(entryRows[j][2]) &&
-            String(entryRows[j][7]) === String(data.id) &&
-            entryRows[j][10] !== 'DELETED') {
-          entrySheet.getRange(j + 1, 11).setValue('DELETED');
-          entrySheet.getRange(j + 1, 13).setValue(now);
-          entrySheet.getRange(j + 1, 15).setValue('[VOIDED — liquidation re-submitted]');
-        }
-      }
+      // Void what the previous submission recorded so nothing double-counts.
+      staleRows.forEach(stale => {
+        sheet.getRange(stale.row, 11).setValue('DELETED');
+        sheet.getRange(stale.row, 13).setValue(now);
+        sheet.getRange(stale.row, 15).setValue('[VOIDED — liquidation re-submitted]');
+        // The no-receipt log is keyed to the entry, not the advance — leaving its
+        // row live would keep a voided line sitting on the filing checklist.
+        if (stale.type === 'LIQ_DETAIL') markNoReceiptDeleted(stale.entryId);
+      });
 
       // Immediately record the change as CASH_RETURN — cashier has physically returned it on submission
       // Or reimburse the employee from petty cash if they overspent
       if (change > 0.005) {
         saveExpenseEntry({
-          date       : today,
+          date       : bookDate,
           type       : 'CASH_RETURN',
           category   : 'Cash Return',
           description: 'Change return — ' + (rows[i][4] || 'Cash Advance') + ' (' + data.id + ')',
@@ -2440,7 +2485,7 @@ function submitLiquidation(data) {
         });
       } else if (change < -0.005) {
         saveExpenseEntry({
-          date       : today,
+          date       : bookDate,
           type       : 'CASH_ADVANCE_REIMBURSEMENT',
           category   : 'Cash Advance Reimbursement',
           description: 'Overage reimbursement — ' + (rows[i][4] || 'Cash Advance') + ' (' + data.id + ')',
@@ -2454,13 +2499,14 @@ function submitLiquidation(data) {
       // Record the liquidated spend as LIQ_DETAIL expense entries immediately, so the
       // amount counts toward the day's expenses right away (no waiting for day-close
       // audit). The day-level audit still reviews these like any other expense entry.
-      // Dated `today` to match the CASH_RETURN above; the original advance outflow was
-      // already booked on its issue date, so these are documentary (no cash movement).
+      // Dated `bookDate` to match the CASH_RETURN above; the original advance outflow
+      // was already booked on its issue date, so these are documentary (no cash
+      // movement) — and a correction keeps the day it was first reported on.
       (data.entries || []).forEach(entry => {
         const amt = parseFloat(entry.amount) || 0;
         if (amt <= 0) return;
         const liqEntry = saveExpenseEntry({
-          date       : today,
+          date       : bookDate,
           type       : 'LIQ_DETAIL',
           category   : entry.category   || 'Miscellaneous',
           description: entry.desc       || '',
@@ -2475,7 +2521,7 @@ function submitLiquidation(data) {
           const rcptResult = saveReceiptRecord({
             ...entry.receipt,
             entryId    : liqEntry.id,
-            date       : today,
+            date       : bookDate,
             receiptType: entry.receiptType
           });
           if (!rcptResult || !rcptResult.success) {
@@ -2483,18 +2529,23 @@ function submitLiquidation(data) {
               'RECEIPT_SAVE_FAILED',
               'Receipt save failed for LIQ_DETAIL ' + liqEntry.id + ' (advance ' + data.id + '). Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
               liqEntry.id,
-              today
+              bookDate
             );
           }
         }
       });
 
+      // A correction voids rows on bookDate and writes new ones there, so that
+      // day always needs recomputing even when it is neither today nor the
+      // advance's issue date.
       recalculateDailySummary(advanceDate);
-      if (today !== advanceDate) recalculateDailySummary(today);
+      if (bookDate !== advanceDate) recalculateDailySummary(bookDate);
 
       writeAuditLog(
-        'LIQUIDATION_SUBMITTED',
-        `Advance ${data.id} liquidated & settled. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)} (immediately returned). Notes: ${data.note || '—'}`,
+        isEdit ? 'LIQUIDATION_EDITED' : 'LIQUIDATION_SUBMITTED',
+        isEdit
+          ? `Advance ${data.id} liquidation corrected. ${(data.entries || []).length} entries re-booked on ${bookDate}. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)}. Notes: ${data.note || '—'}`
+          : `Advance ${data.id} liquidated & settled. ${(data.entries || []).length} entries. Total spent: ₱${totalSpent.toFixed(2)}. Change: ₱${change.toFixed(2)} (immediately returned). Notes: ${data.note || '—'}`,
         data.id,
         advanceDate
       );
