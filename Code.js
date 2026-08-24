@@ -5458,13 +5458,16 @@ function updateSettledPcrSettlement(data) {
 //   • Personal spend STAYS inside the normal expense totals. It is broken out
 //     as its own line in the EOD report, not carved out of the books.
 //   • Payback is a running balance, not a per-request settlement: one payment
-//     can cover many small items, and partial payments are allowed.
+//     can cover many small items, and partial payments are allowed. The tab
+//     still needs a per-row "do I still owe this?", so that attribution is
+//     DERIVED at read time (allocatePersonalPaybacks_) and never stored.
 //   • A payback writes an ordinary REPLENISHMENT entry, so cash on hand and the
 //     fund-ceiling math (toReplenish = ceiling − accounted) self-correct with no
 //     special-casing anywhere in the existing reports.
 //
 //   getPersonalRequestIds_(ss)       — { Request_ID: true } for personal requests
 //   getPersonalExpenseSummary()      — tab payload: requests, totals, repayments
+//   allocatePersonalPaybacks_(rq,rp) — derive per-request repaid / stillOwed
 //   savePersonalRepayment(data)      — Admin: record a payback into the fund
 // =============================================
 
@@ -5609,12 +5612,20 @@ function computePersonalExpenseSummary_(ss) {
     repayments.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
   }
 
+  // Attribute the payback pool back onto individual requests so the tab can
+  // answer "which of these do I still owe?" — see allocatePersonalPaybacks_.
+  allocatePersonalPaybacks_(requests, repayments);
+
   return {
     requests,
     repayments,
     totalRequested,
     totalSpent,
     totalRepaid,
+    // Row counts per payback bucket, so the tab can label its filters and the
+    // sidebar badge can show how many items are still open.
+    openCount   : requests.filter(r => r.settlement === 'OWED' || r.settlement === 'PARTIAL').length,
+    clearedCount: requests.filter(r => r.settlement === 'CLEARED').length,
     // What she still owes the drawer. Never negative — an overpayment just
     // reads as fully settled rather than as the fund owing her money.
     outstanding: Math.max(0, parseFloat((totalOwed - totalRepaid).toFixed(2))),
@@ -5623,10 +5634,78 @@ function computePersonalExpenseSummary_(ss) {
   };
 }
 
+// Attribute the payback pool back onto individual requests.
+//
+// A payback is deliberately a running balance, not a per-request settlement —
+// one payment often covers several small items — so nothing on the sheet says
+// which request a peso paid off. The tab still has to answer "what do I STILL
+// owe?", otherwise every row keeps showing its full drawn amount forever and
+// the list only ever grows. This derives that attribution:
+//
+//   1. Exact match — a payback equal to one open item's debt is that item being
+//      paid off. This is how the payback is usually made in practice, and it is
+//      the case plain oldest-first gets wrong: a lump sum settling a NEW item
+//      would otherwise be eaten by older ones.
+//   2. Oldest-first for whatever is left, preferring debts that already existed
+//      on the payback's date so a later request is not retroactively "paid" by
+//      an earlier payment.
+//
+// Attribution is presentational ONLY. totalOwed / totalRepaid / outstanding are
+// computed independently, so a mis-attributed peso never moves the books — at
+// worst one row's badge is off while the fund figures stay exact.
+function allocatePersonalPaybacks_(requests, repayments) {
+  requests.forEach(r => { r.repaid = 0; });
+
+  const byDateAsc = (a, b) => (a.date === b.date
+    ? (String(a.createdAt) > String(b.createdAt) ? 1 : -1)
+    : (a.date > b.date ? 1 : -1));
+
+  // Only requests with cash actually out of the drawer can carry a debt.
+  const debts = requests.filter(r => r.owed > 0).sort(byDateAsc);
+  const pays  = repayments.slice().sort(byDateAsc);
+  const left  = d => parseFloat((d.owed - d.repaid).toFixed(2));
+
+  pays.forEach(pay => {
+    let pool = parseFloat(pay.amount) || 0;
+    if (pool <= 0) return;
+
+    // 1 — exact hit on a single still-unpaid item (already drawn if possible).
+    const exact = debts.find(d => left(d) > 0 && d.date <= pay.date && Math.abs(left(d) - pool) < 0.01)
+               || debts.find(d => left(d) > 0 && Math.abs(left(d) - pool) < 0.01);
+    if (exact) { exact.repaid = parseFloat((exact.repaid + pool).toFixed(2)); return; }
+
+    // 2 — oldest first: pass 1 restricted to debts that existed on the payback
+    //     date, pass 2 unrestricted so an overpayment still lands somewhere.
+    for (let pass = 1; pass <= 2 && pool > 0.009; pass++) {
+      for (let i = 0; i < debts.length && pool > 0.009; i++) {
+        const d = debts[i];
+        if (pass === 1 && d.date > pay.date) continue;
+        const owedLeft = left(d);
+        if (owedLeft <= 0) continue;
+        const take = Math.min(owedLeft, pool);
+        d.repaid = parseFloat((d.repaid + take).toFixed(2));
+        pool     = parseFloat((pool - take).toFixed(2));
+      }
+    }
+  });
+
+  requests.forEach(r => {
+    r.repaid    = parseFloat((r.repaid || 0).toFixed(2));
+    r.stillOwed = parseFloat(Math.max(0, r.owed - r.repaid).toFixed(2));
+    // OWED / PARTIAL are what the "Open" filter keeps; NONE covers requests
+    // where no cash ever left the drawer (pending, rejected, voided) — they are
+    // not a debt and must not read as "paid back".
+    r.settlement = r.owed <= 0
+      ? 'NONE'
+      : (r.stillOwed <= 0.009 ? 'CLEARED' : (r.repaid > 0.009 ? 'PARTIAL' : 'OWED'));
+  });
+}
+
 function emptyPersonalSummary_() {
   return {
     requests: [], repayments: [],
-    totalRequested: 0, totalSpent: 0, totalRepaid: 0, outstanding: 0, totalOwed: 0
+    totalRequested: 0, totalSpent: 0, totalRepaid: 0, outstanding: 0, totalOwed: 0,
+    openCount: 0, clearedCount: 0
   };
 }
 

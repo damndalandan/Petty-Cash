@@ -187,6 +187,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (isAdmin()) {
     initAdminMetricYears();
     loadAdminMetrics();
+    // Personal expenses too, purely so the sidebar badge shows how many items
+    // are still owed without having to open the tab first.
+    loadPersonalExpenses();
   }
 
   updateReceiptIndicator();

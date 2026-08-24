@@ -10,6 +10,13 @@
 
 let pexData = null;
 
+// Which payback bucket the requests table is showing. Open first — the list
+// only grows, and what is still owed is the only part that needs acting on.
+let pexTab = 'open';
+// Paybacks accumulate too, so the history table shows the latest few until asked.
+let pexShowAllRepayments = false;
+const PEX_REPAY_PREVIEW  = 6;
+
 async function loadPersonalExpenses() {
   const reqBody = document.getElementById('pexRequestsBody');
   const repBody = document.getElementById('pexRepaymentsBody');
@@ -26,7 +33,11 @@ async function loadPersonalExpenses() {
 
   pexData = res.data;
   renderPexMetrics();
-  renderPexRequests();
+  renderPexTabCounts();
+  updatePexBadge();
+  // Via switchPexTab, not renderPexRequests, so the active pill is restyled from
+  // one place — a payback that empties the Open tab still leaves it highlighted.
+  switchPexTab(pexTab);
   renderPexRepayments();
 
   // Default the payback date to the day currently selected in the sidebar.
@@ -63,6 +74,66 @@ function renderPexMetrics() {
   if (fillBtn) fillBtn.classList.toggle('hidden', settled);
 }
 
+// Which filter tab a request belongs to.
+//   open    — cash is still out of the drawer, or the request is still in flight
+//   cleared — it was drawn and has since been paid back in full
+//   closed  — no cash ever left the drawer (rejected / voided / cancelled), so it
+//             is neither owed nor "paid back"; History only.
+function pexBucket(r) {
+  if (r.settlement === 'OWED' || r.settlement === 'PARTIAL') return 'open';
+  if (r.settlement === 'CLEARED') return 'cleared';
+  return (r.status === 'PENDING_APPROVAL' || r.status === 'APPROVED') ? 'open' : 'closed';
+}
+
+function switchPexTab(tab) {
+  pexTab = tab;
+  ['open', 'cleared', 'all'].forEach(t => {
+    const btn = document.getElementById('pex-tab-' + t);
+    if (!btn) return;
+    // Rebuilt rather than toggled so the active pill can never end up on two tabs.
+    btn.className = 'flex-1 px-3 py-2.5 text-xs md:text-sm font-medium rounded-md transition-all min-h-[44px] ' +
+      (t === tab ? 'shadow-sm bg-white text-gray-800 font-bold' : 'text-gray-500 hover:text-gray-700');
+  });
+  renderPexRequests();
+}
+
+function renderPexTabCounts() {
+  const rows = (pexData && pexData.requests) || [];
+  // Counted off the unfiltered list: a tab count that moved with the search box
+  // would stop being a reliable "how much is left to deal with".
+  const counts = {
+    open   : rows.filter(r => pexBucket(r) === 'open').length,
+    cleared: rows.filter(r => pexBucket(r) === 'cleared').length,
+    all    : rows.length
+  };
+  Object.keys(counts).forEach(k => {
+    const el = document.getElementById('pex-count-' + k);
+    if (el) el.textContent = counts[k] ? counts[k] : '';
+  });
+}
+
+// Sidebar badge: how many personal items still have cash out of the drawer.
+function updatePexBadge() {
+  const badge = document.getElementById('personalexpenses-badge');
+  if (!badge) return;
+  const rows  = (pexData && pexData.requests) || [];
+  const count = rows.filter(r => r.settlement === 'OWED' || r.settlement === 'PARTIAL').length;
+  badge.textContent = count;
+  badge.classList.toggle('hidden', count === 0);
+}
+
+// What is still owed on this row — the question the page exists to answer.
+function pexSettlementBadge(r) {
+  const map = {
+    OWED   : ['bg-fuchsia-100 text-fuchsia-700', 'Still Owed'],
+    PARTIAL: ['bg-amber-100 text-amber-700',     'Partly Paid'],
+    CLEARED: ['bg-emerald-100 text-emerald-700', 'Paid Back'],
+    NONE   : ['bg-gray-100 text-gray-500',       'No Cash Out']
+  };
+  const [cls, label] = map[r.settlement] || map.NONE;
+  return `<span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}">${label}</span>`;
+}
+
 function pexStatusBadge(status) {
   const styles = {
     PENDING_APPROVAL: 'bg-amber-100 text-amber-700',
@@ -89,19 +160,34 @@ function renderPexRequests() {
   const body = document.getElementById('pexRequestsBody');
   if (!body) return;
 
-  const rows = (pexData && pexData.requests) || [];
+  const all = (pexData && pexData.requests) || [];
+  const q   = (document.getElementById('pexSearch')?.value || '').trim().toLowerCase();
+
+  const rows = all.filter(r => {
+    if (pexTab !== 'all' && pexBucket(r) !== pexTab) return false;
+    if (!q) return true;
+    return [r.purpose, r.requestedFor, r.id, r.submittedBy]
+      .some(v => String(v || '').toLowerCase().indexOf(q) !== -1);
+  });
+
   if (!rows.length) {
     body.innerHTML = `<tr><td colspan="6" class="px-4 py-10 text-center text-gray-400 text-sm">
-      No personal expenses yet. Tick <span class="font-bold text-fuchsia-600">Personal expense</span> when creating a petty cash request.
+      ${pexEmptyMessage(all.length, q)}
     </td></tr>`;
     return;
   }
 
   body.innerHTML = rows.map(r => {
-    // Cash still out of the drawer for this request.
-    const owedCell = r.owed > 0
-      ? `<span class="font-mono font-bold text-fuchsia-700">${fmt(r.owed)}</span>`
-      : `<span class="font-mono text-gray-300">—</span>`;
+    // Cash still out of the drawer for this request, after paybacks.
+    const owedCell = r.stillOwed > 0
+      ? `<span class="font-mono font-bold text-fuchsia-700">${fmt(r.stillOwed)}</span>` +
+        // A partly-paid row has to show its own progress, or the shrunken figure
+        // looks like the request was for a smaller amount than it was.
+        (r.repaid > 0 ? `<div class="text-[10px] text-amber-600 mt-0.5">${fmt(r.repaid)} of ${fmt(r.owed)} paid</div>` : '')
+      : (r.settlement === 'CLEARED'
+        ? `<span class="font-mono text-gray-400 line-through">${fmt(r.owed)}</span>`
+        : `<span class="font-mono text-gray-300">—</span>`);
+
     // Settled requests show what came back (or, if negative, what the fund paid out).
     const spentCell = r.status === 'SETTLED'
       ? `<span class="font-mono text-indigo-700">${fmt(r.spent)}</span>` +
@@ -118,24 +204,47 @@ function renderPexRequests() {
           ${escHtml(r.id)}${r.requestType === 'Cash Advance' ? ' &middot; <span class="text-blue-500 font-bold">ADVANCE</span>' : ''}
         </div>
         ${r.requestedFor ? `<div class="text-[10px] text-gray-500 mt-0.5">👤 ${escHtml(r.requestedFor)}</div>` : ''}
+        ${r.submittedBy && r.submittedBy !== state.userEmail
+          ? `<div class="text-[10px] text-amber-600 mt-0.5">tagged by ${escHtml(r.submittedBy)}</div>` : ''}
       </td>
       <td class="px-3 py-3 text-right font-mono text-gray-700">${fmt(r.amount)}</td>
       <td class="px-3 py-3 text-right">${spentCell}</td>
       <td class="px-3 py-3 text-right">${owedCell}</td>
-      <td class="px-3 py-3 text-center">${pexStatusBadge(r.status)}</td>
+      <td class="px-3 py-3 text-center">
+        <div>${pexSettlementBadge(r)}</div>
+        <div class="mt-1 opacity-70">${pexStatusBadge(r.status)}</div>
+      </td>
     </tr>`;
   }).join('');
+}
+
+// An empty table has three very different meanings here, and "no rows" alone
+// would read as a bug on the Open tab when the real news is that all is paid.
+function pexEmptyMessage(totalRows, query) {
+  if (query) return `Nothing matches “${escHtml(query)}” in this tab.`;
+  if (!totalRows) {
+    return `No personal expenses yet. Tick <span class="font-bold text-fuchsia-600">Personal expense</span> when creating a petty cash request.`;
+  }
+  if (pexTab === 'open') {
+    return `🎉 Nothing outstanding — every personal expense has been paid back.
+      <button onclick="switchPexTab('all')" class="block mx-auto mt-2 text-xs font-bold text-fuchsia-600 hover:text-fuchsia-800">View history →</button>`;
+  }
+  if (pexTab === 'cleared') return 'Nothing has been fully paid back yet.';
+  return 'No personal requests to show.';
 }
 
 function renderPexRepayments() {
   const body = document.getElementById('pexRepaymentsBody');
   if (!body) return;
 
-  const rows = (pexData && pexData.repayments) || [];
-  if (!rows.length) {
+  const all = (pexData && pexData.repayments) || [];
+  if (!all.length) {
     body.innerHTML = '<tr><td colspan="4" class="px-4 py-10 text-center text-gray-400 text-sm">No paybacks recorded yet.</td></tr>';
+    document.getElementById('pexRepayMoreWrap')?.classList.add('hidden');
     return;
   }
+
+  const rows = pexShowAllRepayments ? all : all.slice(0, PEX_REPAY_PREVIEW);
 
   body.innerHTML = rows.map(p => `<tr class="hover:bg-emerald-50/40 transition">
     <td class="px-3 py-3 whitespace-nowrap text-xs text-gray-500 font-mono">${escHtml(p.date)}</td>
@@ -143,6 +252,20 @@ function renderPexRepayments() {
     <td class="px-3 py-3 text-[10px] text-gray-400 font-mono">${escHtml(p.entryId)}</td>
     <td class="px-3 py-3 text-right font-mono font-bold text-emerald-600">${fmt(p.amount)}</td>
   </tr>`).join('');
+
+  const wrap = document.getElementById('pexRepayMoreWrap');
+  const btn  = document.getElementById('pexRepayMoreBtn');
+  if (wrap && btn) {
+    wrap.classList.toggle('hidden', all.length <= PEX_REPAY_PREVIEW);
+    btn.textContent = pexShowAllRepayments
+      ? '▲ Show fewer'
+      : `▼ Show all ${all.length} paybacks`;
+  }
+}
+
+function togglePexRepayHistory() {
+  pexShowAllRepayments = !pexShowAllRepayments;
+  renderPexRepayments();
 }
 
 // ── Payback ───────────────────────────────────

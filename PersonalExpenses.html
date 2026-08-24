@@ -97,18 +97,38 @@
 
       <!-- Personal requests -->
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div class="p-3 border-b border-gray-200 bg-gray-50">
-          <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Personal Requests</h2>
+        <div class="p-3 border-b border-gray-200 bg-gray-50 space-y-3">
+          <div class="flex flex-wrap justify-between items-center gap-2">
+            <h2 class="font-bold text-gray-700 text-sm uppercase tracking-wide">Personal Requests</h2>
+            <input type="text" id="pexSearch" oninput="renderPexRequests()" placeholder="Search purpose, person or ID…"
+              class="text-xs px-3 py-2 border border-gray-200 rounded-lg bg-white focus:ring-2 focus:ring-fuchsia-500 outline-none w-full sm:w-56">
+          </div>
+
+          <!-- Payback filter — keeps the list to what is actually still owed -->
+          <div class="flex gap-1 bg-gray-100 p-1 rounded-lg">
+            <button onclick="switchPexTab('open')" id="pex-tab-open"
+              class="flex-1 px-3 py-2.5 text-xs md:text-sm font-medium rounded-md transition-all shadow-sm bg-white text-gray-800 min-h-[44px]">
+              🔴 Open <span id="pex-count-open" class="ml-1 text-[10px] font-mono text-gray-400"></span>
+            </button>
+            <button onclick="switchPexTab('cleared')" id="pex-tab-cleared"
+              class="flex-1 px-3 py-2.5 text-xs md:text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px]">
+              ✅ Paid Back <span id="pex-count-cleared" class="ml-1 text-[10px] font-mono text-gray-400"></span>
+            </button>
+            <button onclick="switchPexTab('all')" id="pex-tab-all"
+              class="flex-1 px-3 py-2.5 text-xs md:text-sm font-medium rounded-md transition-all text-gray-500 hover:text-gray-700 min-h-[44px]">
+              📜 History <span id="pex-count-all" class="ml-1 text-[10px] font-mono text-gray-400"></span>
+            </button>
+          </div>
         </div>
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm min-w-[620px]">
+          <table class="w-full text-left text-sm min-w-[680px]">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500 font-semibold border-b border-gray-200">
               <tr>
                 <th class="px-3 py-3">Date</th>
                 <th class="px-3 py-3">Purpose</th>
                 <th class="px-3 py-3 text-right">Requested</th>
                 <th class="px-3 py-3 text-right">Spent</th>
-                <th class="px-3 py-3 text-right">Owed</th>
+                <th class="px-3 py-3 text-right">Still Owed</th>
                 <th class="px-3 py-3 text-center">Status</th>
               </tr>
             </thead>
@@ -116,6 +136,14 @@
               <tr><td colspan="6" class="px-4 py-8 text-center text-gray-400 text-sm italic">Loading...</td></tr>
             </tbody>
           </table>
+        </div>
+        <!-- The two statuses answer different questions and are easy to confuse -->
+        <div class="px-3 py-2.5 bg-gray-50 border-t border-gray-200 text-[11px] text-gray-500 leading-relaxed">
+          <span class="font-bold text-gray-600">Two statuses per row.</span>
+          The <span class="font-bold text-fuchsia-600">payback badge</span> is what you still owe the drawer.
+          The smaller <span class="font-bold text-gray-600">request badge</span> underneath is the petty cash request's own
+          lifecycle — <span class="font-semibold">Settled</span> there only means the receipts were liquidated, not that the money came back.
+          Paybacks are applied to the oldest unpaid item first (an exact-amount payback is matched to its item).
         </div>
       </div>
 
@@ -139,6 +167,10 @@
               <tr><td colspan="4" class="px-4 py-8 text-center text-gray-400 text-sm italic">Loading...</td></tr>
             </tbody>
           </table>
+        </div>
+        <div id="pexRepayMoreWrap" class="hidden px-3 py-2.5 bg-gray-50 border-t border-gray-200 text-center">
+          <button onclick="togglePexRepayHistory()" id="pexRepayMoreBtn"
+            class="text-xs font-bold text-fuchsia-600 hover:text-fuchsia-800 transition min-h-[36px]"></button>
         </div>
       </div>
 
