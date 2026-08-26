@@ -657,7 +657,7 @@ const SHEET_SCHEMA = {
     'Requested_By','Submitted_By','Status',
     'Approved_By','Approved_At','Released_At',
     'Rejection_Note','Entry_ID','Created_At','Updated_At',
-    'Is_Personal'
+    'Is_Personal','Amendment_Note'
   ],
   // Admin's personal use of petty cash, paid back out of her own pocket.
   // One row per payback; each writes a REPLENISHMENT entry (Entry_ID) so the
@@ -4651,13 +4651,16 @@ function getSummaryReportDataByRange(params) {
 //   1: Request_ID    2: Date          3: Purpose        4: Amount
 //   5: Request_Type  6: Requested_By  7: Submitted_By   8: Status
 //   9: Approved_By  10: Approved_At  11: Released_At   12: Rejection_Note
-//  13: Entry_ID     14: Created_At   15: Updated_At
+//  13: Entry_ID     14: Created_At   15: Updated_At    16: Is_Personal
+//  17: Amendment_Note
 //
 // Request_Type  = 'Expense' | 'Cash Advance'
 // Requested_By  = employee name (who the cash is for)
 // Submitted_By  = cashier email (who created the request)
 // Is_Personal   = 'YES' when the Admin took the cash for personal use and owes
 //                 it back to the fund (see PERSONAL EXPENSES section below).
+// Amendment_Note = what the Admin changed when approving, if anything. Written
+//                 by approvePettyCashRequest() and shown back to the submitter.
 // ─────────────────────────────────────────────
 
 function savePettyCashRequest(data) {
@@ -4815,7 +4818,12 @@ function getPettyCashRequests() {
         // that request — she needs to see her own tag took effect, but still
         // sees anyone else's personal draw as an ordinary request. The cash
         // movement itself is visible to everyone.
-        isPersonal      : (isPrivileged || r[6] === email) && r[15] === 'YES'
+        isPersonal      : (isPrivileged || r[6] === email) && r[15] === 'YES',
+        // What the Admin changed at approval. Gated like the personal tag — the
+        // note can name that tag — so it reaches Admin/Auditor and the cashier
+        // who submitted it. Another cashier releasing the cash just sees the
+        // approved figures on the card.
+        amendmentNote   : (isPrivileged || r[6] === email) ? (r[16] || '') : ''
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -4825,8 +4833,72 @@ function getPettyCashRequests() {
   }
 }
 
-function approvePettyCashRequest(requestId) {
+// Fold the Admin's approval-time edits onto the request row as it stands and
+// describe what moved. Anything absent from `data` keeps the custodian's own
+// value, so a plain approve — including the legacy string call — amends nothing.
+function resolvePcrAmendment_(row, data) {
+  const origAmount   = parseFloat(row[3]) || 0;
+  const origType     = row[4] === 'Cash Advance' ? 'Cash Advance' : 'Expense';
+  const origPersonal = row[15] === 'YES';
+
+  let amount = origAmount;
+  if (data.amount !== undefined && data.amount !== null && data.amount !== '') {
+    const parsed = parseFloat(data.amount);
+    if (!(parsed > 0)) return { success: false, message: 'Amended amount must be greater than zero.' };
+    amount = parseFloat(parsed.toFixed(2));
+  }
+
+  const requestType = data.requestType
+    ? (data.requestType === 'Cash Advance' ? 'Cash Advance' : 'Expense')
+    : origType;
+  const isPersonal = data.isPersonal === undefined ? origPersonal : !!data.isPersonal;
+
+  const parts = [];
+  // Half-centavo tolerance: the sheet stores the amount as a float, so an
+  // untouched figure can round-trip a hair off and must not read as an edit.
+  if (Math.abs(amount - origAmount) > 0.005) {
+    parts.push(`Amount ₱${origAmount.toFixed(2)} → ₱${amount.toFixed(2)}`);
+  }
+  if (requestType !== origType) parts.push(`Type ${origType} → ${requestType}`);
+  if (isPersonal !== origPersonal) parts.push(isPersonal ? 'Tagged personal' : 'Personal tag removed');
+
+  const summary = parts.join(' · ');
+  const reason  = data.note ? String(data.note).trim() : '';
+
+  return {
+    success    : true,
+    changed    : parts.length > 0,
+    amount     : amount,
+    requestType: requestType,
+    isPersonal : isPersonal,
+    summary    : summary,
+    reason     : reason,
+    note       : parts.length ? (reason ? `${summary} — ${reason}` : summary) : ''
+  };
+}
+
+function approvePettyCashRequest(payload) {
+  // payload: 'PCR-…' (plain id, approve as submitted) or
+  //          { requestId, amount, requestType, isPersonal, note }
+  //
+  // The custodian writes down what she THINKS she needs; the Admin is the one
+  // who signs off on what actually leaves the drawer. So approval doubles as
+  // the amendment point — trim the amount, flip Expense ↔ Cash Advance when the
+  // cash will not come back the same day, or tag the draw personal — and the
+  // request is approved with the corrected figures in one step.
+  //
+  // Admin-only, and only while the request is still PENDING_APPROVAL: once it
+  // is APPROVED the cashier can release it, so the figures are frozen and an
+  // Admin who wants them changed has to void and have it re-submitted.
   try {
+    const role = getUserRole();
+    if (!(role.success && role.role === 'Admin')) {
+      return { success: false, message: 'Only an admin can approve a petty cash request.' };
+    }
+
+    const data      = (payload && typeof payload === 'object') ? payload : { requestId: payload };
+    const requestId = data.requestId;
+
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.REQUESTS);
     const rows  = sheet.getDataRange().getValues();
@@ -4837,16 +4909,38 @@ function approvePettyCashRequest(requestId) {
       if (rows[i][0] !== requestId) continue;
       if (rows[i][7] !== 'PENDING_APPROVAL') return { success: false, message: 'Request is no longer pending approval.' };
       const row = i + 1;
+
+      const amend = resolvePcrAmendment_(rows[i], data);
+      if (!amend.success) return amend;
+
+      // Amend first, approve second: if a write fails the request stays pending
+      // rather than going live with half the Admin's corrections applied.
+      if (amend.changed) {
+        // Amendment_Note is newer than the sheet — make room for it if this
+        // spreadsheet was trimmed to the old width.
+        const maxCols = sheet.getMaxColumns();
+        if (maxCols < 17) sheet.insertColumnsAfter(maxCols, 17 - maxCols);
+
+        sheet.getRange(row,  4).setValue(amend.amount);                   // Amount
+        sheet.getRange(row,  5).setValue(amend.requestType);              // Request_Type
+        sheet.getRange(row, 16).setValue(amend.isPersonal ? 'YES' : '');  // Is_Personal
+        sheet.getRange(row, 17).setValue(amend.note);                     // Amendment_Note
+
+        writeAuditLog('REQUEST_AMENDED',
+          `PCR amended at approval by ${email}. ${amend.summary}${amend.reason ? ' | Reason: ' + amend.reason : ''}`,
+          requestId, normalizeDate(rows[i][1]));
+      }
+
       sheet.getRange(row, 8).setValue('APPROVED');
       sheet.getRange(row, 9).setValue(email);
       sheet.getRange(row, 10).setValue(now);
       sheet.getRange(row, 15).setValue(now);
 
       writeAuditLog('REQUEST_APPROVED',
-        `PCR approved for ${rows[i][5]}. Type: ${rows[i][4]} | Purpose: ${rows[i][2]} | Amount: ₱${parseFloat(rows[i][3] || 0).toFixed(2)}`,
+        `PCR approved for ${rows[i][5]}. Type: ${amend.requestType} | Purpose: ${rows[i][2]} | Amount: ₱${amend.amount.toFixed(2)}${amend.isPersonal ? ' | PERSONAL' : ''}${amend.changed ? ' | Amended: ' + amend.summary : ''}`,
         requestId, normalizeDate(rows[i][1]));
 
-      return { success: true };
+      return { success: true, amended: amend.changed, summary: amend.summary };
     }
     return { success: false, message: 'Request not found.' };
   } catch(e) {

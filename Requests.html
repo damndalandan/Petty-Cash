@@ -276,6 +276,87 @@
   </div>
 </div>
 
+<!-- PCR APPROVE MODAL (admin — review, amend and approve in one step) -->
+<div id="pcrApproveModal" class="hidden fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4">
+  <div class="bg-white w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+    <div class="bg-gradient-to-r from-green-600 to-emerald-500 p-5 flex justify-between items-center shrink-0">
+      <div>
+        <h3 class="text-white font-bold text-lg">Review &amp; Approve</h3>
+        <p class="text-emerald-100 text-xs mt-0.5">Adjust the request before the cashier releases the cash</p>
+      </div>
+      <button onclick="closePcrApproveModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
+    </div>
+
+    <div class="p-5 space-y-4 overflow-y-auto">
+      <!-- What the custodian actually asked for -->
+      <div class="bg-gray-50 rounded-xl p-3 border border-gray-200 text-sm">
+        <div id="pcrApproveInfo" class="text-gray-800 font-medium"></div>
+        <div id="pcrApproveOriginal" class="text-[11px] text-gray-400 mt-1"></div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-2">Request Type</label>
+        <div class="grid grid-cols-2 gap-2">
+          <label class="flex items-center gap-2 p-3 border-2 border-gray-200 rounded-xl cursor-pointer transition has-[:checked]:border-indigo-600 has-[:checked]:bg-indigo-50">
+            <input type="radio" name="pcrApproveType" value="Expense" id="pcrApproveTypeExpense"
+              onchange="renderPcrApproveDiff()" class="accent-indigo-600">
+            <div>
+              <p class="text-xs font-bold text-gray-800">Expense</p>
+              <p class="text-[10px] text-gray-500">Settled same day</p>
+            </div>
+          </label>
+          <label class="flex items-center gap-2 p-3 border-2 border-gray-200 rounded-xl cursor-pointer transition has-[:checked]:border-indigo-600 has-[:checked]:bg-indigo-50">
+            <input type="radio" name="pcrApproveType" value="Cash Advance" id="pcrApproveTypeCashAdvance"
+              onchange="renderPcrApproveDiff()" class="accent-indigo-600">
+            <div>
+              <p class="text-xs font-bold text-gray-800">Cash Advance</p>
+              <p class="text-[10px] text-gray-500">Liquidated later</p>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Approved Amount <span class="text-red-400">*</span></label>
+        <div class="relative">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₱</span>
+          <input type="number" id="pcrApproveAmount" min="0" step="0.01" oninput="renderPcrApproveDiff()"
+            class="w-full pl-7 pr-3 py-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 outline-none bg-gray-50">
+        </div>
+      </div>
+
+      <label class="flex items-start gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer transition has-[:checked]:border-fuchsia-500 has-[:checked]:bg-fuchsia-50">
+        <input type="checkbox" id="pcrApproveIsPersonal" onchange="renderPcrApproveDiff()"
+          class="mt-0.5 w-4 h-4 accent-fuchsia-600 shrink-0">
+        <div>
+          <p class="text-xs font-bold text-gray-800">🏠 Personal expense</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">Petty cash taken for personal use — tracked separately and paid back into the fund.</p>
+        </div>
+      </label>
+
+      <!-- Live diff against what was submitted -->
+      <div id="pcrApproveDiff" class="hidden bg-amber-50 border border-amber-200 rounded-xl p-3">
+        <p class="text-[10px] font-bold text-amber-700 uppercase tracking-wide mb-1">Changes to this request</p>
+        <ul id="pcrApproveDiffList" class="text-xs text-amber-800 space-y-0.5"></ul>
+      </div>
+
+      <div id="pcrApproveNoteWrap" class="hidden">
+        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Reason for the change <span class="text-gray-300 normal-case">(optional)</span></label>
+        <textarea id="pcrApproveNote" rows="2" placeholder="e.g. Trimmed to the budget for this run"
+          class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 outline-none resize-none bg-gray-50"></textarea>
+        <p class="text-[10px] text-gray-400 mt-1">Shown to the cashier who submitted the request.</p>
+      </div>
+    </div>
+
+    <div class="p-4 bg-gray-50 border-t flex gap-3 shrink-0">
+      <input type="hidden" id="pcrApproveId">
+      <button onclick="closePcrApproveModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[44px]">Cancel</button>
+      <button onclick="confirmPcrApprove()" id="pcrApproveConfirmBtn"
+        class="flex-1 py-3 text-sm font-bold text-white bg-green-600 hover:bg-green-700 rounded-xl shadow transition min-h-[44px]">Approve</button>
+    </div>
+  </div>
+</div>
+
 <!-- PCR REJECT MODAL -->
 <div id="pcrRejectModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
   <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
