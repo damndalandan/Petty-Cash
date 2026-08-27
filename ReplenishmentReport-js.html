@@ -11,6 +11,53 @@ let rrDetailedActive = false; // State for fused table view
 // lands on the current cycle.
 let rrSelectedPeriod = '';
 
+// "Business only" view. The server sends both readings of the period in one
+// payload, so this is a pure presentation switch — no reload, and it survives a
+// period change so a bookkeeper working a batch stays in the same view.
+let rrBusinessOnly = false;
+
+// The figures the page is currently drawing. Everything downstream reads this
+// rather than rrData directly, so the toggle can never leave one panel filtered
+// and another not. Cash on Hand / Accounted / Amount to Replenish are absent on
+// purpose — those are drawer balances, and personal cash that left (or came
+// back) really did move them.
+function rrView() {
+  const d = rrData || {};
+  const has = (v) => v !== undefined && v !== null;
+
+  if (!rrBusinessOnly) {
+    return {
+      totalExpenses     : d.totalExpenses,
+      totalReplenishment: d.totalReplenishment,
+      categoryBreakdown : d.categoryBreakdown,
+      withReceipt       : d.expWithReceipt,
+      withoutReceipt    : d.expWithoutReceipt,
+      journal           : d.journal
+    };
+  }
+  return {
+    totalExpenses     : has(d.businessExpenses)         ? d.businessExpenses         : d.totalExpenses,
+    totalReplenishment: has(d.ceilingReplenishment)     ? d.ceilingReplenishment     : d.totalReplenishment,
+    categoryBreakdown : has(d.categoryBreakdownBusiness)? d.categoryBreakdownBusiness: d.categoryBreakdown,
+    withReceipt       : has(d.expWithReceiptBusiness)   ? d.expWithReceiptBusiness   : d.expWithReceipt,
+    withoutReceipt    : has(d.expWithoutReceiptBusiness)? d.expWithoutReceiptBusiness: d.expWithoutReceipt,
+    journal           : d.journalBusiness || d.journal
+  };
+}
+
+// Is there anything for the filter to remove in the period on screen?
+function rrHasExcludable() {
+  const d = rrData || {};
+  return (d.personalExpenses || 0) > 0 || (d.nonCeilingReplenishment || 0) > 0;
+}
+
+function toggleRrBusinessOnly(on) {
+  rrBusinessOnly = !!on;
+  const box = document.getElementById('rrBusinessOnly');
+  if (box) box.checked = rrBusinessOnly;
+  if (rrData) rrRenderFigures(rrData);
+}
+
 // Category drill-down modal state
 let rrModalEntries  = [];   // entries for the clicked category
 let rrModalFiltered = [];   // after search filter
@@ -159,28 +206,118 @@ function renderReplenishReport(d) {
   document.getElementById('rr-fundCeiling').textContent     = fmt(d.fundCeiling);
   document.getElementById('rr-toReplenish').textContent     = fmt(d.toReplenish);
 
-  // ── Period Stats ──
-  document.getElementById('rr-totalExpenses').textContent     = fmt(d.totalExpenses);
-  document.getElementById('rr-totalReplenishment').textContent = fmt(d.totalReplenishment);
+  // ── Everything the Business-only toggle can change ──
+  rrRenderFigures(d);
 
-  const net    = d.totalReplenishment - d.totalExpenses;
+  // Show content
+  document.getElementById('rrContent').classList.remove('hidden');
+}
+
+// The half of the report that depends on which view is selected. Split out of
+// renderReplenishReport() so flipping the toggle redraws exactly these panels
+// and nothing else — no server round trip, no period-picker reset.
+function rrRenderFigures(d) {
+  const v = rrView();
+
+  rrRenderFilterBar(d);
+
+  // ── Period Stats ──
+  document.getElementById('rr-totalExpenses').textContent      = fmt(v.totalExpenses);
+  document.getElementById('rr-totalReplenishment').textContent = fmt(v.totalReplenishment);
+
+  // Captions carry the qualifier, so a screenshot of a card is never ambiguous
+  // about which of the two readings it is showing.
+  const expNote = document.getElementById('rr-totalExpensesNote');
+  const repNote = document.getElementById('rr-totalReplenishmentNote');
+  if (expNote) {
+    expNote.textContent = rrBusinessOnly
+      ? 'Excludes personal draws'
+      : ((d.personalExpenses || 0) > 0
+          ? `Incl. ${fmt(d.personalExpenses)} personal`
+          : 'This period transactions');
+    expNote.classList.toggle('text-amber-600', !rrBusinessOnly && (d.personalExpenses || 0) > 0);
+    expNote.classList.toggle('opacity-60',     rrBusinessOnly || !(d.personalExpenses > 0));
+  }
+  if (repNote) {
+    repNote.textContent = rrBusinessOnly
+      ? 'Ceiling top-ups only'
+      : ((d.nonCeilingReplenishment || 0) > 0
+          ? `Incl. ${fmt(d.nonCeilingReplenishment)} personal payback`
+          : 'Funds received in period');
+    repNote.classList.toggle('text-amber-600', !rrBusinessOnly && (d.nonCeilingReplenishment || 0) > 0);
+    repNote.classList.toggle('opacity-60',     rrBusinessOnly || !(d.nonCeilingReplenishment > 0));
+  }
+
+  const net    = v.totalReplenishment - v.totalExpenses;
   const netEl  = document.getElementById('rr-netMovement');
   netEl.textContent = (net >= 0 ? '+' : '') + fmt(net);
   netEl.className   = 'text-xl font-black font-mono ' +
     (net >= 0 ? 'text-green-600' : 'text-red-600');
 
   // ── Accountability roll-ups ──
-  renderRrCategoryBreakdown(d.categoryBreakdown, d.totalExpenses);
-  renderRrReceiptCoverage(d.expWithReceipt, d.expWithoutReceipt);
+  renderRrCategoryBreakdown(v.categoryBreakdown, v.totalExpenses);
+  renderRrReceiptCoverage(v.withReceipt, v.withoutReceipt);
 
   // ── Fused Table ──
   renderRrFusedTable(d.dailyRows, d.periodEntries);
 
   // ── Journal (grouped by receipt type) ──
-  renderRrJournal(d.journal);
+  renderRrJournal(v.journal);
 
-  // Show content
-  document.getElementById('rrContent').classList.remove('hidden');
+  // The daily table was just rebuilt from scratch, and its nested rows come
+  // back hidden. Re-apply "Show Details" so flipping the view does not collapse
+  // them under a button that still reads "Hide Details".
+  if (rrDetailedActive) {
+    document.querySelectorAll('.rr-detail-row').forEach(row => row.classList.remove('hidden'));
+  }
+}
+
+// The toggle, its caption, and the "what is being held out" strip. Keeps the
+// checkbox in step with the state after a period change, and says plainly which
+// figures the filter does NOT touch.
+function rrRenderFilterBar(d) {
+  const box  = document.getElementById('rrBusinessOnly');
+  const wrap = document.getElementById('rrBusinessOnlyWrap');
+  const note = document.getElementById('rrFilterNote');
+  if (box) box.checked = rrBusinessOnly;
+
+  // Nothing personal in this period — leave the control there (so the state is
+  // never hidden while it is on) but mute it, since it would change nothing.
+  if (wrap) {
+    const idle = !rrHasExcludable();
+    wrap.classList.toggle('opacity-50', idle && !rrBusinessOnly);
+    wrap.classList.toggle('border-indigo-400', rrBusinessOnly);
+    wrap.classList.toggle('bg-indigo-50', rrBusinessOnly);
+  }
+
+  if (!note) return;
+
+  const pExp  = d.personalExpenses        || 0;
+  const pRep  = d.nonCeilingReplenishment || 0;
+  const lines = (d.journal && d.journal.personalCount) || 0;
+
+  if (!rrBusinessOnly) {
+    note.classList.add('hidden');
+    note.classList.remove('flex');
+    note.innerHTML = '';
+    return;
+  }
+
+  const held = [];
+  if (pExp > 0) held.push(`<b>${fmt(pExp)}</b> personal spend${lines ? ` (${lines} journal line${lines === 1 ? '' : 's'})` : ''}`);
+  if (pRep > 0) held.push(`<b>${fmt(pRep)}</b> personal repayment — not a ceiling top-up`);
+
+  note.classList.remove('hidden');
+  note.classList.add('flex');
+  note.innerHTML = `
+    <span class="shrink-0">🔎</span>
+    <span>
+      <b class="uppercase tracking-wide text-[10px]">Business only</b> —
+      ${held.length ? 'holding out ' + held.join(' and ') + '.' : 'nothing personal recorded in this period.'}
+      <span class="block text-indigo-500 mt-0.5">
+        Cash on Hand, Accounted Cash and Amount to Replenish are unfiltered — that cash really moved the drawer.
+      </span>
+    </span>`;
 }
 
 // =============================================
@@ -191,8 +328,11 @@ function renderReplenishReport(d) {
 // change never leaves you looking at a tab that no longer has rows.
 let rrJournalTab = '';
 
+// Always the journal for the view on screen, so the tab strip, the pane and the
+// drill-down can never be reading a different set of lines from each other.
 function rrJournalSections() {
-  return (rrData && rrData.journal && rrData.journal.sections) || [];
+  const j = rrView().journal;
+  return (j && j.sections) || [];
 }
 
 // Empty sections are dropped from the tab strip — except UNTAGGED, which is
@@ -224,6 +364,17 @@ function renderRrJournal(journal) {
   renderRrJournalPane();
 
   const jt = journal.grandTotal || 0;
+
+  // In the all-in view, say how much of the total is personal — the figure a
+  // "business only" reading would take out — so the two views reconcile on
+  // sight instead of the bookkeeper having to flip between them.
+  const pers = journal.personalTotal || 0;
+  const foot = rrBusinessOnly
+    ? `<div class="text-[10px] text-indigo-600 mt-0.5 font-semibold">Business only — personal draws excluded</div>`
+    : (pers > 0
+        ? `<div class="text-[10px] text-amber-600 mt-0.5">Includes ${fmt(pers)} personal (repayable) — tick "Business only" to hold it out</div>`
+        : '');
+
   document.getElementById('rrJournalFoot').innerHTML = `
     <div class="flex items-center justify-between gap-3 flex-wrap">
       <div>
@@ -231,6 +382,7 @@ function renderRrJournal(journal) {
         <div class="text-[10px] text-gray-400 mt-0.5">
           ${journal.entryCount} receipted line${journal.entryCount === 1 ? '' : 's'} across ${sections.length} section${sections.length === 1 ? '' : 's'}
         </div>
+        ${foot}
       </div>
       <div class="text-xl font-black font-mono text-gray-800">${fmt(jt)}</div>
     </div>`;
@@ -281,6 +433,30 @@ function rrJournalNote(key) {
   }[key] || '';
 }
 
+// Flags how much of a posting line is the Admin's personal draw. Only shown in
+// the all-in view — in the business-only journal there is nothing to flag, and
+// a badge reading "0 personal" would just add noise.
+function rrPersonalTag(amount) {
+  if (rrBusinessOnly || !amount || amount <= 0) return '';
+  return `<span class="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold
+    bg-amber-100 text-amber-700 align-middle whitespace-nowrap" title="Personal draw — repayable to the fund">
+    👤 ${fmt(amount)}</span>`;
+}
+
+// "of which personal" under a section total — an inside-the-total figure, never
+// added on top, so the section still foots to the amount above it.
+function rrSectionPersonalFootRow(s, spanBefore) {
+  if (rrBusinessOnly || !s.personalTotal || s.personalTotal <= 0) return '';
+  return `
+    <tr class="border-t border-dashed border-amber-200 bg-amber-50/40">
+      <td colspan="${spanBefore - 2}" class="px-4 py-2 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+        👤 of which personal (repayable)
+      </td>
+      <td class="px-4 py-2 text-right font-mono font-bold text-amber-700">${fmt(s.personalTotal)}</td>
+      <td class="px-3 py-2"></td>
+    </tr>`;
+}
+
 // Summed by Account Type — the bookkeeper posts one line per account. Each row
 // opens the transactions behind it, so the posting line can be traced to the
 // receipts it was built from.
@@ -290,7 +466,8 @@ function rrJournalGroupedHtml(s) {
   const rows = s.groups.map((g, i) => `
     <tr onclick="openRrJournalDetailAt('${s.key}', ${i})"
       class="group border-b border-gray-50 last:border-0 hover:bg-indigo-50/40 transition cursor-pointer">
-      <td class="px-4 py-2.5 text-sm text-gray-700 font-medium">${escHtml(g.accountType)}</td>
+      <td class="px-4 py-2.5 text-sm text-gray-700 font-medium">
+        ${escHtml(g.accountType)}${rrPersonalTag(g.personal)}</td>
       <td class="px-4 py-2.5 text-xs text-gray-400 text-center">${g.count}</td>
       <td class="px-4 py-2.5 text-sm text-right font-mono font-bold text-gray-800">${fmt(g.amount)}</td>
       <td class="px-3 py-2.5 text-right whitespace-nowrap">
@@ -321,6 +498,7 @@ function rrJournalGroupedHtml(s) {
             <td class="px-4 py-2.5 text-right font-mono font-black text-gray-900">${fmt(s.total)}</td>
             <td class="px-3 py-2.5"></td>
           </tr>
+          ${rrSectionPersonalFootRow(s, 4)}
         </tfoot>
       </table>
     </div>`;
@@ -338,6 +516,7 @@ function rrJournalItemizedHtml(s) {
       <td class="px-3 py-2.5 text-xs text-gray-500 whitespace-nowrap">${dayLabel(i.date)}</td>
       <td class="px-3 py-2.5 text-xs text-gray-700 font-medium">${escHtml(i.accountType)}</td>
       <td class="px-3 py-2.5 text-xs text-gray-700">
+        ${!rrBusinessOnly && i.isPersonal ? '<span class="mr-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold align-middle" title="Personal draw — repayable, input VAT not claimable">👤 PERSONAL</span>' : ''}
         ${escHtml(i.description || '—')}
         ${i.supplierName ? `<div class="text-[10px] text-gray-400 truncate">${escHtml(i.supplierName)}</div>` : ''}
       </td>
@@ -375,6 +554,14 @@ function rrJournalItemizedHtml(s) {
             <td class="px-3 py-2.5 text-right font-mono font-black text-emerald-700">${fmt(s.vatTotal || 0)}</td>
             <td class="px-2 py-2.5"></td>
           </tr>
+          ${!rrBusinessOnly && s.personalTotal > 0 ? `
+          <tr class="border-t border-dashed border-amber-200 bg-amber-50/40">
+            <td colspan="4" class="px-3 py-2 text-[10px] font-bold text-amber-700 uppercase tracking-wider">
+              👤 of which personal — input VAT not claimable
+            </td>
+            <td class="px-3 py-2 text-right font-mono font-bold text-amber-700">${fmt(s.personalTotal)}</td>
+            <td colspan="2"></td>
+          </tr>` : ''}
         </tfoot>
       </table>
     </div>
@@ -386,7 +573,7 @@ function rrJournalItemizedHtml(s) {
         ${s.groups.map((g, i) => `
           <div onclick="openRrJournalDetailAt('${s.key}', ${i})"
             class="flex items-center justify-between text-xs py-1 px-1.5 -mx-1.5 rounded cursor-pointer hover:bg-indigo-50/50 transition">
-            <span class="text-gray-600">${escHtml(g.accountType)} <span class="text-gray-300">&middot; ${g.count}</span></span>
+            <span class="text-gray-600">${escHtml(g.accountType)} <span class="text-gray-300">&middot; ${g.count}</span>${rrPersonalTag(g.personal)}</span>
             <span class="font-mono font-bold text-gray-800">${fmt(g.amount)}</span>
           </div>`).join('')}
       </div>
@@ -484,7 +671,10 @@ function rrJrnLineHtml(i, idx, sectionKey) {
         <span class="shrink-0 text-gray-300 text-xs w-3">${open ? '▾' : '▸'}</span>
         <span class="shrink-0 text-[11px] text-gray-500 font-mono w-[76px]">${dateLabel}</span>
         <div class="min-w-0 flex-1">
-          <div class="text-sm text-gray-700 font-medium truncate">${escHtml(i.description || '—')}</div>
+          <div class="text-sm text-gray-700 font-medium truncate">
+            ${i.isPersonal ? '<span class="mr-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold align-middle" title="Personal draw — repayable to the fund">👤 PERSONAL</span>' : ''}
+            ${escHtml(i.description || '—')}
+          </div>
           <div class="text-[10px] text-gray-400 truncate">
             ${i.supplierName ? escHtml(i.supplierName) : 'No supplier on file'}
             ${i.receiptNo ? ` &middot; OR# ${escHtml(i.receiptNo)}` : ''}
@@ -654,7 +844,13 @@ async function exportReplenishJournal(btn) {
   if (!rrData) { toast('No report data to export', 'warning'); return; }
 
   btnLoad(btn, true);
-  const res = await callServer('exportReplenishmentJournal', { periodFrom: rrData.periodFrom });
+  // The tabs get whichever view is on screen — writing the all-in journal while
+  // the page shows business-only would put personal draws into the posting
+  // sheet the bookkeeper works from.
+  const res = await callServer('exportReplenishmentJournal', {
+    periodFrom     : rrData.periodFrom,
+    excludePersonal: rrBusinessOnly
+  });
   btnLoad(btn, false);
 
   if (!res.success) {
@@ -663,7 +859,8 @@ async function exportReplenishJournal(btn) {
   }
 
   const rows = (res.data.written || []).reduce((s, w) => s + w.rows, 0);
-  toast(`Journal written — ${rows} row(s) across ${res.data.written.length} tab(s) ✓`, 'success');
+  toast(`Journal written${rrBusinessOnly ? ' (business only)' : ''} — ` +
+        `${rows} row(s) across ${res.data.written.length} tab(s) ✓`, 'success');
 }
 
 function renderRrCategoryBreakdown(rows, total) {
@@ -709,7 +906,9 @@ function renderRrCategoryBreakdown(rows, total) {
 // Resolved by index so a category name containing an apostrophe can never
 // break the inline onclick — only the safe integer index is interpolated.
 function openRrCategoryDetail(i) {
-  const cat = rrData && rrData.categoryBreakdown && rrData.categoryBreakdown[i];
+  // Index into the breakdown that was actually drawn — the business-only list
+  // is shorter and reordered, so rrData's copy would open the wrong category.
+  const cat = rrView().categoryBreakdown && rrView().categoryBreakdown[i];
   if (!cat) return;
   openRrDetailModal(cat.category);
 }
@@ -719,7 +918,9 @@ function openRrDetailModal(category) {
 
   rrModalCategory = category;
   rrModalEntries  = (rrData.expenseEntries || [])
-    .filter(e => String(e.category).trim() === String(category).trim());
+    .filter(e => String(e.category).trim() === String(category).trim())
+    // Same filter as the bar that was clicked, so the modal's total matches it.
+    .filter(e => !(rrBusinessOnly && e.isPersonal));
   rrModalFiltered = [...rrModalEntries];
   rrModalPage     = 1;
 
@@ -781,10 +982,14 @@ function rrDetailRender() {
       : '<span class="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[9px] font-bold rounded uppercase">No</span>';
     const desc = escHtml(e.description || '—');
     const sup  = e.supplierName ? `<div class="text-[10px] text-slate-400 truncate">${escHtml(e.supplierName)}</div>` : '';
+    // Only reachable in the all-in view — business-only never lists these.
+    const pers = e.isPersonal
+      ? '<span class="ml-1.5 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] font-bold rounded uppercase">👤 Personal</span>'
+      : '';
 
     return `<tr class="hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
       <td class="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">${dateLabel}</td>
-      <td class="px-4 py-3 text-xs text-slate-700 font-medium">${desc}${sup}</td>
+      <td class="px-4 py-3 text-xs text-slate-700 font-medium">${desc}${pers}${sup}</td>
       <td class="px-4 py-3 text-center">${receiptBadge}</td>
       <td class="px-4 py-3 text-xs font-mono text-slate-400">${escHtml(e.receiptNo || e.referenceNo || '—')}</td>
       <td class="px-4 py-3 text-xs text-slate-500 italic">${escHtml(e.requestedBy || '—')}</td>
@@ -869,40 +1074,57 @@ function renderRrFusedTable(rows, entries) {
   let html = '';
 
   rows.forEach(r => {
-    totExpenses  += r.expenses;
-    totReplenish += r.replenishment;
+    // In the business-only view a day is read net of the Admin's personal spend
+    // and of any replenishment that was a payback rather than a ceiling top-up.
+    // Opening / Closing stay as recorded — those are the drawer, and that cash
+    // moved regardless of whose spend it was.
+    const dayExp = rrBusinessOnly ? Math.max(0, r.expenses      - (r.personalExpense     || 0)) : r.expenses;
+    const dayRep = rrBusinessOnly ? Math.max(0, r.replenishment - (r.nonCeilingReplenish || 0)) : r.replenishment;
+
+    totExpenses  += dayExp;
+    totReplenish += dayRep;
     totCashAdv   += r.cashAdvance || 0;
 
     const dt     = new Date(r.date + 'T00:00:00');
     const label  = dt.toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric' });
     const badge  = statusMap[r.status] || statusMap['OPEN'];
-    
-    const expCls  = r.expenses      > 0 ? 'font-bold text-red-600'    : 'text-gray-300';
-    const advCls  = r.cashAdvance   > 0 ? 'font-bold text-orange-500' : 'text-gray-300';
-    const repCls  = r.replenishment > 0 ? 'font-bold text-purple-600' : 'text-gray-300';
+
+    const expCls  = dayExp        > 0 ? 'font-bold text-red-600'    : 'text-gray-300';
+    const advCls  = r.cashAdvance > 0 ? 'font-bold text-orange-500' : 'text-gray-300';
+    const repCls  = dayRep        > 0 ? 'font-bold text-purple-600' : 'text-gray-300';
     const isClosed = r.status === 'CLOSED';
-    
-    const rowCls = r.replenishment > 0 ? 'bg-purple-50/30' : 'hover:bg-gray-50/50';
-    const borderCls = r.replenishment > 0 ? 'border-l-4 border-purple-400' : '';
+
+    const rowCls = dayRep > 0 ? 'bg-purple-50/30' : 'hover:bg-gray-50/50';
+    const borderCls = dayRep > 0 ? 'border-l-4 border-purple-400' : '';
 
     // Main Summary Row
     html += `
       <tr class="transition ${rowCls} ${borderCls} print:bg-white no-break-inside">
         <td class="px-4 py-3 text-sm font-medium text-gray-700">
           ${label}
-          ${r.replenishment > 0 ? '<span class="ml-1 text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">TOP-UP</span>' : ''}
+          ${dayRep > 0 ? '<span class="ml-1 text-[10px] font-bold text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full">TOP-UP</span>' : ''}
+          ${!rrBusinessOnly && r.personalExpense > 0 ? `<span class="ml-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full" title="Personal spend inside this day's expenses">👤 ${fmt(r.personalExpense)}</span>` : ''}
+          ${!rrBusinessOnly && r.nonCeilingReplenish > 0 ? `<span class="ml-1 text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full" title="Personal repayment — not a ceiling top-up">↩ ${fmt(r.nonCeilingReplenish)}</span>` : ''}
         </td>
         <td class="px-4 py-3 text-right font-mono text-xs text-gray-400">${fmt(r.opening)}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${expCls}">${r.expenses > 0 ? fmt(r.expenses) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${expCls}">${dayExp > 0 ? fmt(dayExp) : '—'}</td>
         <td class="px-4 py-3 text-right font-mono text-sm ${advCls}">${r.cashAdvance > 0 ? fmt(r.cashAdvance) : '—'}</td>
-        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">${r.replenishment > 0 ? fmt(r.replenishment) : '—'}</td>
+        <td class="px-4 py-3 text-right font-mono text-sm ${repCls}">${dayRep > 0 ? fmt(dayRep) : '—'}</td>
         <td class="px-4 py-3 text-right font-mono text-sm ${isClosed ? 'text-gray-700' : 'text-gray-300'}">${isClosed ? fmt(r.closing) : '—'}</td>
         <td class="px-4 py-3 text-center">${badge}</td>
       </tr>`;
 
     // Detailed Nested Rows (Always in DOM, handled by hidden/print classes)
-    if (entryMap[r.date]) {
-      const dayEntries = entryMap[r.date];
+    // The nested lines have to agree with the day's totals above them, so the
+    // business-only view drops the personal spend and the paybacks outright
+    // rather than showing lines that no longer add up to the row.
+    const dayEntries = (entryMap[r.date] || []).filter(e => {
+      if (!rrBusinessOnly) return true;
+      if (e.isPersonal) return false;
+      return !(e.type === 'REPLENISHMENT' && e.isCeilingTopUp === false);
+    });
+
+    if (dayEntries.length) {
       html += `
         <tr class="rr-detail-row bg-gray-50/50 hidden print:table-row no-break-inside">
           <td colspan="7" class="px-4 sm:px-6 py-0">
@@ -920,11 +1142,20 @@ function renderRrFusedTable(rows, entries) {
 
                 const sign = e.type === 'REPLENISHMENT' ? '+' : '';
 
+                // A payback is a replenishment that does not restore the
+                // ceiling, so it reads as its own thing rather than a top-up.
+                const isPayback = e.type === 'REPLENISHMENT' && e.isCeilingTopUp === false;
+                const pillLabel = isPayback ? 'Payback' : typeConf.label;
+                const pillCls   = isPayback ? 'bg-amber-100 text-amber-700' : typeConf.pill;
+                const mark      = (!rrBusinessOnly && (e.isPersonal || isPayback))
+                  ? '<span class="ml-1.5 px-1 py-0.5 rounded bg-amber-100 text-amber-700 text-[9px] font-bold" title="Personal — excluded by the Business only view">👤</span>'
+                  : '';
+
                 return `
                   <div class="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-white/80 transition border-b border-gray-100 last:border-0">
-                    <span class="shrink-0 w-[68px] text-center text-[9px] font-bold py-1 rounded ${typeConf.pill} uppercase tracking-wide">${typeConf.label}</span>
+                    <span class="shrink-0 w-[68px] text-center text-[9px] font-bold py-1 rounded ${pillCls} uppercase tracking-wide">${pillLabel}</span>
                     <div class="min-w-0 flex-1">
-                      <div class="text-xs text-gray-700 font-medium truncate" title="${e.description}">${e.description}</div>
+                      <div class="text-xs text-gray-700 font-medium truncate" title="${e.description}">${e.description}${mark}</div>
                       <div class="text-[10px] text-gray-400 truncate">
                         <span class="uppercase tracking-wide font-semibold">${e.category || 'misc'}</span>${e.requestedBy ? ` &middot; ${e.requestedBy}` : ''}
                       </div>
@@ -986,11 +1217,15 @@ function rrPdfAmount(n) {
 // Groups the period's expenses by category, largest category first — the same
 // order (and the same totals) as "Where the Money Went" on screen.
 function rrPdfSections(d) {
-  const entries = d.expenseEntries || [];
+  const v = rrView();
+  // Business-only prints the same ledger with the personal draws taken out, so
+  // the category totals foot to the TOTAL EXPENSES line at the end.
+  const entries = (d.expenseEntries || [])
+    .filter(e => !(rrBusinessOnly && e.isPersonal));
 
   // Anything missing from the breakdown is appended so no transaction can
   // silently drop off the export.
-  const order = (d.categoryBreakdown || []).map(c => c.category);
+  const order = (v.categoryBreakdown || []).map(c => c.category);
   entries.forEach(e => { if (order.indexOf(e.category) === -1) order.push(e.category); });
 
   return order.map(cat => {
@@ -1049,6 +1284,12 @@ function printReplenishReport() {
     y += 5;
     doc.setFont('helvetica', 'normal').setFontSize(9);
     doc.text(rrPdfText(`${fullDate(d.periodFrom)} to ${fullDate(d.periodTo)}   |   All amounts in PHP`), LEFT, y);
+    if (rrBusinessOnly) {
+      y += 4;
+      doc.setFont('helvetica', 'bold').setFontSize(8);
+      doc.text(rrPdfText('BUSINESS ONLY - personal draws excluded'), LEFT, y);
+      doc.setFont('helvetica', 'normal').setFontSize(9);
+    }
     y += 3;
     rule(0.6);
     y += 7;
@@ -1106,10 +1347,21 @@ function printReplenishReport() {
   rule(0.6);
   y += 6;
   doc.setFont('helvetica', 'bold').setFontSize(11);
-  doc.text('TOTAL EXPENSES', LEFT, y);
-  doc.text(rrPdfAmount(d.totalExpenses), RIGHT, y, { align: 'right' });
+  doc.text(rrBusinessOnly ? 'TOTAL EXPENSES (BUSINESS)' : 'TOTAL EXPENSES', LEFT, y);
+  doc.text(rrPdfAmount(rrView().totalExpenses), RIGHT, y, { align: 'right' });
   y += 6;
+
+  if (!rrBusinessOnly && d.personalExpenses > 0) {
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(120);
+    doc.text(rrPdfText('of which personal (repayable)'), LEFT, y);
+    doc.text(rrPdfAmount(d.personalExpenses), RIGHT, y, { align: 'right' });
+    doc.setTextColor(0);
+    y += 6;
+  }
+
   doc.setFont('helvetica', 'normal').setFontSize(10);
+  // Unfiltered on purpose — this is drawer arithmetic against the fund ceiling,
+  // and the personal cash that is out has genuinely left the drawer.
   doc.text('Amount to Replenish', LEFT, y);
   doc.setFont('helvetica', 'bold');
   doc.text(rrPdfAmount(d.toReplenish), RIGHT, y, { align: 'right' });
@@ -1130,8 +1382,8 @@ function printReplenishReport() {
   const to   = d.periodTo.replace(/-/g, '');
 
   try {
-    doc.save(`PettyCash_Expenses_${from}_to_${to}.pdf`);
-    toast('Report exported successfully!', 'success');
+    doc.save(`PettyCash_Expenses${rrBusinessOnly ? '_Business' : ''}_${from}_to_${to}.pdf`);
+    toast(`Report${rrBusinessOnly ? ' (business only)' : ''} exported successfully!`, 'success');
   } catch (err) {
     console.error('PDF Export Error:', err);
     toast('Failed to generate PDF', 'error');
@@ -1145,7 +1397,7 @@ function printReplenishReport() {
 // bookkeeper posts from, so it follows the journal's own structure — the three
 // non-creditable sections summed by Account Type, VAT itemised line by line.
 function printReplenishJournal() {
-  if (!rrData || !rrData.journal) {
+  if (!rrData || !rrView().journal) {
     toast('No journal data to export', 'warning');
     return;
   }
@@ -1158,7 +1410,7 @@ function printReplenishJournal() {
   }
 
   const d       = rrData;
-  const journal = d.journal;
+  const journal = rrView().journal;   // whichever view is on screen
   const doc     = new JsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
 
   // ── Page geometry (A4 = 210 × 297mm) ──
@@ -1186,6 +1438,14 @@ function printReplenishJournal() {
     y += 5;
     doc.setFont('helvetica', 'normal').setFontSize(9);
     doc.text(rrPdfText(`${fullDate(journal.periodFrom)} to ${fullDate(journal.periodTo)}   |   All amounts in PHP`), LEFT, y);
+    // The filter has to be on the page — a printed journal that silently omits
+    // the personal draws is indistinguishable from one where none were taken.
+    if (rrBusinessOnly) {
+      y += 4;
+      doc.setFont('helvetica', 'bold').setFontSize(8);
+      doc.text(rrPdfText('BUSINESS ONLY - personal draws excluded (repayable to the fund, posted as a receivable)'), LEFT, y);
+      doc.setFont('helvetica', 'normal').setFontSize(9);
+    }
     y += 3;
     rule(0.6);
     y += 7;
@@ -1295,7 +1555,20 @@ function printReplenishJournal() {
     doc.setFont('helvetica', 'bold').setFontSize(9.5);
     doc.text(rrPdfText(s.label + ' - Total'), LEFT + 2, y);
     doc.text(rrPdfAmount(s.total), RIGHT, y, { align: 'right' });
-    y += 9;
+    y += 5;
+
+    // Inside the subtotal, never added to it — so the all-in journal still says
+    // how much of what it just totalled is repayable rather than expense.
+    if (!rrBusinessOnly && s.personalTotal > 0) {
+      needRoom(6);
+      doc.setFont('helvetica', 'italic').setFontSize(8.5).setTextColor(150);
+      doc.text(rrPdfText('of which personal (repayable)'), LEFT + 2, y);
+      doc.text(rrPdfAmount(s.personalTotal), RIGHT, y, { align: 'right' });
+      doc.setTextColor(0);
+      y += 5;
+    }
+
+    y += 4;
   });
 
   // ── Grand total ──
@@ -1306,6 +1579,14 @@ function printReplenishJournal() {
   doc.setFont('helvetica', 'bold').setFontSize(11);
   doc.text('JOURNAL TOTAL', LEFT, y);
   doc.text(rrPdfAmount(journal.grandTotal), RIGHT, y, { align: 'right' });
+
+  if (!rrBusinessOnly && journal.personalTotal > 0) {
+    y += 6;
+    doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(120);
+    doc.text(rrPdfText('Included above - personal (repayable, not company expense)'), LEFT, y);
+    doc.text(rrPdfAmount(journal.personalTotal), RIGHT, y, { align: 'right' });
+    doc.setTextColor(0);
+  }
 
   // ── Footer on every page ──
   const pages = doc.getNumberOfPages();
@@ -1323,8 +1604,10 @@ function printReplenishJournal() {
   const to   = journal.periodTo.replace(/-/g, '');
 
   try {
-    doc.save(`PettyCash_Journal_${from}_to_${to}.pdf`);
-    toast('Journal exported successfully!', 'success');
+    // Distinct filename per view — the two documents hold different totals and
+    // must not overwrite each other in the download folder.
+    doc.save(`PettyCash_Journal${rrBusinessOnly ? '_Business' : ''}_${from}_to_${to}.pdf`);
+    toast(`Journal${rrBusinessOnly ? ' (business only)' : ''} exported successfully!`, 'success');
   } catch (err) {
     console.error('Journal PDF Export Error:', err);
     toast('Failed to generate the journal PDF', 'error');

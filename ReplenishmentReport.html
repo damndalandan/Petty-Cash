@@ -47,7 +47,23 @@
           <span class="text-[9px] text-amber-600">Fund figures rebuilt from today's records</span>
         </div>
       </div>
+
+      <!-- Business-only view — holds out the Admin's personal draws and the
+           paybacks that settle them, so what is left is the company's own
+           spend and the top-ups that restore the fund to its ceiling. -->
+      <label id="rrBusinessOnlyWrap"
+        class="flex items-center gap-2.5 px-3 py-2 bg-white border border-gray-300 rounded-xl shadow-sm cursor-pointer self-start hover:bg-gray-50 transition select-none">
+        <input type="checkbox" id="rrBusinessOnly" onchange="toggleRrBusinessOnly(this.checked)"
+          class="w-4 h-4 rounded border-gray-300 accent-indigo-600 cursor-pointer">
+        <span class="flex flex-col">
+          <span class="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Business only</span>
+          <span class="text-[9px] text-gray-400">Exclude personal &amp; non-ceiling top-ups</span>
+        </span>
+      </label>
     </div>
+
+    <!-- What the filter is holding out, spelled out in pesos. Hidden when off. -->
+    <div id="rrFilterNote" class="hidden items-start gap-2 px-3.5 py-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900"></div>
   </div>
 
   <!-- Loading State -->
@@ -105,14 +121,14 @@
         <div class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col justify-center transition hover:shadow-md">
           <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-display">Total Expenses</div>
           <div class="text-xl font-black font-mono text-red-600" id="rr-totalExpenses">—</div>
-          <div class="text-[9px] text-gray-400 mt-1.5 opacity-60">This period transactions</div>
+          <div class="text-[9px] text-gray-400 mt-1.5 opacity-60" id="rr-totalExpensesNote">This period transactions</div>
         </div>
         
         <!-- Total Replenishments Card -->
         <div class="flex-1 bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-col justify-center transition hover:shadow-md">
           <div class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 font-display">Total Replenishments</div>
           <div class="text-xl font-black font-mono text-purple-600" id="rr-totalReplenishment">—</div>
-          <div class="text-[9px] text-gray-400 mt-1.5 opacity-60">Funds received in period</div>
+          <div class="text-[9px] text-gray-400 mt-1.5 opacity-60" id="rr-totalReplenishmentNote">Funds received in period</div>
         </div>
 
         <!-- Net Movement Card -->

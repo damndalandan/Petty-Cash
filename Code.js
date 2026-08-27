@@ -3589,6 +3589,29 @@ function getReplenishmentPeriodReport(params) {
     const detailByDate      = {};   // date -> PCR_DETAIL/LIQ_DETAIL spend (advance documentation)
     const expenseEntries    = [];   // one row per spend entry — backs the category drill-down
 
+    // ── "Business only" view — everything below is the SAME period, with the
+    //    Admin's personal draws and her paybacks taken out. Both views are
+    //    returned so the page can switch between them without a round trip;
+    //    the unfiltered figures keep their original field names so every other
+    //    caller (banner, threshold watch, request snapshot) is untouched.
+    //    Reference_No carries the Request_ID / advance Entry_ID that
+    //    getPersonalRequestIds_ keys on, so one lookup covers all four shapes.
+    const personalIds       = getPersonalRequestIds_(ss);
+    let personalExpenses    = 0;    // spend charged to a personal request
+    const personalByDate    = {};   // date -> personal spend
+    const bizCategoryTotals = {};   // category -> spend, personal removed
+    const bizCategoryCounts = {};
+    let bizExpWithReceipt   = 0;
+    let bizExpWithoutReceipt= 0;
+
+    // A personal payback is a REPLENISHMENT entry — the drawer really does gain
+    // that cash — but it is the Admin settling her own draw, not the company
+    // topping the fund back to its ceiling. Split so the period can be read
+    // either way. Same category test the period-boundary scan above uses.
+    let ceilingReplenishment    = 0;
+    let nonCeilingReplenishment = 0;
+    const nonCeilingByDate      = {};
+
     for (let i = 1; i < entryData.length; i++) {
       const row     = entryData[i];
       if (row.length < 11) continue;
@@ -3610,6 +3633,11 @@ function getReplenishmentPeriodReport(params) {
         description: row[4], amount, requestedBy: row[8], status
       };
 
+      // Personal for every shape that can carry a request reference — the spend
+      // rows, the advance/release, and the reimbursement paid out on one.
+      const isPersonal = !!personalIds[row[7]];
+      detail.isPersonal = isPersonal;
+
       if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL' ||
           type === 'CASH_ADVANCE_REIMBURSEMENT') {
         // All four are fund spend charged to a category, so they must run
@@ -3627,6 +3655,25 @@ function getReplenishmentPeriodReport(params) {
         const hasReceipt = row[6] === 'YES';
         if (hasReceipt) expWithReceipt    += amount;
         else            expWithoutReceipt += amount;
+
+        // Same roll-ups again with the personal draws held out, so the business
+        // view is a real re-total rather than a subtraction off the headline.
+        if (isPersonal) {
+          personalExpenses += amount;
+          // Per-day figure is subtracted from the daily summary's EXPENSES
+          // column, and recalculateDailySummary() books a reimbursement under
+          // Total_Reimbursement rather than Total_Expenses — so counting it
+          // here would take out cash the column never put in.
+          if (type !== 'CASH_ADVANCE_REIMBURSEMENT') {
+            personalByDate[rowDate] = (personalByDate[rowDate] || 0) + amount;
+          }
+        } else {
+          bizCategoryTotals[cat] = (bizCategoryTotals[cat] || 0) + amount;
+          bizCategoryCounts[cat] = (bizCategoryCounts[cat] || 0) + 1;
+          if (hasReceipt) bizExpWithReceipt    += amount;
+          else            bizExpWithoutReceipt += amount;
+        }
+
         expenseEntries.push({
           id         : row[0],
           date       : rowDate,
@@ -3637,6 +3684,7 @@ function getReplenishmentPeriodReport(params) {
           referenceNo: row[7],
           requestedBy: row[8],
           hasReceipt,
+          isPersonal,
           receiptType: normalizeReceiptType_(row[15], hasReceipt)
         });
         periodEntries.push(detail);
@@ -3650,6 +3698,14 @@ function getReplenishmentPeriodReport(params) {
         periodEntries.push(detail);
       } else if (type === 'REPLENISHMENT') {
         totalReplenishment += amount;
+        const isCeiling = String(row[3] || '').trim() !== PERSONAL_REPAY_CATEGORY;
+        detail.isCeilingTopUp = isCeiling;
+        if (isCeiling) {
+          ceilingReplenishment += amount;
+        } else {
+          nonCeilingReplenishment += amount;
+          nonCeilingByDate[rowDate] = (nonCeilingByDate[rowDate] || 0) + amount;
+        }
         periodEntries.push(detail);
       }
     }
@@ -3705,6 +3761,11 @@ function getReplenishmentPeriodReport(params) {
         cashAdvance  : cashAdv,
         expenses,
         cashExpense  : expenses - (detailByDate[rowDate] || 0),
+        // The two slices the "business only" view subtracts from this day. The
+        // drawer columns (opening / closing) are deliberately NOT adjusted —
+        // that cash genuinely moved, whoever it was for.
+        personalExpense    : personalByDate[rowDate]  || 0,
+        nonCeilingReplenish: nonCeilingByDate[rowDate] || 0,
         replenishment: replenish,
         cashReturn   : parseFloat(sumData[i][9])  || 0,
         cashOver     : parseFloat(sumData[i][7])  || 0,
@@ -3734,12 +3795,31 @@ function getReplenishmentPeriodReport(params) {
       }))
       .sort((a, b) => b.amount - a.amount);
 
-    const journal = buildReplenishmentJournal_(expenseEntries, fromStr, toStr);
+    // Business-only twin of the breakdown above. Percentages are taken against
+    // the business total so the bars still add up to 100% on their own view.
+    const businessExpenses = totalExpenses - personalExpenses;
+    const categoryBreakdownBusiness = Object.keys(bizCategoryTotals)
+      .map(cat => ({
+        category: cat,
+        amount  : bizCategoryTotals[cat],
+        percent : businessExpenses > 0 ? Math.round((bizCategoryTotals[cat] / businessExpenses) * 100) : 0,
+        count   : bizCategoryCounts[cat] || 0
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    // Two journals off the same builder — the second is what the bookkeeper
+    // posts when personal draws are being held out as a receivable instead of
+    // an expense. Built rather than filtered client-side so the section
+    // totals, Account Type roll-ups and input VAT are derived in one place.
+    const journal         = buildReplenishmentJournal_(expenseEntries, fromStr, toStr);
+    const journalBusiness = buildReplenishmentJournal_(
+      expenseEntries.filter(e => !e.isPersonal), fromStr, toStr);
 
     return {
       success: true,
       data: {
         journal,
+        journalBusiness,
         periodFrom         : fromStr,
         periodTo           : toStr,
         isCurrentPeriod,
@@ -3757,7 +3837,20 @@ function getReplenishmentPeriodReport(params) {
         categoryBreakdown,
         expenseEntries,
         expWithReceipt,
-        expWithoutReceipt
+        expWithoutReceipt,
+
+        // ── "Business only" view (see the accumulators above) ──
+        // Cash on Hand / Accounted / Amount to Replenish are absent by design:
+        // the drawer holds one balance, and personal cash that is out (or paid
+        // back) has genuinely moved it. Filtering those would report a fund
+        // level that does not exist.
+        personalExpenses,
+        businessExpenses,
+        ceilingReplenishment,
+        nonCeilingReplenishment,
+        categoryBreakdownBusiness,
+        expWithReceiptBusiness   : bizExpWithReceipt,
+        expWithoutReceiptBusiness: bizExpWithoutReceipt
       }
     };
   } catch(e) {
@@ -3797,12 +3890,21 @@ function buildReplenishmentJournal_(expenseEntries, fromStr, toStr) {
 
     const total = rows.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
 
+    // How much of this section is the Admin's personal draw. Reported inside
+    // the section (not carved out of it) so the all-in view can flag what a
+    // "business only" reading would remove without the two views disagreeing.
+    const personalRows = rows.filter(e => e.isPersonal);
+
     const section = {
       key      : spec.key,
       label    : receiptTypeLabel_(spec.key),
       itemized : spec.itemized,
       total    : parseFloat(total.toFixed(2)),
       count    : rows.length,
+      personalTotal: parseFloat(
+        personalRows.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0).toFixed(2)
+      ),
+      personalCount: personalRows.length,
       groups   : [],
       items    : []
     };
@@ -3812,15 +3914,19 @@ function buildReplenishmentJournal_(expenseEntries, fromStr, toStr) {
     const byAccount = {};
     rows.forEach(e => {
       const acct = String(e.category || 'Miscellaneous').trim() || 'Miscellaneous';
-      if (!byAccount[acct]) byAccount[acct] = { accountType: acct, amount: 0, count: 0 };
+      if (!byAccount[acct]) byAccount[acct] = { accountType: acct, amount: 0, count: 0, personal: 0 };
       byAccount[acct].amount += parseFloat(e.amount) || 0;
       byAccount[acct].count  += 1;
+      if (e.isPersonal) byAccount[acct].personal += parseFloat(e.amount) || 0;
     });
     section.groups = Object.keys(byAccount)
       .map(a => ({
         accountType: a,
         amount     : parseFloat(byAccount[a].amount.toFixed(2)),
-        count      : byAccount[a].count
+        count      : byAccount[a].count,
+        // How much of this posting line is personal — always 0 in the
+        // business-only journal, which is what makes it safe to post as expense.
+        personal   : parseFloat(byAccount[a].personal.toFixed(2))
       }))
       .sort((a, b) => b.amount - a.amount);
 
@@ -3840,7 +3946,8 @@ function buildReplenishmentJournal_(expenseEntries, fromStr, toStr) {
         amount      : parseFloat(e.amount) || 0,
         hasReceipt  : !!e.hasReceipt,
         receiptType : e.receiptType,
-        requestedBy : e.requestedBy  || ''
+        requestedBy : e.requestedBy  || '',
+        isPersonal  : !!e.isPersonal
       };
 
       // A VAT split is attached to VAT lines only. Non-VAT, acknowledgement and
@@ -3874,7 +3981,11 @@ function buildReplenishmentJournal_(expenseEntries, fromStr, toStr) {
     // absent tab, which reads as "nothing here" instead of "not generated".
     sections,
     grandTotal: parseFloat(grandTotal.toFixed(2)),
-    entryCount: journalled.length
+    entryCount: journalled.length,
+    personalTotal: parseFloat(
+      sections.reduce((s, sec) => s + (sec.personalTotal || 0), 0).toFixed(2)
+    ),
+    personalCount: sections.reduce((s, sec) => s + (sec.personalCount || 0), 0)
   };
 }
 
@@ -3894,14 +4005,21 @@ function journalSheetFor_(key) {
  * per receipt type. Re-running the same period replaces only that period's
  * rows, so the export is safe to repeat and older cycles stay on file.
  *
- * @param {{periodFrom?: string}} params — same period key the report uses.
+ * `excludePersonal` writes the business-only journal — the Admin's personal
+ * draws held out, so the tabs hold exactly what gets posted as expense. The
+ * export is period-keyed either way, so switching the flag and re-running
+ * replaces that period's rows rather than stacking a second copy of them.
+ *
+ * @param {{periodFrom?: string, excludePersonal?: boolean}} params
  */
 function exportReplenishmentJournal(params) {
   try {
     const report = getReplenishmentPeriodReport(params || {});
     if (!report.success) return { success: false, message: report.message };
 
-    const journal = report.data && report.data.journal;
+    const excludePersonal = !!(params && params.excludePersonal);
+    const journal = report.data &&
+      (excludePersonal ? report.data.journalBusiness : report.data.journal);
     if (!journal) return { success: false, message: 'No journal data for this period.' };
 
     const ss   = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -3935,7 +4053,8 @@ function exportReplenishmentJournal(params) {
 
     writeAuditLog(
       'JOURNAL_EXPORTED',
-      `Replenishment journal exported for ${from} → ${to}. ` +
+      `Replenishment journal exported for ${from} → ${to}` +
+      (excludePersonal ? ' [BUSINESS ONLY — personal draws excluded]' : '') + '. ' +
       written.map(w => `${w.label}: ${w.rows} row(s) / ₱${w.total.toFixed(2)}`).join(' | '),
       from,
       normalizeDate(new Date())
@@ -3943,7 +4062,11 @@ function exportReplenishmentJournal(params) {
 
     return {
       success: true,
-      data: { periodFrom: from, periodTo: to, written, grandTotal: journal.grandTotal }
+      data: {
+        periodFrom: from, periodTo: to, written,
+        grandTotal: journal.grandTotal,
+        excludePersonal
+      }
     };
   } catch (e) {
     return { success: false, message: e.toString() };
