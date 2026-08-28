@@ -16,6 +16,150 @@ function toggleRplExpand(id) {
   renderRplRequests();
 }
 
+// ── Suggested denomination mix ────────────────
+// The custodian is the one who has to make change out of whatever arrives, so
+// every amount on this page carries a suggested breakdown of notes and coins.
+// The mix is computed server-side (buildDenominationSuggestion_ in Code.js) and
+// never stored — one implementation means the screen, the approval email and the
+// request card can never disagree about what to ask for.
+
+let rplDenomExpanded = new Set();   // request IDs whose mix table is open
+const rplDenomCache  = {};          // amount (2dp string) -> suggestion, per session
+let rplDenomSeq      = 0;           // guards against out-of-order async responses
+
+// Full class strings per accent — never composed from fragments, so the Tailwind
+// CDN can see them and the panel does not render unstyled.
+const DENOM_ACCENTS = {
+  red   : { box: 'bg-red-50/60 border-red-200',       title: 'text-red-700',    denom: 'text-red-700'    },
+  purple: { box: 'bg-purple-50/60 border-purple-200', title: 'text-purple-700', denom: 'text-purple-700' },
+  gray  : { box: 'bg-gray-50 border-gray-200',        title: 'text-gray-600',   denom: 'text-gray-700'   }
+};
+
+function denomLabel(d) {
+  return Number(d) < 1 ? '₱0.25' : '₱' + Number(d).toLocaleString('en-PH');
+}
+
+// Compact four-column table: Denomination · # of pcs · Amount · %.
+// The % column is each denomination's share of the PIECE count, which is what
+// tells the releasing office how thick the envelope will be.
+function renderDenomTable(sug, accentKey) {
+  if (!sug || !sug.rows || !sug.rows.length) {
+    return '<div class="text-xs text-gray-400 italic py-2">Enter an amount to see a suggested mix.</div>';
+  }
+  const ac = DENOM_ACCENTS[accentKey] || DENOM_ACCENTS.gray;
+
+  const head = '<tr class="text-[9px] uppercase tracking-wider text-gray-400">'
+    + '<th class="text-left font-bold py-1">Denom</th>'
+    + '<th class="text-right font-bold py-1"># pcs</th>'
+    + '<th class="text-right font-bold py-1">Amount</th>'
+    + '<th class="text-right font-bold py-1">%</th>'
+    + '</tr>';
+
+  const body = sug.rows.map(r => '<tr class="border-t border-gray-100">'
+    + '<td class="py-1 font-mono font-bold ' + ac.denom + '">' + denomLabel(r.denomination) + '</td>'
+    + '<td class="py-1 text-right font-mono text-gray-800">' + r.pieces + '</td>'
+    + '<td class="py-1 text-right font-mono text-gray-700">' + fmt(r.amount) + '</td>'
+    + '<td class="py-1 text-right font-mono text-gray-400 text-[10px]">' + r.piecePct.toFixed(2) + '%</td>'
+    + '</tr>').join('');
+
+  const foot = '<tr class="border-t-2 border-gray-300 font-bold">'
+    + '<td class="py-1 text-gray-700">Total</td>'
+    + '<td class="py-1 text-right font-mono text-gray-800">' + sug.totalPieces + '</td>'
+    + '<td class="py-1 text-right font-mono text-gray-800">' + fmt(sug.suggestedTotal) + '</td>'
+    + '<td></td>'
+    + '</tr>';
+
+  // Signed residual: positive when ₱0.25 rounding leaves the mix short, negative
+  // when it tips over. Only reachable on amounts that are not a ₱0.25 multiple.
+  const off = Math.abs(sug.residual) > 0.001
+    ? '<p class="text-[10px] text-amber-600 mt-1.5">⚠️ Mix is ' + (sug.residual > 0 ? 'short of' : 'over')
+      + ' the amount by ' + fmt(Math.abs(sug.residual)) + ' — ₱0.25 is the smallest piece the fund tracks.</p>'
+    : '';
+
+  return '<table class="w-full text-xs">' + head + body + foot + '</table>' + off;
+}
+
+// Titled card wrapper used by the form and the fulfilment modal.
+function renderDenomPanel(sug, opts) {
+  const o  = opts || {};
+  const ac = DENOM_ACCENTS[o.accent] || DENOM_ACCENTS.gray;
+  return '<div class="rounded-xl p-3 border ' + ac.box + '">'
+    + '<div class="flex items-center justify-between mb-1.5">'
+    +   '<p class="text-[10px] font-bold uppercase tracking-wider ' + ac.title + '">💵 Suggested Denominations</p>'
+    +   (o.loading ? '<span class="text-[10px] text-gray-400 animate-pulse">updating…</span>' : '')
+    + '</div>'
+    + renderDenomTable(sug, o.accent)
+    + '<p class="text-[10px] text-gray-400 mt-1.5">' + (o.note || 'A suggestion only — record the actual count on the Denominations page.') + '</p>'
+    + '</div>';
+}
+
+// Server round-trip, cached per amount so re-opening a modal or nudging the
+// field back to a previous value is instant.
+function fetchDenomSuggestion(amount, onDone) {
+  const amt = Math.max(0, parseFloat(amount) || 0);
+  const key = amt.toFixed(2);
+  if (rplDenomCache[key]) { onDone(rplDenomCache[key], false); return; }
+  if (amt <= 0) { onDone(null, false); return; }
+
+  const seq = ++rplDenomSeq;
+  onDone(null, true);                                  // show the loading state
+  callServer('getSuggestedDenominations', { amount: amt }).then(res => {
+    if (seq !== rplDenomSeq) return;                   // a newer keystroke won
+    if (!res || !res.success) { onDone(null, false); return; }
+    rplDenomCache[key] = res.data;
+    onDone(res.data, false);
+  });
+}
+
+// Shared debounce for both amount fields (they are never open at the same time).
+let rplDenomTimer = null;
+function updateDenomPanel(containerId, amount, opts) {
+  if (!document.getElementById(containerId)) return;
+  clearTimeout(rplDenomTimer);
+  rplDenomTimer = setTimeout(() => {
+    fetchDenomSuggestion(amount, (sug, loading) => {
+      const box = document.getElementById(containerId);
+      if (!box) return;
+      box.innerHTML = renderDenomPanel(sug, Object.assign({}, opts, { loading: loading }));
+    });
+  }, 350);
+}
+
+const RPL_FORM_DENOM_OPTS = {
+  accent: 'red',
+  note  : 'Send this with the request so the releasing office knows what mix to prepare.'
+};
+
+const RPL_FULFILL_DENOM_OPTS = {
+  accent: 'purple',
+  note  : 'Count the cash in against this, then save the drawer count on the Denominations page.'
+};
+
+function onRplAmountInput() {
+  updateDenomPanel('rplDenomSuggestion', document.getElementById('rplAmount')?.value, RPL_FORM_DENOM_OPTS);
+}
+
+function onRplFulfillAmountInput() {
+  updateDenomPanel('rplFulfillDenom', document.getElementById('rplFulfillAmount')?.value, RPL_FULFILL_DENOM_OPTS);
+}
+
+// Paint a panel immediately from a suggestion the server already sent with the
+// snapshot / request list, so opening the form or the modal shows the mix with
+// no round-trip. Typing then takes over through updateDenomPanel().
+function primeDenomPanel(containerId, sug, opts) {
+  const box = document.getElementById(containerId);
+  if (!box) return;
+  if (sug && sug.rows) rplDenomCache[Number(sug.amount).toFixed(2)] = sug;
+  box.innerHTML = renderDenomPanel(sug, opts);
+}
+
+// Card table toggle — mirrors the category-breakdown toggle beside it.
+function toggleRplDenom(id) {
+  if (rplDenomExpanded.has(id)) rplDenomExpanded.delete(id);
+  else rplDenomExpanded.add(id);
+  renderRplRequests();
+}
+
 // ── Load ─────────────────────────────────────
 
 async function loadReplenishRequests() {
@@ -172,6 +316,14 @@ function prefillRplForm(existing) {
     if (amt) amt.value = existing ? existing.amountRequested : (d.toReplenish > 0 ? d.toReplenish.toFixed(2) : '');
     const hint = document.getElementById('rplAmountHint');
     if (hint) hint.textContent = 'Needed to reach the ceiling: ' + fmt(d.toReplenish);
+
+    // The server already sent the mix for whichever amount is pre-filled, so the
+    // panel paints without a round-trip; oninput takes over from the first edit.
+    primeDenomPanel(
+      'rplDenomSuggestion',
+      existing ? existing.suggestedDenominations : d.suggestedDenominations,
+      RPL_FORM_DENOM_OPTS
+    );
   }
 
   const docsLog      = document.getElementById('rplDocsLog');
@@ -259,6 +411,27 @@ function renderRplCard(r) {
     ? '<button onclick="toggleRplExpand(\'' + r.id + '\')" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-100 text-red-700 hover:bg-red-200 transition">'
       + (isExpanded ? '▼ Hide breakdown (' + bdCount + ')' : '▶ Breakdown (' + bdCount + ')') + '</button>'
     : '';
+
+  // Suggested mix — offered while cash is still expected. A rejected request will
+  // never be funded, so counting out notes for it would only mislead.
+  const sug       = r.suggestedDenominations;
+  const showDenom = r.status !== 'REJECTED' && sug && sug.rows && sug.rows.length;
+  const denomOpen = rplDenomExpanded.has(r.id);
+  const denomBtn  = showDenom
+    ? '<button onclick="toggleRplDenom(\'' + r.id + '\')" class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 transition">'
+      + (denomOpen ? '▼ Hide denominations' : '💵 Denominations (' + sug.totalPieces + ' pcs)') + '</button>'
+    : '';
+  const denomHtml = (showDenom && denomOpen)
+    ? '<div class="pt-2 border-t border-dashed border-gray-200">'
+      + renderDenomPanel(sug, {
+          accent: 'gray',
+          note  : r.status === 'FULFILLED'
+            ? 'What was suggested for this release — the Denominations page holds the actual count.'
+            : 'Suggested mix for the releasing office — a guide, not a requirement.'
+        })
+      + '</div>'
+    : '';
+
   let breakdownHtml = '';
   if (isExpanded && bdCount) {
     breakdownHtml = '<div class="pt-2 border-t border-dashed border-gray-200 space-y-1">'
@@ -305,7 +478,7 @@ function renderRplCard(r) {
 
   return '<div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 space-y-3">'
     + '<div class="flex items-start justify-between gap-3">'
-    +   '<div class="flex flex-wrap items-center gap-1.5">' + badge + toggleBtn + '</div>'
+    +   '<div class="flex flex-wrap items-center gap-1.5">' + badge + toggleBtn + denomBtn + '</div>'
     +   '<div class="text-right shrink-0">'
     +     '<p class="text-xl font-bold font-mono text-gray-800">' + fmt(r.amountRequested) + '</p>'
     +     '<p class="text-[10px] text-gray-400">requested</p>'
@@ -330,6 +503,7 @@ function renderRplCard(r) {
     + notesLine
     + decisionNoteLine
     + breakdownHtml
+    + denomHtml
     + (actions ? '<div class="flex gap-2 pt-2 border-t border-gray-100">' + actions + '</div>' : '')
     + '</div>';
 }
@@ -423,6 +597,7 @@ function openRplFulfillModal(id) {
   document.getElementById('rplFulfillBy').value     = '';
   const src = document.getElementById('rplFulfillSource');
   if (src) src.selectedIndex = 0;
+  primeDenomPanel('rplFulfillDenom', r.suggestedDenominations, RPL_FULFILL_DENOM_OPTS);
   document.getElementById('rplFulfillModal').classList.remove('hidden');
 }
 

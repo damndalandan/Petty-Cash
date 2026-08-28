@@ -6373,6 +6373,194 @@ const REPLENISH_ALERT_FLAG_KEY = 'LOW_FUND_ALERT_ACTIVE';
 // A request in one of these states is "in flight" — only one at a time.
 const REPLENISH_OPEN_STATUSES = ['PENDING_APPROVAL', 'RETURNED', 'APPROVED'];
 
+// ─────────────────────────────────────────────
+// SUGGESTED DENOMINATION MIX
+// ─────────────────────────────────────────────
+// A replenishment handed over as ten ₱1,000 notes is useless to a custodian who
+// pays ₱35 fares all day, so every request carries a suggested breakdown of the
+// bills and coins to ask for. It is advisory only: nothing is stored, and the
+// count on the Denominations page stays the record of what actually arrived.
+//
+// The mix is built in three passes so the suggestion totals EXACTLY the amount
+// while still leaving the drawer able to make change:
+//   1. Tail  — ₱0.25 coins and ₱1s clear the sub-₱5 remainder, so everything
+//              above it is a multiple of 5 and settles without stray coins.
+//   2. Float — a fixed change float (smallest note first), capped at a share of
+//              the amount so a ₱500 top-up is not handed over entirely in ₱20s.
+//   3. Bulk  — what is left splits between ₱1,000 and ₱500 on a fixed ratio, and
+//              a greedy pass settles the few hundred pesos the flooring leaves.
+//
+// All arithmetic runs on integer 25-centavo units — the smallest piece the
+// Denominations sheet tracks — so no float rounding can make the piece counts
+// disagree with the total they are supposed to add up to.
+
+// Target pieces of each small denomination in a full-size change float, smallest
+// first (which is also the allocation order). Full float value: ₱2,780.
+const DENOM_CHANGE_FLOAT = [
+  { value: 5,   pieces: 6  },
+  { value: 10,  pieces: 10 },
+  { value: 20,  pieces: 20 },
+  { value: 50,  pieces: 15 },
+  { value: 100, pieces: 15 }
+];
+
+// The change float never takes more than this share of the replenishment, so
+// small top-ups stay proportionate instead of arriving as a sack of coins.
+const DENOM_FLOAT_SHARE = 0.35;
+
+// Of the bulk left after the float, this percent goes to ₱1,000 notes and the
+// rest to ₱500s. A drawer holding nothing but ₱1,000s is hard to break.
+const DENOM_BULK_1000_PCT = 55;
+
+// Ladder used to settle the bulk remainder, largest first. ₱200 is deliberately
+// absent — it is rarely in circulation, so suggesting it sets the custodian up
+// to be handed something else. It stays in BILLS and on the Denominations sheet
+// because a real drawer can still receive one.
+const DENOM_SETTLE_LADDER = [1000, 500, 100, 50, 20, 10, 5];
+
+// Every denomination the system tracks, largest first. Mirrors BILLS in
+// Global-js.html and the D_* columns of SHEETS.DENOMINATIONS.
+const DENOM_ALL = [1000, 500, 200, 100, 50, 20, 10, 5, 1, 0.25];
+
+const DENOM_UNIT = 0.25;   // smallest tracked piece, in pesos
+
+// Core allocator. Returns { counts, residual } where counts is keyed by
+// denomination string and residual is the peso amount the mix could not
+// represent — non-zero only when the amount is not a multiple of ₱0.25.
+function suggestDenominationMix_(amount) {
+  const counts = {};
+  DENOM_ALL.forEach(d => { counts[String(d)] = 0; });
+
+  const target   = Math.max(0, parseFloat(amount) || 0);
+  const units    = Math.round(target / DENOM_UNIT);
+  const residual = parseFloat((target - units * DENOM_UNIT).toFixed(2));
+  if (units <= 0) return { counts, residual };
+
+  // 1. Tail — quarters first, then ₱1 coins, leaving a multiple of ₱5.
+  counts['0.25'] = units % 4;
+  let pesos      = (units - counts['0.25']) / 4;
+  counts['1']    = pesos % 5;
+  pesos         -= counts['1'];
+
+  // 2. Change float, smallest note first, within its budget.
+  let budget = Math.min(
+    DENOM_CHANGE_FLOAT.reduce((sum, f) => sum + f.value * f.pieces, 0),
+    Math.floor(target * DENOM_FLOAT_SHARE)
+  );
+  DENOM_CHANGE_FLOAT.forEach(f => {
+    const pcs = Math.min(f.pieces, Math.floor(budget / f.value), Math.floor(pesos / f.value));
+    counts[String(f.value)] += pcs;
+    budget -= pcs * f.value;
+    pesos  -= pcs * f.value;
+  });
+
+  // 3. Bulk split. Both counts are floored against the SAME base, so together
+  // they can never exceed it; the ladder then clears the shortfall. The single
+  // integer division keeps this exact even when the split lands on a whole note.
+  const bulk  = pesos;
+  const k1000 = Math.floor(bulk * DENOM_BULK_1000_PCT / (100 * 1000));
+  const k500  = Math.floor(bulk * (100 - DENOM_BULK_1000_PCT) / (100 * 500));
+  counts['1000'] += k1000;
+  counts['500']  += k500;
+  pesos -= k1000 * 1000 + k500 * 500;
+
+  // pesos is still a multiple of 5 here (the tail removed the mod-5 remainder
+  // and every float/bulk denomination is a multiple of 5), so the ladder ending
+  // at ₱5 always drives it to exactly zero.
+  DENOM_SETTLE_LADDER.forEach(d => {
+    const pcs = Math.floor(pesos / d);
+    counts[String(d)] += pcs;
+    pesos -= pcs * d;
+  });
+
+  return { counts, residual };
+}
+
+// Presentation wrapper: drops the denominations that are unused and adds the
+// percentages. `piecePct` is a denomination share of the PIECE count, not of the
+// value — that is what tells the releasing office how bulky the hand-over is,
+// and it is the column the reference sheet from Maricel shows.
+function buildDenominationSuggestion_(amount) {
+  const target = Math.max(0, parseFloat(amount) || 0);
+  const mix    = suggestDenominationMix_(target);
+
+  const rows = [];
+  let totalPieces    = 0;
+  let suggestedTotal = 0;
+  DENOM_ALL.forEach(d => {
+    const pcs = mix.counts[String(d)] || 0;
+    if (!pcs) return;
+    totalPieces    += pcs;
+    suggestedTotal += pcs * d;
+    rows.push({ denomination: d, pieces: pcs, amount: parseFloat((pcs * d).toFixed(2)), piecePct: 0 });
+  });
+  rows.forEach(r => {
+    r.piecePct = totalPieces ? parseFloat((r.pieces / totalPieces * 100).toFixed(2)) : 0;
+  });
+
+  return {
+    amount        : parseFloat(target.toFixed(2)),
+    suggestedTotal: parseFloat(suggestedTotal.toFixed(2)),
+    residual      : mix.residual,
+    totalPieces   : totalPieces,
+    counts        : mix.counts,
+    rows          : rows
+  };
+}
+
+// Client-callable — the request form and the fulfilment modal recompute live as
+// the custodian edits the amount. Kept server-side so the screen, the emails and
+// any future export can never drift onto different mixes.
+function getSuggestedDenominations(params) {
+  try {
+    return { success: true, data: buildDenominationSuggestion_((params || {}).amount) };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+function fmtDenomLabel_(d) {
+  return Number(d) < 1 ? '₱0.25' : '₱' + Number(d).toLocaleString('en-PH');
+}
+
+// Denomination table for the replenishment emails — the same four columns as the
+// on-screen card, so the custodian and the releasing office read one sheet.
+function denomTableHtml_(sug) {
+  if (!sug || !sug.rows || !sug.rows.length) return '';
+
+  const border = 'border:1px solid #e5e7eb;padding:4px 12px;';
+  const num    = 'text-align:right;font-family:monospace;';
+  const th = h => '<th style="' + border + 'background:#f9fafb;text-align:left;color:#6b7280;">' + h + '</th>';
+  const td = (v, extra) => '<td style="' + border + (extra || '') + '">' + v + '</td>';
+
+  const head = '<tr>' + ['Denomination', '# of pcs', 'Amount', '%'].map(th).join('') + '</tr>';
+  const body = sug.rows.map(r => '<tr>'
+    + td(fmtDenomLabel_(r.denomination))
+    + td(r.pieces, num)
+    + td(fmtPeso_(r.amount), num)
+    + td(r.piecePct.toFixed(2) + '%', num + 'color:#6b7280;')
+    + '</tr>').join('');
+  const foot = '<tr>'
+    + td('<b>Total</b>')
+    + td('<b>' + sug.totalPieces + '</b>', num)
+    + td('<b>' + fmtPeso_(sug.suggestedTotal) + '</b>', num)
+    + td('', '')
+    + '</tr>';
+
+  // The residual is signed: positive when the mix falls short of the amount,
+  // negative when rounding to the nearest ₱0.25 pushes it over.
+  const offNote = Math.abs(sug.residual) > 0.001
+    ? '<p style="margin:4px 0 0;color:#b45309;font-size:12px;">The mix is '
+      + (sug.residual > 0 ? 'short of' : 'over') + ' the amount by ' + fmtPeso_(Math.abs(sug.residual))
+      + ' — ₱0.25 is the smallest piece the fund tracks.</p>'
+    : '';
+
+  return '<p style="margin:16px 0 4px;font-weight:bold;">Suggested denomination breakdown</p>'
+    + '<table style="border-collapse:collapse;font-size:13px;">' + head + body + foot + '</table>'
+    + offNote
+    + '<p style="margin:4px 0 0;color:#6b7280;font-size:12px;">Suggested mix only — the custodian records the actual count on the Denominations page.</p>';
+}
+
 function fmtPeso_(n) {
   const num = parseFloat(n) || 0;
   return '₱' + num.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -6418,8 +6606,9 @@ function sendReplenishmentEmail_(recipients, subject, htmlBody) {
 }
 
 // Small HTML summary card used in every replenishment email: intro line,
-// label/value rows, optional per-category breakdown, link to the app.
-function replenishEmailHtml_(intro, fields, breakdown, footer) {
+// label/value rows, optional per-category breakdown, optional suggested
+// denomination table, link to the app.
+function replenishEmailHtml_(intro, fields, breakdown, footer, denomSuggestion) {
   const rows = (fields || []).map(f =>
     '<tr><td style="padding:4px 14px 4px 0;color:#6b7280;">' + f[0] + '</td>' +
     '<td style="padding:4px 0;font-weight:bold;color:#111827;">' + f[1] + '</td></tr>'
@@ -6443,6 +6632,7 @@ function replenishEmailHtml_(intro, fields, breakdown, footer) {
     '<p>' + intro + '</p>' +
     '<table style="border-collapse:collapse;">' + rows + '</table>' +
     bd +
+    denomTableHtml_(denomSuggestion) +
     (footer ? '<p style="margin-top:14px;color:#6b7280;">' + footer + '</p>' : '') +
     link +
     '</div>';
@@ -6505,7 +6695,8 @@ function getReplenishmentAlertStatus() {
         totalDisbursed     : d.totalExpenses,
         categoryBreakdown  : d.categoryBreakdown,
         lastReplenishDate  : lastReplenishDate,
-        openRequest        : openRequest
+        openRequest        : openRequest,
+        suggestedDenominations: buildDenominationSuggestion_(d.toReplenish)
       }
     };
   } catch (e) {
@@ -6551,7 +6742,8 @@ function checkReplenishmentThreshold_() {
             ['Amount to replenish',   fmtPeso_(rep.data.toReplenish)]
           ],
           rep.data.categoryBreakdown,
-          'Open the dashboard and use the replenishment banner to submit the request.'
+          'Open the dashboard and use the replenishment banner to submit the request.',
+          buildDenominationSuggestion_(rep.data.toReplenish)
         )
       );
     } else if (cashOnHand >= REPLENISH_ALERT_THRESHOLD && alertActive) {
@@ -6643,7 +6835,8 @@ function submitReplenishmentRequest(data) {
           ['Documents',              `Petty cash log: ${data.docsLog ? '✔' : '✖'} · Receipts/vouchers: ${data.docsReceipts ? '✔' : '✖'}`]
         ],
         snap.categoryBreakdown,
-        'Approve, return, or reject this request from the Replenish Requests page.'
+        'Approve, return, or reject this request from the Replenish Requests page.',
+        buildDenominationSuggestion_(amount)
       )
     );
 
@@ -6669,11 +6862,12 @@ function getReplenishmentRequests() {
       if (!r[0]) continue;
       let breakdown = [];
       try { breakdown = JSON.parse(r[8] || '[]'); } catch (ignore) {}
+      const amountRequested = parseFloat(r[3]) || 0;
       data.push({
         id               : r[0],
         date             : normalizeDate(r[1]),
         currentBalance   : parseFloat(r[2]) || 0,
-        amountRequested  : parseFloat(r[3]) || 0,
+        amountRequested  : amountRequested,
         targetFundLevel  : parseFloat(r[4]) || 0,
         periodFrom       : normalizeDate(r[5]),
         periodTo         : normalizeDate(r[6]),
@@ -6692,7 +6886,10 @@ function getReplenishmentRequests() {
         fulfilledEntryId : r[19] || '',
         fulfilledAt      : r[20] || '',
         createdAt        : r[21] || '',
-        updatedAt        : r[22] || ''
+        updatedAt        : r[22] || '',
+        // Derived, not stored: the mix is a pure function of the amount, so an
+        // amount revised on resubmission can never leave a stale table behind.
+        suggestedDenominations: buildDenominationSuggestion_(amountRequested)
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -6761,7 +6958,10 @@ function decideReplenishmentRequest_(requestId, decision, note) {
             ['Decision',   decision],
             ['Note',       note || '—']
           ],
-          null, null
+          null, null,
+          // Only an approval puts cash in motion — a returned or rejected request
+          // has nothing to count out, so the mix would just be noise.
+          decision === 'APPROVED' ? buildDenominationSuggestion_(amount) : null
         )
       );
 
@@ -6858,7 +7058,8 @@ function resubmitReplenishmentRequest(data) {
             ['Total disbursed',   fmtPeso_(snap.totalDisbursed)]
           ],
           snap.categoryBreakdown,
-          'Approve, return, or reject this request from the Replenish Requests page.'
+          'Approve, return, or reject this request from the Replenish Requests page.',
+          buildDenominationSuggestion_(amount)
         )
       );
 

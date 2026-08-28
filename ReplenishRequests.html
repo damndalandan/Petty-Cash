@@ -89,10 +89,14 @@
             <div class="relative">
               <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-bold">₱</span>
               <input type="number" id="rplAmount" placeholder="0.00" min="0" step="0.01"
+                oninput="onRplAmountInput()"
                 class="w-full pl-7 pr-3 py-3 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-red-500 outline-none bg-gray-50">
             </div>
             <p id="rplAmountHint" class="text-[10px] text-gray-400 mt-1"></p>
           </div>
+
+          <!-- Suggested denomination mix — recomputed server-side as the amount changes -->
+          <div id="rplDenomSuggestion"></div>
 
           <!-- Supporting documents -->
           <div>
@@ -186,24 +190,28 @@
      REPLENISH FULFILL MODAL (record funds received)
      ══════════════════════════════════════════ -->
 <div id="rplFulfillModal" class="hidden fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-  <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden">
-    <div class="bg-gradient-to-r from-purple-600 to-purple-500 p-5 flex justify-between items-center">
+  <div class="bg-white w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div class="bg-gradient-to-r from-purple-600 to-purple-500 p-5 flex justify-between items-center shrink-0">
       <div>
         <h3 class="text-white font-bold text-lg">Record Funds Received</h3>
         <p class="text-purple-200 text-xs mt-0.5" id="rplFulfillSubtitle">Adds the replenishment to today's fund</p>
       </div>
       <button onclick="closeRplFulfillModal()" class="text-white/70 hover:text-white text-2xl font-light">&times;</button>
     </div>
-    <div class="p-5 space-y-4">
+    <div class="p-5 space-y-4 overflow-y-auto flex-1">
       <div class="bg-purple-50 rounded-xl p-3 border border-purple-200 text-sm">
         <div id="rplFulfillInfo" class="text-gray-800 font-medium"></div>
       </div>
       <div>
         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Amount Received (₱) <span class="text-red-400">*</span></label>
         <input type="number" id="rplFulfillAmount" placeholder="0.00" min="0" step="0.01"
+          oninput="onRplFulfillAmountInput()"
           class="w-full p-3 border border-gray-200 rounded-xl text-sm font-mono focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
         <p class="text-[10px] text-gray-400 mt-1">Defaults to the approved amount — adjust if the actual release differs.</p>
       </div>
+
+      <!-- Suggested mix for what is actually being received -->
+      <div id="rplFulfillDenom"></div>
       <div>
         <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Source / Reason</label>
         <select id="rplFulfillSource" class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
@@ -223,7 +231,7 @@
           class="w-full p-3 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-gray-50">
       </div>
     </div>
-    <div class="p-4 bg-gray-50 border-t flex gap-3">
+    <div class="p-4 bg-gray-50 border-t flex gap-3 shrink-0">
       <input type="hidden" id="rplFulfillId">
       <button onclick="closeRplFulfillModal()" class="flex-1 py-3 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-xl transition min-h-[44px]">Cancel</button>
       <button onclick="confirmRplFulfill()" class="flex-1 py-3 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow transition min-h-[44px]">💾 Record Funds</button>
