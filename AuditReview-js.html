@@ -532,6 +532,21 @@ async function saveAuditDenomCount() {
     total += qty * bill;
   });
 
+  // Auditing a past day is a review of the cashier's recorded count — that
+  // drawer cannot be recounted today. Changing the figure re-propagates: the
+  // next day's opening is rebuilt from it and its variance recomputed. Under a
+  // catch-up audit the next day is usually sitting in the queue too, so this is
+  // a wider change than the grid makes it look. Confirm before it goes through.
+  const today = new Date().toISOString().split('T')[0];
+  if (state.currentDate < today) {
+    const proceed = confirm(
+      `Change the closing count for ${state.currentDate} to ${fmt(total)}?\n\n` +
+      `This is the cashier's recorded count, not a fresh one — this drawer can no longer be counted.\n\n` +
+      `Saving also rewrites the opening cash for ${auditNextDate(state.currentDate)} and recomputes that day's variance.`
+    );
+    if (!proceed) return;
+  }
+
   const res = await callServer('saveDenominationRecord', {
     date     : state.currentDate,
     type     : 'END',
@@ -541,11 +556,29 @@ async function saveAuditDenomCount() {
   });
 
   if (res.success) {
-    toast('Cash count saved ✓', 'success');
+    // Say what moved downstream, rather than leaving it to be discovered.
+    const cf = res.carriedForward;
+    if (cf && cf.success) {
+      toast(`Cash count saved ✓ — ${cf.nextDate} opening set to ${fmt(cf.openingCash)}`, 'success');
+    } else if (cf && cf.skipped) {
+      toast('Cash count saved ✓ — ' + cf.message, 'warning');
+    } else {
+      toast('Cash count saved ✓', 'success');
+    }
     updateAuditVariance(total);
   } else {
     toast(res.message || 'Failed to save count', 'error');
   }
+}
+
+// Next calendar day as yyyy-MM-dd. UTC arithmetic so a local timezone offset
+// cannot shift the result across a date boundary.
+function auditNextDate(dateStr) {
+  const p = String(dateStr).split('-').map(Number);
+  if (p.length !== 3 || p.some(isNaN)) return '';
+  const d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().split('T')[0];
 }
 
 // ── Approve or Send Back ──

@@ -6,6 +6,10 @@
 let discrepancyData = [];
 let rawDiscrepancies = [];
 
+// Date we have already warned about a broken opening chain, so the notice shows
+// once instead of on every reload while the blocking day stays unclosed.
+let chainWarnedFor = null;
+
 document.addEventListener('DOMContentLoaded', () => {
     initDiscrepancyFilters();
 });
@@ -39,6 +43,21 @@ async function loadDayData() {
 
   const statOpening = document.getElementById('stat-opening');
   if (statOpening) statOpening.classList.add('opacity-50');
+
+  // Heal the opening chain before reading the day. A closed store — Sunday,
+  // holiday, custodian out — leaves no closing count behind, so the next working
+  // day would otherwise open with no cash. This carries the balance through
+  // those idle days. Cheap and silent when there is no gap.
+  const chainRes = await callServer('ensureDayOpening', state.currentDate);
+  if (chainRes && chainRes.blockedOn) {
+    if (chainWarnedFor !== state.currentDate) {
+      chainWarnedFor = state.currentDate;
+      toast(chainRes.message, 'warning');
+    }
+  } else if (chainRes && chainRes.healed > 0) {
+    const n = chainRes.healed;
+    toast(`Balance carried through ${n} day${n > 1 ? 's' : ''} with no activity`, 'success');
+  }
 
   const [entriesRes, summaryRes] = await Promise.all([
     callServer('getExpenseEntries', state.currentDate),

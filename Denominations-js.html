@@ -582,7 +582,17 @@
           toast('Opening count updated & change logged ✓', 'success');
           state.editingOpening = false;
         } else {
-          toast('Cash count saved ✓', 'success');
+          // A closing count now seeds the next day's opening straight away, with
+          // no wait for the audit — say so, since that balance is what the
+          // custodian works against in the morning.
+          const cf = res.carriedForward;
+          if (cf && cf.success) {
+            toast(`Cash count saved ✓ — ${fmt(cf.openingCash)} carried to ${cf.nextDate} as opening`, 'success');
+          } else if (cf && cf.skipped) {
+            toast('Cash count saved ✓ — ' + cf.message, 'warning');
+          } else {
+            toast('Cash count saved ✓', 'success');
+          }
         }
         clearDenomForm();
         loadDayData();

@@ -1631,7 +1631,16 @@ function saveDenominationRecord(data) {
       data.date
     );
 
-    return { success: true, id: recordId, total };
+    // ── The closing count becomes tomorrow's opening, right now ──
+    // Not gated on the audit: the auditor may not review this day for days yet,
+    // and the custodian needs cash to work with in the morning. Safe to re-run —
+    // carryForwardClosing_ refuses to rewrite a next day that is already CLOSED.
+    let carriedForward = null;
+    if (data.type === 'END') {
+      carriedForward = carryForwardClosing_(data.date, ss, now);
+    }
+
+    return { success: true, id: recordId, total, carriedForward };
   } catch(e) {
     return { success: false, message: e.toString() };
   }
@@ -1846,13 +1855,141 @@ function findUnclosedPastDate(beforeDate) {
       if (data[i].length < 12) continue;
       const rDate = normalizeDate(data[i][1]);
       const s = data[i][13];
-      if (rDate < beforeDate && (s === 'OPEN' || s === 'PENDING_AUDIT' || s === 'FLAGGED')) unclosed.push(rDate);
+      // PENDING_AUDIT is deliberately NOT blocking. It means the cashier did
+      // close the day and only the auditor's review is outstanding — and audits
+      // run on a catch-up basis, so that backlog must never stop the custodian
+      // from opening the next day. OPEN (the cashier never closed it) and
+      // FLAGGED (the auditor sent it back for correction) still block, because
+      // both are outstanding work on the cashier's own desk.
+      if (rDate < beforeDate && (s === 'OPEN' || s === 'FLAGGED')) unclosed.push(rDate);
     }
 
     if (!unclosed.length) return { success: true, date: null };
     unclosed.sort();
     return { success: true, date: unclosed[0] };
   } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+// ─────────────────────────────────────────────
+// CARRY FORWARD — a closing count becomes the next day's opening
+// ─────────────────────────────────────────────
+// Fires the moment the cashier saves a closing (END) count, so the custodian
+// always has a working balance the next morning. The audit is deliberately NOT
+// a precondition: the auditor reviews days on a catch-up basis (audit Jan 2–4
+// when she comes in on Jan 5 — see getAuditorMetrics → pendingAudit), and the
+// drawer cannot sit idle waiting for that. auditApproveDay calls this again on
+// approval, which only changes anything if the auditor amended the count.
+//
+// A day's opening is always the previous day's PHYSICAL count, never a computed
+// balance — so a late correction rewrites exactly one day forward and there is
+// no multi-day cascade to unwind.
+//
+// Refuses to touch a next day the auditor has already CLOSED: rewriting the
+// opening of a settled day would silently move numbers that are final. Flag
+// that day first if its opening genuinely has to change.
+function carryForwardClosing_(fromDate, ss, now, note) {
+  try {
+    ss  = ss  || SpreadsheetApp.openById(SPREADSHEET_ID);
+    now = now || new Date().toISOString();
+
+    const nextDate   = getNextDate(fromDate);
+    const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+    const sumSheet   = ss.getSheetByName(SHEETS.SUMMARY);
+
+    // Flush so an END row written moments ago by the caller is visible here
+    SpreadsheetApp.flush();
+    const denomRows = denomSheet.getDataRange().getValues();
+
+    let endRow = null;
+    for (let i = 1; i < denomRows.length; i++) {
+      if (normalizeDate(denomRows[i][1]) === fromDate && denomRows[i][2] === 'END') {
+        endRow = denomRows[i];
+        break;
+      }
+    }
+    if (!endRow) return { success: false, message: 'No closing count found for ' + fromDate };
+
+    const endTotal = parseFloat(endRow[13]) || 0;
+
+    // ── Locate the next day's summary row and guard a closed day ──
+    const sumRows = sumSheet.getDataRange().getValues();
+    let nextSumRowIdx = -1, nextStatus = '';
+    for (let i = 1; i < sumRows.length; i++) {
+      if (normalizeDate(sumRows[i][1]) === nextDate) {
+        nextSumRowIdx = i + 1;
+        nextStatus    = String(sumRows[i][13] || '');
+        break;
+      }
+    }
+
+    // CLOSED  — settled by the auditor; its numbers are final.
+    // FLAGGED — sent back to the cashier and mid-correction. Rewriting its
+    //           opening would also recalculate it, and recalculateDailySummary
+    //           resets a FLAGGED day with a closing count back to PENDING_AUDIT
+    //           — silently clearing the auditor's flag. Leave it alone.
+    if (nextStatus === 'CLOSED' || nextStatus === 'FLAGGED') {
+      writeAuditLog(
+        'CARRY_FORWARD_SKIPPED',
+        `Closing count for ${fromDate} changed, but ${nextDate} is ${nextStatus} — its opening was left untouched. Re-open ${nextDate} first if its opening must change.`,
+        '',
+        nextDate
+      );
+      return { success: false, skipped: true, message: nextDate + ' is ' + nextStatus + ' — opening left untouched.' };
+    }
+
+    // ── Write the next day's START row from the physical count ──
+    const denomVals = [
+      endRow[3], endRow[4], endRow[5], endRow[6],  endRow[7],
+      endRow[8], endRow[9], endRow[10], endRow[11], endRow[12],
+      endTotal,
+      note || ('Carried forward from ' + fromDate + ' closing count'),
+      now
+    ];
+
+    let startRowIdx = -1;
+    for (let i = 1; i < denomRows.length; i++) {
+      if (normalizeDate(denomRows[i][1]) === nextDate && denomRows[i][2] === 'START') {
+        startRowIdx = i + 1;
+        break;
+      }
+    }
+
+    let cfId;
+    if (startRowIdx !== -1) {
+      cfId = denomRows[startRowIdx - 1][0];
+      denomSheet.getRange(startRowIdx, 4, 1, 13).setValues([denomVals]);
+    } else {
+      cfId = 'DEN-OC-' + nextDate.replace(/-/g,'') + '-CF';
+      denomSheet.appendRow([cfId, nextDate, 'START', ...denomVals]);
+    }
+
+    // ── Make sure the next day has a summary row carrying that opening ──
+    if (nextSumRowIdx === -1) {
+      const nextSumId = generateId('SUM', nextDate, sumSheet);
+      // 16 columns: ID, Date, Opening, CashAdv, ExpRcpt, ExpNoRcpt, Expenses,
+      //             CashOver, Repl, CashReturn, Reimb, Closing, Variance, Status, ClosedBy, UpdatedAt
+      sumSheet.appendRow([
+        nextSumId, nextDate,
+        endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
+      ]);
+    } else {
+      sumSheet.getRange(nextSumRowIdx, 3).setValue(endTotal);
+    }
+
+    recalculateDailySummary(nextDate);
+
+    writeAuditLog(
+      'OPENING_SAVED',
+      `Opening cash carried forward from ${fromDate} closing count. Total: ₱${endTotal.toFixed(2)}`,
+      cfId,
+      nextDate
+    );
+
+    return { success: true, nextDate: nextDate, openingCash: endTotal };
+  } catch(e) {
+    console.error('carryForwardClosing_:', e);
     return { success: false, message: e.toString() };
   }
 }
@@ -1895,107 +2032,39 @@ function auditApproveDay(data) {
 
     if (!found) return { success: false, message: 'No summary record found for ' + data.date };
 
-    // ── Always carry forward the auditor's END count as next day's START ──
-    const nextDate   = getNextDate(data.date);
+    // ── Re-carry the audited END count as next day's opening ──
+    // The cashier's own close already carried it forward (saveDenominationRecord),
+    // so this normally rewrites the same figure. It matters when the auditor
+    // amended the count: the auditor's number is the authoritative one.
     const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
-
-    // Flush so the END row saved by the frontend just before this call is committed
     SpreadsheetApp.flush();
-    const freshDenomRows = denomSheet.getDataRange().getValues();
 
-    // Find auditor's END count for this date
-    let endRow = null;
-    for (let j = 1; j < freshDenomRows.length; j++) {
-      if (normalizeDate(freshDenomRows[j][1]) === data.date && freshDenomRows[j][2] === 'END') {
-        endRow = freshDenomRows[j];
+    // Fallback: if no END row was ever saved, build one from the auditor's own
+    // count so the day still has a closing figure to carry forward.
+    let hasEndRow = false;
+    const denomCheckRows = denomSheet.getDataRange().getValues();
+    for (let j = 1; j < denomCheckRows.length; j++) {
+      if (normalizeDate(denomCheckRows[j][1]) === data.date && denomCheckRows[j][2] === 'END') {
+        hasEndRow = true;
         break;
       }
     }
 
-    // Fallback: if still no END row found, create one from actualCash
-    if (!endRow && data.actualCash !== undefined) {
-      const fallbackId = 'DEN-END-' + data.date.replace(/-/g,'') + '-AU';
+    if (!hasEndRow && data.actualCash !== undefined) {
       denomSheet.appendRow([
-        fallbackId, data.date, 'END',
+        'DEN-END-' + data.date.replace(/-/g,'') + '-AU', data.date, 'END',
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         parseFloat(data.actualCash),
         'Auto-saved on audit approval',
         now
       ]);
       SpreadsheetApp.flush();
-      const refreshed2 = denomSheet.getDataRange().getValues();
-      for (let j = 1; j < refreshed2.length; j++) {
-        if (normalizeDate(refreshed2[j][1]) === data.date && refreshed2[j][2] === 'END') {
-          endRow = refreshed2[j];
-          break;
-        }
-      }
     }
 
-    if (endRow) {
-      const endTotal = parseFloat(endRow[13]) || 0;
-      const cfNote   = 'Carried forward from ' + data.date + ' audit closing count';
-
-      // Auditor's count always takes priority — overwrite any existing next-day START
-      SpreadsheetApp.flush();
-      const latestDenomRows     = denomSheet.getDataRange().getValues();
-      let nextDayStartRowIdx    = -1;
-      for (let j = 1; j < latestDenomRows.length; j++) {
-        if (normalizeDate(latestDenomRows[j][1]) === nextDate && latestDenomRows[j][2] === 'START') {
-          nextDayStartRowIdx = j + 1;
-          break;
-        }
-      }
-
-      const denomVals = [
-        endRow[3], endRow[4], endRow[5], endRow[6], endRow[7],
-        endRow[8], endRow[9], endRow[10], endRow[11], endRow[12],
-        endTotal, cfNote, now
-      ];
-
-      let cfId;
-      if (nextDayStartRowIdx !== -1) {
-        // Overwrite the existing START row in-place
-        cfId = latestDenomRows[nextDayStartRowIdx - 1][0];
-        denomSheet.getRange(nextDayStartRowIdx, 4, 1, 13).setValues([denomVals]);
-      } else {
-        cfId = 'DEN-OC-' + nextDate.replace(/-/g,'') + '-CF';
-        denomSheet.appendRow([cfId, nextDate, 'START', ...denomVals]);
-      }
-
-      // Write or update the next day's summary row with the correct openingCash
-      const nextSumSheet = ss.getSheetByName(SHEETS.SUMMARY);
-      SpreadsheetApp.flush();
-      const nextSumData  = nextSumSheet.getDataRange().getValues();
-      let nextSumRowIdx  = -1;
-      for (let k = 1; k < nextSumData.length; k++) {
-        if (normalizeDate(nextSumData[k][1]) === nextDate) { nextSumRowIdx = k + 1; break; }
-      }
-      if (nextSumRowIdx === -1) {
-        const nextSumId = generateId('SUM', nextDate, nextSumSheet);
-        // 16 columns: ID, Date, Opening, CashAdv, ExpRcpt, ExpNoRcpt, Expenses,
-        //             CashOver, Repl, CashReturn, Reimb, Closing, Variance, Status, ClosedBy, UpdatedAt
-        nextSumSheet.appendRow([
-          nextSumId, nextDate,
-          endTotal, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 'OPEN', '', now
-        ]);
-      } else {
-        nextSumSheet.getRange(nextSumRowIdx, 3).setValue(endTotal);
-      }
-
-      recalculateDailySummary(nextDate);
-
-      writeAuditLog(
-        'OPENING_SAVED',
-        `Opening cash auto-carried from ${data.date} audit count. Total: ₱${endTotal.toFixed(2)}`,
-        cfId,
-        nextDate
-      );
-
-      try { autoCloseNonWorkingDays(nextDate, endTotal, ss, now); } catch(e) {
-        console.error('autoCloseNonWorkingDays error:', e);
-      }
-    }
+    carryForwardClosing_(
+      data.date, ss, now,
+      'Carried forward from ' + data.date + ' audit closing count'
+    );
 
     // ── Sync approved day's receipts to BIR final sheet ──
     try { syncReceiptsToFinalSheet(data.date); } catch(e) {
@@ -2201,8 +2270,18 @@ function getNextDate(dateStr) {
   return Utilities.formatDate(d, 'UTC', 'yyyy-MM-dd');
 }
 
+// Closing total of the most recent day before `date` that the cashier closed.
+//
+// Column note: Summary is ...[11] Closing_Cash, [12] Variance, [13] Status. This
+// read used [12] for the status and [10] (Total_Reimbursement) for the closing —
+// the same off-by-one repairSummarySheet() was written to clean up, which this
+// function was never updated for. Since Variance holds a number, the CLOSED test
+// could effectively never match and the caller always saw "First Day".
+//
+// PENDING_AUDIT counts as closed here. The cashier's closing count is what the
+// next opening is compared against, and under catch-up auditing the most recent
+// day has usually not been reviewed yet. `audited` says which it was.
 function getPreviousDayClosing(date) {
-  // Returns the closing total of the most recent day before `date` that is CLOSED
   try {
     const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
     const rows  = ss.getSheetByName(SHEETS.SUMMARY).getDataRange().getValues();
@@ -2210,10 +2289,15 @@ function getPreviousDayClosing(date) {
 
     for (let i = 1; i < rows.length; i++) {
       const rDate  = normalizeDate(rows[i][1]);
-      const status = rows[i][12];
-      if (rDate < date && status === 'CLOSED') {
+      const status = String(rows[i][13] || '');
+      if (rDate < date && (status === 'CLOSED' || status === 'PENDING_AUDIT')) {
         if (!best || rDate > best.date) {
-          best = { date: rDate, closingCash: parseFloat(rows[i][10]) || 0 };
+          best = {
+            date       : rDate,
+            closingCash: parseFloat(rows[i][11]) || 0,
+            status     : status,
+            audited    : status === 'CLOSED'
+          };
         }
       }
     }
@@ -4439,122 +4523,154 @@ function repairDetailReferenceNos(opts) {
 }
 
 // ─────────────────────────────────────────────
-// AUTO-CLOSE NON-WORKING DAYS (Sundays)
+// IDLE DAYS — a day nobody worked carries itself forward
 // ─────────────────────────────────────────────
-function autoCloseNonWorkingDays(startDate, openingCash, ss, now) {
-  try {
-    let checkDate = startDate;
+// A closed store still has to hand a balance to the next morning. Rather than
+// hardcoding which days are non-working (Sundays, holidays, a day the custodian
+// was simply out), a day is treated as idle when it has NO activity at all: no
+// entries and no closing count. Its opening and closing are the same physical
+// balance, carried through denomination for denomination.
+//
+// Auto-closed days are stamped Closed_By = 'system' and logged as
+// DAY_AUTO_CARRIED, so they can never be mistaken for a day a person verified.
+//
+// Replaces the older autoCloseNonWorkingDays(), which only recognised Sundays
+// and could never fire in practice: its caller created the next day's summary
+// row first, so its own "already exists" check always tripped.
+function writeIdleDay_(ss, date, carryRow, now) {
+  const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+  const sumSheet   = ss.getSheetByName(SHEETS.SUMMARY);
+  const total      = parseFloat(carryRow[13]) || 0;
+  const note       = 'Store closed / no activity — balance carried through untouched';
 
-    while (true) {
-      const dateObj  = new Date(checkDate + 'T00:00:00');
-      const isSunday = dateObj.getDay() === 0; // 0 = Sunday
+  const vals = [
+    carryRow[3], carryRow[4], carryRow[5],  carryRow[6],  carryRow[7],
+    carryRow[8], carryRow[9], carryRow[10], carryRow[11], carryRow[12],
+    total, note, now
+  ];
 
-      if (!isSunday) break;
-
-      const sumSheet   = ss.getSheetByName(SHEETS.SUMMARY);
-      const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
-      const sumData    = sumSheet.getDataRange().getValues();
-
-      // Skip if summary record already exists for this date
-      let alreadyExists = false;
-      for (let i = 1; i < sumData.length; i++) {
-        if (normalizeDate(sumData[i][1]) === checkDate) {
-          alreadyExists = true;
-          break;
-        }
-      }
-
-      if (!alreadyExists) {
-        // ── Create Summary row — CLOSED, zero activity ──
-        const sumId = generateId('SUM', checkDate, sumSheet);
-        sumSheet.appendRow([
-          sumId,        // Summary_ID
-          checkDate,    // Date
-          openingCash,  // Opening_Cash
-          0,            // Cash_Advance
-          0,            // Total_Exp_With_Receipt
-          0,            // Total_Exp_No_Receipt
-          0,            // Total_Expenses
-          0,            // Total_Cash_Over
-          0,            // Total_Replenishment
-          0,            // Total_Cash_Return
-          0,            // Total_Reimbursement
-          openingCash,  // Closing_Cash (same as opening)
-          0,            // Variance
-          'CLOSED',     // Status
-          'system',     // Closed_By
-          now           // Updated_At
-        ]);
-
-        // ── Create Denomination START row (carry-forward from previous day END) ──
-        const prevDate   = getPreviousDate(checkDate);
-        const denomData  = denomSheet.getDataRange().getValues();
-        let   prevEndRow = null;
-
-        for (let i = 1; i < denomData.length; i++) {
-          if (normalizeDate(denomData[i][1]) === prevDate && denomData[i][2] === 'END') {
-            prevEndRow = denomData[i];
-            break;
-          }
-        }
-
-        if (prevEndRow) {
-          const startId = 'DEN-OC-' + checkDate.replace(/-/g,'') + '-CF';
-          denomSheet.appendRow([
-            startId,         // Record_ID
-            checkDate,       // Date
-            'START',         // Type
-            prevEndRow[3],   // ₱1000
-            prevEndRow[4],   // ₱500
-            prevEndRow[5],   // ₱200
-            prevEndRow[6],   // ₱100
-            prevEndRow[7],   // ₱50
-            prevEndRow[8],   // ₱20
-            prevEndRow[9],   // ₱10
-            prevEndRow[10],  // ₱5
-            prevEndRow[11],  // ₱1
-            prevEndRow[12],  // ₱0.25
-            openingCash,     // Total
-            'Auto-closed: Non-working day (Sunday)',
-            now
-          ]);
-
-          // ── Create Denomination END row (same as START — no activity) ──
-          const endId = 'DEN-CC-' + checkDate.replace(/-/g,'') + '-CF';
-          denomSheet.appendRow([
-            endId,           // Record_ID
-            checkDate,       // Date
-            'END',           // Type
-            prevEndRow[3],   // ₱1000
-            prevEndRow[4],   // ₱500
-            prevEndRow[5],   // ₱200
-            prevEndRow[6],   // ₱100
-            prevEndRow[7],   // ₱50
-            prevEndRow[8],   // ₱20
-            prevEndRow[9],   // ₱10
-            prevEndRow[10],  // ₱5
-            prevEndRow[11],  // ₱1
-            prevEndRow[12],  // ₱0.25
-            openingCash,     // Total
-            'Auto-closed: Non-working day (Sunday)',
-            now
-          ]);
-        }
-
-        writeAuditLog(
-          'DAY_APPROVED',
-          `Sunday auto-closed as non-working day. Opening/Closing: ₱${openingCash.toFixed(2)}`,
-          sumId,
-          checkDate
-        );
-      }
-
-      // Move to next day and keep checking
-      // (handles holiday Monday after Sunday, etc.)
-      checkDate = getNextDate(checkDate);
+  // Opening and closing are the same count — nothing moved.
+  const denomRows = denomSheet.getDataRange().getValues();
+  ['START', 'END'].forEach(function(type) {
+    let idx = -1;
+    for (let i = 1; i < denomRows.length; i++) {
+      if (normalizeDate(denomRows[i][1]) === date && denomRows[i][2] === type) { idx = i + 1; break; }
     }
-  } catch(e) {
-    console.error('autoCloseNonWorkingDays error:', e);
+    if (idx !== -1) {
+      denomSheet.getRange(idx, 4, 1, 13).setValues([vals]);
+    } else {
+      const prefix = type === 'START' ? 'DEN-OC-' : 'DEN-CC-';
+      denomSheet.appendRow([prefix + date.replace(/-/g, '') + '-IDLE', date, type].concat(vals));
+    }
+  });
+
+  // Summary: zero activity, zero variance, closed by the system.
+  const sumRows = sumSheet.getDataRange().getValues();
+  let sumIdx = -1;
+  for (let i = 1; i < sumRows.length; i++) {
+    if (normalizeDate(sumRows[i][1]) === date) { sumIdx = i + 1; break; }
+  }
+  const sumVals = [total, 0, 0, 0, 0, 0, 0, 0, 0, total, 0, 'CLOSED', 'system', now];
+  if (sumIdx === -1) {
+    sumSheet.appendRow([generateId('SUM', date, sumSheet), date].concat(sumVals));
+  } else {
+    sumSheet.getRange(sumIdx, 3, 1, 14).setValues([sumVals]);
+  }
+
+  writeAuditLog(
+    'DAY_AUTO_CARRIED',
+    `No activity on ${date} — store closed or holiday. Balance of ₱${total.toFixed(2)} carried through untouched and the day auto-closed.`,
+    '',
+    date
+  );
+}
+
+// Makes sure `date` has an opening balance, healing any gap behind it.
+//
+// Walks back to the most recent day that has a closing count, auto-closes every
+// idle day in between, then carries that balance into `date`. Idempotent and
+// cheap in the ordinary case — if `date` already has an opening it returns after
+// a single read without writing anything.
+//
+// Deliberately refuses two things:
+//   • a future date — a day that has not happened yet cannot be judged idle, and
+//     auto-closing it would invent a closing count before the day is over;
+//   • an in-between day that HAS transactions but no closing count — that is
+//     real work the cashier never finished, and carrying past it would fabricate
+//     a closing figure nobody counted. The chain stops there and says so.
+function ensureDayOpening(date) {
+  try {
+    if (!date) return { success: false, message: 'No date given.' };
+
+    const today = normalizeDate(new Date());
+    if (date > today) return { success: true, healed: 0 };
+
+    const ss         = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const denomSheet = ss.getSheetByName(SHEETS.DENOMINATIONS);
+    const denomRows  = denomSheet.getDataRange().getValues();
+
+    // ── Common case: the opening is already there ──
+    for (let i = 1; i < denomRows.length; i++) {
+      if (normalizeDate(denomRows[i][1]) === date && denomRows[i][2] === 'START') {
+        return { success: true, healed: 0 };
+      }
+    }
+
+    // ── Walk back to the last day with a closing count ──
+    let lastClosed = null;
+    for (let i = 1; i < denomRows.length; i++) {
+      const d = normalizeDate(denomRows[i][1]);
+      if (denomRows[i][2] !== 'END' || d >= date) continue;
+      if (!lastClosed || d > lastClosed.date) lastClosed = { date: d, row: denomRows[i] };
+    }
+    if (!lastClosed) {
+      return {
+        success: false,
+        message: 'No earlier closing count on file — the opening for ' + date + ' has to be entered by hand.'
+      };
+    }
+
+    // ── Which days saw real work? ──
+    const entryDates = {};
+    const entryRows  = ss.getSheetByName(SHEETS.ENTRIES).getDataRange().getValues();
+    for (let i = 1; i < entryRows.length; i++) {
+      if (String(entryRows[i][10]) === 'DELETED') continue;
+      entryDates[normalizeDate(entryRows[i][1])] = true;
+    }
+
+    // ── Carry through the idle days in between ──
+    const now     = new Date().toISOString();
+    const carried = [];
+    let cursor    = getNextDate(lastClosed.date);
+
+    while (cursor < date) {
+      if (entryDates[cursor]) {
+        return {
+          success  : false,
+          blockedOn: cursor,
+          carried  : carried,
+          message  : cursor + ' has transactions but was never closed. Save a closing count for '
+                   + cursor + ' before ' + date + ' can open.'
+        };
+      }
+      writeIdleDay_(ss, cursor, lastClosed.row, now);
+      carried.push(cursor);
+      cursor = getNextDate(cursor);
+    }
+
+    // ── Hand the balance to `date` itself ──
+    const res = carryForwardClosing_(getPreviousDate(date), ss, now);
+
+    return {
+      success    : res.success === true,
+      healed     : carried.length,
+      carried    : carried,
+      openingCash: res.openingCash,
+      message    : res.success ? null : res.message
+    };
+  } catch (e) {
+    console.error('ensureDayOpening:', e);
+    return { success: false, message: e.toString() };
   }
 }
 
