@@ -387,18 +387,28 @@ function renderDetailList() {
       ? detailTotal
       : (parseFloat(e.amount) || 0) - (pcrCashRet ? parseFloat(pcrCashRet.amount) : 0);
 
+    // Same shape for a liquidated advance — and the LIQ_DETAIL rows (finalized
+    // sub-entries) ARE that spend, carried at full face value. For an overspend
+    // that is MORE than the amount released: the fund paid the difference back
+    // as a separate CASH_ADVANCE_REIMBURSEMENT, so counting the released amount
+    // here would hide the overage — and would over-report any advance that
+    // handed change back. The notes-JSON total covers a liquidation booked
+    // outside the loaded month; the released amount is the last resort.
+    const liqSubs   = liqDetailMap[e.id] || [];
+    const liqSpent  = liqSubs.length > 0
+      ? liqSubs.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0)
+      : (e.liqBreakdown && parseFloat(e.liqBreakdown.totalSpent)) || amt;
+    const liqChange = amt - liqSpent;
+
     if (!singleTypeTab) {
       if (isPcrRelease) {
         if (isPcrSettled) total += pcrSpent;
         else              pendingReleased += amt;
       } else if (isAdvance) {
-        if (isLiquidated) total += (e.liqBreakdown && parseFloat(e.liqBreakdown.totalSpent)) || amt;
+        if (isLiquidated) total += liqSpent;
         else              pendingReleased += amt;
       }
     }
-
-    // Finalized sub-entries (LIQ_DETAIL rows)
-    const liqSubs = liqDetailMap[e.id] || [];
 
     // Pending breakdown from notes JSON
     const pendingBreakdown = (isLiqPending && e.liqBreakdown) ? (e.liqBreakdown.entries || []) : [];
@@ -456,7 +466,7 @@ function renderDetailList() {
             ${expandBtn}
           </div>
           <div class="text-xs text-gray-500 mt-0.5">${isPcrRelease ? 'Petty Cash Request' : (e.category || e.type)}${e.requestedBy ? ' · ' + e.requestedBy : ''}</div>
-          ${isLiquidated && e.liqBreakdown ? `<div class="text-xs text-green-600 mt-0.5 font-medium">Spent: ${fmt(e.liqBreakdown.totalSpent || 0)}${(e.liqBreakdown.change > 0.005) ? ' · Change: ' + fmt(e.liqBreakdown.change) : ' · Fully spent'}</div>` : ''}
+          ${isLiquidated ? `<div class="text-xs ${liqChange < -0.005 ? 'text-rose-600' : 'text-green-600'} mt-0.5 font-medium">Spent: ${fmt(liqSpent)}${liqChange > 0.005 ? ' · Change: ' + fmt(liqChange) : liqChange < -0.005 ? ' · Overspent by ' + fmt(Math.abs(liqChange)) + ' · reimbursed from fund' : ' · Fully spent'}</div>` : ''}
           ${pcrSpentLine}
           <!-- Mobile-only: amount + badge inline -->
           <div class="flex items-center justify-between mt-1.5 sm:hidden">
@@ -548,8 +558,11 @@ function renderDetailList() {
           </tr>`);
       });
 
-      // Change to return row
-      const bd = e.liqBreakdown;
+      // Change still to be returned — pending liquidations only. Once the
+      // advance is LIQUIDATED that cash is already back in the drawer and
+      // shows as its own CASH_RETURN row, so repeating it here would read as
+      // a second, still-owed amount.
+      const bd = isLiqPending ? e.liqBreakdown : null;
       if (bd && bd.change > 0.005) {
         rows.push(`
           <tr class="bg-amber-50/50 border-l-4 border-amber-300">

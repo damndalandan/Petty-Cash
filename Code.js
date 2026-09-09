@@ -1763,10 +1763,25 @@ function generateReportData(params) {
       const rDate = normalizeDate(row[1]);
       if (rDate < params.from || rDate > params.to || row[10] === 'DELETED') continue;
 
+      // A liquidated / pending advance carries its breakdown as JSON in the
+      // notes column. The Daily Report needs it to report what the advance
+      // actually COST rather than what was released — the two diverge whenever
+      // change came back or the holder overspent. Parsed for advances only, so
+      // ordinary expense rows do not grow the payload.
+      let liqBreakdown = null;
+      if (row[2] === 'CASH_ADVANCE') {
+        const notesCol = String(row[14] || '');
+        try {
+          const jsonStart = notesCol.indexOf('{');
+          if (jsonStart !== -1) liqBreakdown = JSON.parse(notesCol.substring(jsonStart));
+        } catch (err) { liqBreakdown = null; }
+      }
+
       entries.push({
         id:row[0], date:rDate, type:row[2], category:row[3],
         description:row[4], amount:row[5], hasReceipt:row[6]==='YES',
-        referenceNo:row[7], requestedBy:row[8], status:row[10]
+        referenceNo:row[7], requestedBy:row[8], status:row[10],
+        liqBreakdown
       });
     }
 
@@ -3638,13 +3653,15 @@ function getReplenishmentPeriodReport(params) {
       const isPersonal = !!personalIds[row[7]];
       detail.isPersonal = isPersonal;
 
-      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL' ||
-          type === 'CASH_ADVANCE_REIMBURSEMENT') {
-        // All four are fund spend charged to a category, so they must run
-        // through the SAME roll-up. The reimbursement used to be totalled and
-        // categorised on its own branch but skipped the receipt buckets, which
-        // left "Where the Money Went" over-stating spend against Receipt
-        // Coverage by exactly the reimbursement amount.
+      if (type === 'EXPENSE' || type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
+        // The three shapes that ARE the spend, each charged to a category.
+        // CASH_ADVANCE_REIMBURSEMENT is deliberately absent: it is the cash
+        // top-up for an overspend whose receipts are ALREADY booked here as
+        // LIQ_DETAIL / PCR_DETAIL rows at their full face value. Counting it
+        // again over-states "Where the Money Went", its category drill-down and
+        // Receipt Coverage by exactly the overage, and disagrees with
+        // recalculateDailySummary(), which books it under Total_Reimbursement
+        // and never Total_Expenses.
         totalExpenses += amount;
         if (type === 'LIQ_DETAIL' || type === 'PCR_DETAIL') {
           detailByDate[rowDate] = (detailByDate[rowDate] || 0) + amount;
@@ -3660,13 +3677,7 @@ function getReplenishmentPeriodReport(params) {
         // view is a real re-total rather than a subtraction off the headline.
         if (isPersonal) {
           personalExpenses += amount;
-          // Per-day figure is subtracted from the daily summary's EXPENSES
-          // column, and recalculateDailySummary() books a reimbursement under
-          // Total_Reimbursement rather than Total_Expenses — so counting it
-          // here would take out cash the column never put in.
-          if (type !== 'CASH_ADVANCE_REIMBURSEMENT') {
-            personalByDate[rowDate] = (personalByDate[rowDate] || 0) + amount;
-          }
+          personalByDate[rowDate] = (personalByDate[rowDate] || 0) + amount;
         } else {
           bizCategoryTotals[cat] = (bizCategoryTotals[cat] || 0) + amount;
           bizCategoryCounts[cat] = (bizCategoryCounts[cat] || 0) + 1;
@@ -3687,6 +3698,11 @@ function getReplenishmentPeriodReport(params) {
           isPersonal,
           receiptType: normalizeReceiptType_(row[15], hasReceipt)
         });
+        periodEntries.push(detail);
+      } else if (type === 'CASH_ADVANCE_REIMBURSEMENT') {
+        // Real cash out of the drawer, so it stays visible in the day's detail
+        // — but out of every expense roll-up (see above). The daily table
+        // already carries it per day from the summary's Total_Reimbursement.
         periodEntries.push(detail);
       } else if (type === 'CASH_ADVANCE' || type === 'PCR_ADVANCE') {
         // Cash leaves the drawer on the advance/release date regardless of any
@@ -3869,8 +3885,9 @@ function getReplenishmentPeriodReport(params) {
 //
 // Scope note: only EXPENSE / LIQ_DETAIL / PCR_DETAIL rows are journalled.
 // CASH_ADVANCE_REIMBURSEMENT is a cash top-up for an overspend whose receipts
-// are already booked as detail rows, so the journal's grand total is
-// deliberately the sum of the sections — not the report's totalExpenses.
+// are already booked as detail rows at full face value, so journalling it would
+// book the same purchase twice. The report's totalExpenses now holds the same
+// three types, so the journal's grand total reconciles with it exactly.
 const JOURNAL_SECTION_ORDER = [
   { key: RECEIPT_TYPES.NONE,     itemized: false },
   { key: RECEIPT_TYPES.ACK,      itemized: false },
