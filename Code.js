@@ -5013,6 +5013,7 @@ function getPettyCashRequests() {
         } else if (type === 'LIQ_DETAIL' && ref) {
           if (!advanceItemsMap[ref]) advanceItemsMap[ref] = [];
           advanceItemsMap[ref].push({
+            id         : e[0],   // Entry_ID — lets the client edit a settled item
             category   : e[3],
             description: e[4],
             amount     : parseFloat(e[5]) || 0,
@@ -5049,6 +5050,7 @@ function getPettyCashRequests() {
       if (status === 'SETTLED') {
         settlementItems = isAdvance
           ? (advanceItemsMap[entryId] || [])
+          ? (advanceItemsMap[entryId] || settlementMap[r[0]] || [])
           : (settlementMap[r[0]] || []);
       }
 
@@ -5382,6 +5384,7 @@ function settlePettyCashRequest(data) {
         return { success: false, message: 'Cash Advance requests are liquidated from the Cash Advances page, not settled here.' };
       }
 
+      const isAdvance    = requestType === 'Cash Advance';
       const reqAmount    = parseFloat(rows[i][3]) || 0;
       const requestedFor = rows[i][5] || '';   // col 6 - employee name
       const approvedBy   = rows[i][8] || '';   // col 9
@@ -5397,6 +5400,12 @@ function settlePettyCashRequest(data) {
       const receiptSaveFailures = [];
 
       // 1. Create PCR_DETAIL expense entries for each item (on settlement date)
+      // 1. Create detail expense entries for each item (on settlement date)
+      // For Expense PCRs: PCR_DETAIL with referenceNo = data.requestId
+      // For Cash Advance PCRs: LIQ_DETAIL with referenceNo = advEntryId (or data.requestId)
+      const detailType = isAdvance ? 'LIQ_DETAIL' : 'PCR_DETAIL';
+      const detailRef  = isAdvance ? (advEntryId || data.requestId) : data.requestId;
+
       for (const entry of entries) {
         const amt = parseFloat(entry.amount) || 0;
         if (amt <= 0) continue;
@@ -5404,12 +5413,14 @@ function settlePettyCashRequest(data) {
         const expResult = saveExpenseEntry({
           date       : settleDate,
           type       : 'PCR_DETAIL',
+          type       : detailType,
           category   : entry.category   || 'Miscellaneous',
           description: entry.description|| '',
           amount     : amt,
           hasReceipt : !!entry.hasReceipt,
           receiptType: entry.receiptType,
           referenceNo: data.requestId,
+          referenceNo: detailRef,
           requestedBy: requestedFor,
           approvedBy : approvedBy
         });
@@ -5434,6 +5445,7 @@ function settlePettyCashRequest(data) {
             writeAuditLog(
               'RECEIPT_SAVE_FAILED',
               'Receipt save failed for PCR_DETAIL ' + expResult.id + ' on ' + data.requestId + '. Supplier: ' + (entry.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+              'Receipt save failed for ' + detailType + ' ' + expResult.id + ' on ' + data.requestId + '. Supplier: ' + (entry.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
               expResult.id,
               settleDate
             );
@@ -5448,6 +5460,7 @@ function settlePettyCashRequest(data) {
       //      change < 0 → overspent: the requester fronted the shortfall out of pocket,
       //                   so the fund reimburses them. Mirrors the Cash Advance overage
       //                   flow and keeps net cash out = total spent (= the receipts).
+      const reconRef = isAdvance ? (advEntryId || data.requestId) : data.requestId;
       if (change > 0) {
         saveExpenseEntry({
           date       : settleDate,
@@ -5456,9 +5469,12 @@ function settlePettyCashRequest(data) {
           description: isFullReturn
             ? `Full amount returned unused from ${data.requestId}`
             : `Change returned from ${data.requestId}`,
+            ? (isAdvance ? `Full amount returned unused — Cash Advance (${reconRef})` : `Full amount returned unused from ${data.requestId}`)
+            : (isAdvance ? `Change returned — Cash Advance (${reconRef})` : `Change returned from ${data.requestId}`),
           amount     : change,
           hasReceipt : false,
           referenceNo: data.requestId
+          referenceNo: reconRef
         });
       } else if (change < 0) {
         saveExpenseEntry({
@@ -5466,15 +5482,20 @@ function settlePettyCashRequest(data) {
           type       : 'CASH_ADVANCE_REIMBURSEMENT',
           category   : 'Cash Advance Reimbursement',
           description: `Overspend reimbursement for ${data.requestId} — spent ₱${totalSpent.toFixed(2)} vs released ₱${reqAmount.toFixed(2)}`,
+          description: isAdvance
+            ? `Overage reimbursement — Cash Advance (${reconRef})`
+            : `Overspend reimbursement for ${data.requestId} — spent ₱${totalSpent.toFixed(2)} vs released ₱${reqAmount.toFixed(2)}`,
           amount     : Math.abs(change),
           hasReceipt : false,
           referenceNo: data.requestId,
+          referenceNo: reconRef,
           requestedBy: requestedFor,
           approvedBy : approvedBy
         });
       }
 
       // 3. Mark the PCR_ADVANCE entry as LIQUIDATED
+      // 3. Mark the PCR_ADVANCE or CASH_ADVANCE entry as LIQUIDATED
       if (advEntryId) {
         const entrySheet = ss.getSheetByName(SHEETS.ENTRIES);
         const entryRows  = entrySheet.getDataRange().getValues();
@@ -5485,6 +5506,27 @@ function settlePettyCashRequest(data) {
           entrySheet.getRange(j + 1, 11).setValue('LIQUIDATED');
           entrySheet.getRange(j + 1, 13).setValue(now);
           entrySheet.getRange(j + 1, 15).setValue((isFullReturn ? '[RETURNED] ' : '[SETTLED] ') + (data.note || ''));
+
+          if (isAdvance) {
+            const breakdownJson = JSON.stringify({
+              entries    : entries.map(e => ({
+                category   : e.category    || 'Miscellaneous',
+                desc       : e.description || '',
+                amount     : parseFloat(e.amount) || 0,
+                receiptType: e.receiptType || '',
+                hasReceipt : !!e.hasReceipt,
+                receipt    : e.receipt     || null
+              })),
+              note       : data.note || '',
+              totalSpent : totalSpent,
+              change     : change,
+              submittedAt: now
+            });
+            entrySheet.getRange(j + 1, 15).setValue('[LIQUIDATED on ' + settleDate + '] ' + (isFullReturn ? '[RETURNED] ' : '') + breakdownJson);
+          } else {
+            entrySheet.getRange(j + 1, 15).setValue((isFullReturn ? '[RETURNED] ' : '[SETTLED] ') + (data.note || ''));
+          }
+
           if (advDate && advDate !== settleDate) recalculateDailySummary(advDate);
           break;
         }
@@ -5502,6 +5544,8 @@ function settlePettyCashRequest(data) {
         isFullReturn
           ? `PCR returned unused. Full ₱${reqAmount.toFixed(2)} returned to fund — nothing spent. ${data.note ? 'Note: ' + data.note : ''}`.trim()
           : `PCR settled. Spent: ₱${totalSpent.toFixed(2)} | ${change < 0 ? 'Overspent — reimbursed ₱' + Math.abs(change).toFixed(2) + ' from fund' : 'Change: ₱' + change.toFixed(2)} | Items: ${entries.length}`,
+          ? `PCR [${requestType}] returned unused. Full ₱${reqAmount.toFixed(2)} returned to fund — nothing spent. ${data.note ? 'Note: ' + data.note : ''}`.trim()
+          : `PCR [${requestType}] settled. Spent: ₱${totalSpent.toFixed(2)} | ${change < 0 ? 'Overspent — reimbursed ₱' + Math.abs(change).toFixed(2) + ' from fund' : 'Change: ₱' + change.toFixed(2)} | Items: ${entries.length}`,
         data.requestId, settleDate);
 
       if (receiptSaveFailures.length) {
@@ -5547,6 +5591,9 @@ function updateSettledPcrSettlement(data) {
         return { success: false, message: 'Cash Advance liquidations are corrected from the Cash Advances page, not here.' };
       }
 
+      const requestType  = rows[i][4] || 'Expense';
+      const isAdvance    = requestType === 'Cash Advance';
+      const advEntryId   = rows[i][12] || '';
       const reqAmount    = parseFloat(rows[i][3]) || 0;
       const requestedFor = rows[i][5] || '';
       const approvedBy   = rows[i][8] || '';
@@ -5561,8 +5608,13 @@ function updateSettledPcrSettlement(data) {
       for (let j = 1; j < entryRows.length; j++) {
         const e = entryRows[j];
         if (e[7] !== data.requestId) continue;
+        const matchRef = isAdvance
+          ? (e[7] === data.requestId || (advEntryId && String(e[7]) === String(advEntryId)))
+          : (e[7] === data.requestId);
+        if (!matchRef) continue;
         if (e[10] === 'DELETED' || e[10] === 'VOID') continue;
         if (e[2] === 'PCR_DETAIL') {
+        if (e[2] === 'PCR_DETAIL' || e[2] === 'LIQ_DETAIL') {
           existing[e[0]] = {
             row        : j + 1,
             date       : normalizeDate(e[1]),
@@ -5681,15 +5733,19 @@ function updateSettledPcrSettlement(data) {
           }
         } else {
           // New item added during the edit — recorded on the original settlement date
+          const detailType = isAdvance ? 'LIQ_DETAIL' : 'PCR_DETAIL';
+          const detailRef  = isAdvance ? (advEntryId || data.requestId) : data.requestId;
           const expResult = saveExpenseEntry({
             date       : settleDate,
             type       : 'PCR_DETAIL',
+            type       : detailType,
             category   : item.category   || 'Miscellaneous',
             description: item.description|| '',
             amount     : amt,
             hasReceipt : !!item.receipt,
             receiptType: item.receiptType,
             referenceNo: data.requestId,
+            referenceNo: detailRef,
             requestedBy: requestedFor,
             approvedBy : approvedBy
           });
@@ -5708,6 +5764,7 @@ function updateSettledPcrSettlement(data) {
               receiptSaveFailures.push({ entryId: expResult.id, supplier: item.receipt.supplierName || '', reason: (rcptResult && rcptResult.message) || 'unknown' });
               writeAuditLog('RECEIPT_SAVE_FAILED',
                 'Receipt save failed for PCR_DETAIL ' + expResult.id + ' on ' + data.requestId + ' (settlement edit). Supplier: ' + (item.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
+                'Receipt save failed for ' + detailType + ' ' + expResult.id + ' on ' + data.requestId + ' (settlement edit). Supplier: ' + (item.receipt.supplierName || '—') + '. Reason: ' + ((rcptResult && rcptResult.message) || 'unknown'),
                 expResult.id, settleDate);
             }
           }
@@ -5727,11 +5784,17 @@ function updateSettledPcrSettlement(data) {
       // ── Re-derive the cash reconciliation entry ──
       const change   = parseFloat((reqAmount - newSpent).toFixed(2));
       const wantType = change > 0 ? 'CASH_RETURN' : change < 0 ? 'CASH_ADVANCE_REIMBURSEMENT' : null;
+      const reconRef = isAdvance ? (advEntryId || data.requestId) : data.requestId;
       const wantDesc = change > 0
         ? (newSpent === 0
             ? `Full amount returned unused from ${data.requestId}`
             : `Change returned from ${data.requestId}`)
         : `Overspend reimbursement for ${data.requestId} — spent ₱${newSpent.toFixed(2)} vs released ₱${reqAmount.toFixed(2)}`;
+            ? (isAdvance ? `Full amount returned unused — Cash Advance (${reconRef})` : `Full amount returned unused from ${data.requestId}`)
+            : (isAdvance ? `Change returned — Cash Advance (${reconRef})` : `Change returned from ${data.requestId}`))
+        : (isAdvance
+            ? `Overage reimbursement — Cash Advance (${reconRef})`
+            : `Overspend reimbursement for ${data.requestId} — spent ₱${newSpent.toFixed(2)} vs released ₱${reqAmount.toFixed(2)}`);
 
       if (reconRow && reconRow.type === wantType) {
         entrySheet.getRange(reconRow.row, 5, 1, 2).setValues([[wantDesc, Math.abs(change)]]);
@@ -5751,6 +5814,7 @@ function updateSettledPcrSettlement(data) {
             amount     : change,
             hasReceipt : false,
             referenceNo: data.requestId
+            referenceNo: reconRef
           });
         } else if (wantType === 'CASH_ADVANCE_REIMBURSEMENT') {
           saveExpenseEntry({
@@ -5761,9 +5825,33 @@ function updateSettledPcrSettlement(data) {
             amount     : Math.abs(change),
             hasReceipt : false,
             referenceNo: data.requestId,
+            referenceNo: reconRef,
             requestedBy: requestedFor,
             approvedBy : approvedBy
           });
+        }
+      }
+
+      // ── Update advance entry breakdown notes in PettyCash_Entries if Cash Advance ──
+      if (advEntryId && isAdvance) {
+        for (let j = 1; j < entryRows.length; j++) {
+          if (entryRows[j][0] !== advEntryId) continue;
+          const breakdownJson = JSON.stringify({
+            entries    : items.filter(e => parseFloat(e.amount) > 0).map(e => ({
+              category   : e.category    || 'Miscellaneous',
+              desc       : e.description || '',
+              amount     : parseFloat(e.amount) || 0,
+              receiptType: e.receiptType || '',
+              hasReceipt : !!e.hasReceipt || !!e.receipt,
+              receipt    : e.receipt     || null
+            })),
+            note       : data.note || '',
+            totalSpent : newSpent,
+            change     : change,
+            submittedAt: now
+          });
+          entrySheet.getRange(j + 1, 15).setValue('[LIQUIDATED on ' + settleDate + '] ' + (newSpent === 0 ? '[RETURNED] ' : '') + breakdownJson);
+          break;
         }
       }
 
