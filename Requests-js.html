@@ -173,10 +173,8 @@ function renderRequestCard(r) {
   const isAdvanceAwaiting = r.status === 'RELEASED'
     && r.requestType === 'Cash Advance'
     && r.advanceStatus === 'LIQUIDATION_PENDING';
-  // A settled Expense PCR with no expense items means the cash was returned unused.
   // A settled PCR with no expense items means the cash was returned unused.
   const isFullReturn = r.status === 'SETTLED'
-    && r.requestType !== 'Cash Advance'
     && (!r.settlementItems || r.settlementItems.length === 0);
   const badgeStyle = isAdvanceAwaiting ? 'bg-amber-100 text-amber-700'
     : isFullReturn ? 'bg-teal-100 text-teal-700'
@@ -230,17 +228,8 @@ function renderRequestCard(r) {
       </button>`;
   }
 
-  // Cashier: released state differs by type
   // Cashier: settle released requests (both Expense and Cash Advance)
   if (r.status === 'RELEASED' && isCashier()) {
-    if (r.requestType === 'Cash Advance') {
-      if (r.advanceStatus === 'LIQUIDATION_PENDING') {
-        actions = `<span class="text-xs text-amber-600 font-medium flex items-center gap-1">
-          🕒 Liquidation submitted — awaiting audit approval to mark settled.</span>`;
-      } else {
-        actions = `<span class="text-xs text-blue-600 font-medium flex items-center gap-1">
-          💳 Liquidate this advance from the <button onclick="navigate('advances')" class="underline font-bold">Cash Advances</button> or <button onclick="navigate('entries')" class="underline font-bold">Entries</button> page</span>`;
-      }
     if (r.requestType === 'Cash Advance' && r.advanceStatus === 'LIQUIDATION_PENDING') {
       actions = `<span class="text-xs text-amber-600 font-medium flex items-center gap-1">
         🕒 Liquidation submitted — awaiting audit approval to mark settled.</span>`;
@@ -257,22 +246,6 @@ function renderRequestCard(r) {
   // category, or a second receipt missed because the first was submitted right
   // away. The server refuses once that day is CLOSED by the auditor.
   if (r.status === 'SETTLED' && isCashier()) {
-    if (r.requestType !== 'Cash Advance') {
-      actions = `
-        <button onclick="openPcrEditSettleModal('${r.id}')"
-          class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
-          ✏️ Edit Settlement
-        </button>`;
-    } else if (r.entryId) {
-      // An advance is settled by its liquidation, so the correction runs through
-      // the liquidation modal — opened here so the cashier doesn't have to hunt
-      // down the same transaction on the Cash Advances page.
-      actions = `
-        <button onclick="openPcrLiquidationEdit('${r.entryId}')"
-          class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
-          ✏️ Edit Liquidation
-        </button>`;
-    }
     actions = `
       <button onclick="openPcrEditSettleModal('${r.id}')"
         class="px-4 py-2 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition min-h-[40px]">
