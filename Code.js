@@ -5071,16 +5071,9 @@ function getPettyCashRequests() {
         settledAt       : status === 'SETTLED' ? (r[14] || '') : '',
         settlementItems : settlementItems,
         advanceStatus   : isAdvance ? (advanceStatusMap[entryId] || '') : '',
-        // Personal tag goes to Admin/Auditor, plus the cashier who submitted
-        // that request — she needs to see her own tag took effect, but still
-        // sees anyone else's personal draw as an ordinary request. The cash
-        // movement itself is visible to everyone.
-        isPersonal      : (isPrivileged || r[6] === email) && r[15] === 'YES',
-        // What the Admin changed at approval. Gated like the personal tag — the
-        // note can name that tag — so it reaches Admin/Auditor and the cashier
-        // who submitted it. Another cashier releasing the cash just sees the
-        // approved figures on the card.
-        amendmentNote   : (isPrivileged || r[6] === email) ? (r[16] || '') : ''
+        // Personal tag and approval amendments are visible to Admin, Auditor, and Cashier.
+        isPersonal      : r[15] === 'YES',
+        amendmentNote   : r[16] || ''
       });
     }
     data.sort((a, b) => (a.createdAt > b.createdAt ? -1 : 1));
@@ -5912,8 +5905,8 @@ function personalOwedForRequest_(status, releasedAmount, spent) {
 function getPersonalExpenseSummary() {
   try {
     const role = getUserRole();
-    if (!(role.success && role.role === 'Admin')) {
-      return { success: false, message: 'Personal expenses are visible to the Admin only.' };
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Personal expenses are visible to Admin and Cashier only.' };
     }
     return { success: true, data: computePersonalExpenseSummary_(SpreadsheetApp.openById(SPREADSHEET_ID)) };
   } catch (e) {
@@ -6112,13 +6105,13 @@ function emptyPersonalSummary_() {
   };
 }
 
-// Admin records money she has physically put back into the drawer.
+// Admin or Cashier records money physically put back into the drawer.
 // data: { amount, date, note }
 function savePersonalRepayment(data) {
   try {
     const role = getUserRole();
-    if (!(role.success && role.role === 'Admin')) {
-      return { success: false, message: 'Only the Admin can record a personal repayment.' };
+    if (!(role.success && (role.role === 'Admin' || role.role === 'Cashier'))) {
+      return { success: false, message: 'Only the Admin or Cashier can record a personal repayment.' };
     }
 
     const amount = parseFloat(data && data.amount) || 0;
